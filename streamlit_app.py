@@ -47,9 +47,49 @@ st.set_page_config(
 # ── CSS ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
+    /* ── Global dark theme ─────────────────────────────── */
     .stApp { background: #0d1117; }
     .main .block-container { padding-top: 1rem; }
     h1, h2, h3, h4, p, span, div, label { color: #c9d1d9; }
+
+    /* ── Sidebar dark ──────────────────────────────────── */
+    [data-testid="stSidebar"] {
+        background: #0d1117; border-right: 1px solid #21262d;
+    }
+    [data-testid="stSidebar"] * {
+        color: #c9d1d9 !important;
+    }
+    [data-testid="stSidebar"] .st-emotion-cache-1cypcdb,
+    [data-testid="stSidebar"] .st-emotion-cache-6qob1r {
+        background: #0d1117;
+    }
+    [data-testid="stSidebar"] input,
+    [data-testid="stSidebar"] textarea,
+    [data-testid="stSidebar"] .st-bb {
+        background: #161b22 !important; border: 1px solid #30363d !important;
+        color: #c9d1d9 !important;
+    }
+    [data-testid="stSidebar"] input:focus {
+        border-color: #58a6ff !important; box-shadow: 0 0 0 1px #58a6ff !important;
+    }
+    /* Sidebar slider track */
+    [data-testid="stSidebar"] .st-bg { background: #30363d !important; }
+    [data-testid="stSidebar"] .st-b2 { background: #30363d !important; }
+    /* Sidebar expander */
+    [data-testid="stSidebar"] [data-testid="stExpander"] {
+        background: transparent !important; border: 1px solid #21262d !important;
+        border-radius: 8px;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary {
+        color: #c9d1d9 !important;
+    }
+    /* Sidebar buttons keep green gradient */
+    [data-testid="stSidebar"] .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #238636, #2ea043) !important;
+        color: #fff !important;
+    }
+
+    /* ── Buttons ───────────────────────────────────────── */
     .stButton > button {
         width: 100%; border-radius: 8px; font-weight: 600;
         background: linear-gradient(135deg, #238636, #2ea043);
@@ -57,16 +97,16 @@ st.markdown("""
     }
     .stButton > button:hover { opacity: 0.9; transform: translateY(-1px); }
     .stButton > button:active { transform: translateY(0); }
-    .btn-reset > button {
-        background: #21262d !important; border: 1px solid #30363d !important;
-        color: #8b949e !important;
-    }
+
+    /* ── Cards ─────────────────────────────────────────── */
     .metric-card {
         background: #161b22; border: 1px solid #30363d;
         border-radius: 10px; padding: 1rem; text-align: center;
     }
     .metric-value { font-size: 2rem; font-weight: 700; color: #58a6ff; }
     .metric-label { font-size: 0.8rem; color: #8b949e; margin-top: 0.25rem; }
+
+    /* ── Tags ──────────────────────────────────────────── */
     .section-tag {
         font-size: 0.75rem; font-weight: 600; padding: 2px 8px;
         border-radius: 6px; display: inline-block; margin-bottom: 0.4rem;
@@ -74,8 +114,11 @@ st.markdown("""
     .tag-daily { background: #1a3a2e; color: #3fb950; }
     .tag-hourly { background: #1a2e3a; color: #58a6ff; }
     .tag-div { background: #3a1a2e; color: #f78166; }
+
+    /* ── Table ─────────────────────────────────────────── */
     div[data-testid="stDataFrame"] td { font-size: 0.8rem; }
-    .score-high { color: #3fb950; font-weight: 600; }
+
+    /* ── Mobile ────────────────────────────────────────── */
     .mobile-hint { display: none; }
     @media (max-width: 768px) {
         .metric-value { font-size: 1.5rem; }
