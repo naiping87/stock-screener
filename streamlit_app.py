@@ -28,14 +28,14 @@ from screener import (
 # ── Defaults for reset ─────────────────────────────────────────────────────
 DEFAULTS = {
     "periods": "5,10,20,30,50",
-    "divergence": DIVERGENCE_THRESHOLD,
-    "compression": MIN_COMPRESSION_BARS,
-    "vol_daily": VOL_MIN,
-    "vol_hourly": VOL_MIN_HOURLY,
-    "vol_weekly": WEEKLY_VOL_MIN,
-    "kdj_period": KDJ_PERIOD,
-    "kdj_signal": KDJ_SIGNAL,
-    "div_lookback": DIVERGENCE_LOOKBACK,
+    "div": DIVERGENCE_THRESHOLD,
+    "bars": MIN_COMPRESSION_BARS,
+    "vol_d": VOL_MIN,
+    "vol_h": VOL_MIN_HOURLY,
+    "vol_w": WEEKLY_VOL_MIN,
+    "kdj_p": KDJ_PERIOD,
+    "kdj_s": KDJ_SIGNAL,
+    "div_lb": DIVERGENCE_LOOKBACK,
 }
 
 # ── Page config ────────────────────────────────────────────────────────────
