@@ -285,10 +285,32 @@ with st.sidebar:
 
 
 # ── ROE fetcher ────────────────────────────────────────────────────────────
+def _build_roe_session():
+    """Create a session with Yahoo cookie + crumb for ROE endpoint."""
+    sess = requests.Session()
+    sess.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    })
+    # Get cookie
+    try:
+        sess.get("https://fc.yahoo.com/", timeout=10)
+    except Exception:
+        pass
+    # Get crumb
+    try:
+        r = sess.get("https://query2.finance.yahoo.com/v1/test/getcrumb", timeout=10)
+        if r.status_code == 200:
+            sess.crumb = r.text.strip()
+    except Exception:
+        sess.crumb = ""
+    return sess
+
+
 def _fetch_roe(tkr, sess, retries=2):
-    """Fetch ROE for one ticker via Yahoo quoteSummary."""
-    url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{tkr}"
-    params = {"modules": "financialData"}
+    """Fetch ROE for one ticker via Yahoo quoteSummary (with crumb auth)."""
+    crumb = getattr(sess, "crumb", "")
+    url = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + tkr
+    params = {"modules": "financialData", "crumb": crumb}
     for attempt in range(retries + 1):
         try:
             r = sess.get(url, params=params, timeout=10)
@@ -306,10 +328,7 @@ def _fetch_roe(tkr, sess, retries=2):
 
 def fetch_roe_batch(tickers, workers=8):
     """Fetch ROE for a list of tickers concurrently."""
-    sess = requests.Session()
-    sess.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    })
+    sess = _build_roe_session()
     results = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futs = {pool.submit(_fetch_roe, tkr, sess): tkr for tkr in tickers}
@@ -318,7 +337,7 @@ def fetch_roe_batch(tickers, workers=8):
             try:
                 roe = f.result()
                 if roe is not None:
-                    results[tkr] = roe
+                    results[tkr] = round(roe * 100, 2)  # convert to %
             except Exception:
                 pass
     return results
