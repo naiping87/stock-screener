@@ -27,9 +27,8 @@ MIN_COMPRESSION_BARS = 20           # SMAs must be tight for this many bars
 KDJ_PERIOD = 9                      # KDJ lookback (same as Pine Script 'Period')
 KDJ_SIGNAL = 3                      # KDJ smooth (same as Pine Script 'Signal Period')
 DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
-DAILY_DAYS = 150                    # days of daily data (50 SMA + 20 compression + buffer)
+DAILY_DAYS = 400                    # days of daily data (weekly KDJ needs 60+ bars, ~400 days)
 HOURLY_DAYS = 30                    # days of hourly data (needs 70+ valid bars for 50h SMA + 20 compression)
-WEEKLY_DAYS = 500                   # days of weekly data (~70 bars, 9+3 KDJ + buffer)
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
 KDJ_OVERSOLD = 50                   # K must be below this for valid signal
@@ -140,8 +139,8 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars):
     return None, ""
 
 
-def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w):
-    """Download daily + hourly + weekly data for one ticker."""
+def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
+    """Download daily + hourly data for one ticker (weekly resampled from daily)."""
     d_data, name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d)
     if d_data is None:
         return tkr, None
@@ -170,19 +169,21 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_
             result["close_hourly"] = h_close.loc[hi]
             result["volume_hourly"] = h_vol.loc[hi]
 
-    # Weekly data (for Script 4: KDJ golden cross)
-    w_data, _ = _fetch_chart(sess, tkr, wp1, wp2, "1wk", min_bars_w)
-    if w_data is not None:
-        w_close = w_data["close"].dropna()
-        w_high = w_data["high"].dropna()
-        w_low = w_data["low"].dropna()
-        w_vol = w_data["volume"].fillna(0)
-        if len(w_close) >= min_bars_w:
-            wi = w_close.index.intersection(w_high.index).intersection(w_low.index).intersection(w_vol.index)
-            result["close_weekly"] = w_close.loc[wi]
-            result["high_weekly"] = w_high.loc[wi]
-            result["low_weekly"] = w_low.loc[wi]
-            result["volume_weekly"] = w_vol.loc[wi]
+    # Weekly data — resample from daily for consistent OHLC
+    if len(di) >= 5:
+        w_ohlc = {
+            "close": d_close.loc[di].resample("W").last(),
+            "high": d_high.loc[di].resample("W").max(),
+            "low": d_low.loc[di].resample("W").min(),
+            "volume": d_vol.loc[di].resample("W").sum(),
+        }
+        wk_idx = w_ohlc["close"].index.intersection(
+            w_ohlc["high"].index
+        ).intersection(w_ohlc["low"].index).intersection(w_ohlc["volume"].index)
+        result["close_weekly"] = w_ohlc["close"].loc[wk_idx]
+        result["high_weekly"] = w_ohlc["high"].loc[wk_idx]
+        result["low_weekly"] = w_ohlc["low"].loc[wk_idx]
+        result["volume_weekly"] = w_ohlc["volume"].loc[wk_idx]
 
     return tkr, result
 
@@ -192,26 +193,23 @@ def download_data(tickers, progress_cb=None):
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
-    w_start = end_date - timedelta(days=WEEKLY_DAYS)
     dp1, dp2 = int(d_start.timestamp()), int(end_date.timestamp())
     hp1, hp2 = int(h_start.timestamp()), int(end_date.timestamp())
-    wp1, wp2 = int(w_start.timestamp()), int(end_date.timestamp())
     min_bars_d = max(SMA_PERIODS) + MIN_COMPRESSION_BARS
     min_bars_h = max(SMA_PERIODS) + MIN_COMPRESSION_BARS
-    min_bars_w = KDJ_PERIOD + KDJ_SIGNAL + KDJ_LOOKBACK
 
     ticker_list = sorted(tickers.keys())
     all_data = {}
     session = _build_session()
 
     print(f"[DOWNLOAD] Fetching {DAILY_DAYS}d daily + {HOURLY_DAYS}d hourly "
-          f"+ {WEEKLY_DAYS}d weekly for {len(ticker_list)} tickers (workers={MAX_WORKERS}) ...")
+          f"for {len(ticker_list)} tickers (workers={MAX_WORKERS}) ...")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
             pool.submit(
                 _fetch_ticker, session, tkr,
-                dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w,
+                dp1, dp2, hp1, hp2, min_bars_d, min_bars_h,
             ): tkr
             for tkr in ticker_list
         }
@@ -276,8 +274,8 @@ def _calc_kdj(daily_high, daily_low, daily_close, period=KDJ_PERIOD, signal=KDJ_
 
     # Custom EMA: (1*src + (length-1)*prev) / length  →  alpha = 1/signal
     alpha = 1.0 / signal
-    k = rsv.ewm(alpha=alpha, min_periods=signal, adjust=False).mean()
-    d = k.ewm(alpha=alpha, min_periods=signal, adjust=False).mean()
+    k = rsv.ewm(alpha=alpha, min_periods=1, adjust=False).mean()
+    d = k.ewm(alpha=alpha, min_periods=1, adjust=False).mean()
     j = 3.0 * k - 2.0 * d
     return k, d, j
 
