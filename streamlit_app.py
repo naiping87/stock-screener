@@ -44,6 +44,34 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── Keep-alive ──────────────────────────────────────────────────────────────
+# Prevent mobile browser from sleeping / WebSocket timeout during long downloads
+st.markdown("""
+<script>
+(function(){
+    var _active = false;
+    var _interval = null;
+    function _startPing() {
+        if (_active) return;
+        _active = true;
+        _interval = setInterval(function(){
+            fetch(window.location.origin + '/_stcore/health').catch(function(){});
+        }, 20000);
+    }
+    function _stopPing() {
+        _active = false;
+        if (_interval) { clearInterval(_interval); _interval = null; }
+    }
+    // Start pinging when any button is clicked (download triggers)
+    document.addEventListener('click', function(e){
+        if (e.target && e.target.tagName === 'BUTTON') _startPing();
+    });
+    // Stop after 8 minutes (safety timeout)
+    setTimeout(_stopPing, 480000);
+})();
+</script>
+""", unsafe_allow_html=True)
+
 # ── CSS ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
