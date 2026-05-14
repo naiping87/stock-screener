@@ -272,7 +272,8 @@ with st.sidebar:
 
     col_run, col_reset = st.columns([3, 1])
     with col_run:
-        run_clicked = st.button("▶ Run Screener", type="primary", use_container_width=True)
+        refresh_clicked = st.button("🔄 Refresh Data", type="primary", use_container_width=True,
+                                    help="Force fresh download from Yahoo Finance")
     with col_reset:
         reset_clicked = st.button("↺", help="Reset all parameters to defaults", key="reset_btn",
                                   type="secondary", use_container_width=True)
@@ -281,7 +282,11 @@ with st.sidebar:
                 st.session_state[f"cfg_{k}"] = v
             st.rerun()
 
-    st.caption(f"Tickers: {len(load_tickers(TICKERS_FILE))} | Data cached 1hr")
+    cache_age = ""
+    if st.session_state.get("_data_ts"):
+        age_min = (time.time() - st.session_state["_data_ts"]) // 60
+        cache_age = f" | Cache: {int(age_min)}m ago"
+    st.caption(f"Tickers: {len(load_tickers(TICKERS_FILE))}{cache_age}")
 
 
 # ── ROE fetcher ────────────────────────────────────────────────────────────
@@ -403,67 +408,77 @@ def get_cached_data():
     return data
 
 
-# ── Run screener ───────────────────────────────────────────────────────────
-if run_clicked:
-    import screener as scr
+# ── Run screeners (auto if cached data exists) ──────────────────────────────
+import screener as scr
 
-    # Override volume thresholds
-    scr.VOL_MIN = vol_daily
-    scr.VOL_MIN_HOURLY = vol_hourly
+# Override volume thresholds
+scr.VOL_MIN = vol_daily
+scr.VOL_MIN_HOURLY = vol_hourly
 
-    # Stage 1: Download (with progress, cached 1hr)
+# Stage 1: Download (only if forced refresh or no cache)
+have_cache = st.session_state.get("_data_cache") is not None
+need_download = refresh_clicked or not have_cache
+
+if need_download:
     data = get_cached_data()
     ticker_names = st.session_state.get("_ticker_names", {})
+else:
+    data = st.session_state._data_cache
+    ticker_names = st.session_state.get("_ticker_names", {})
 
-    # Stage 2: Run screeners
-    progress = st.progress(0, text="Running screeners...")
+# Stage 2: Run screeners (always on cached data)
+screener_progress = st.progress(0, text="Running screeners...")
 
-    progress.progress(30, text="Daily SMA...")
-    results1 = list(run_sma_screener(
-        data, ticker_names, periods=sma_periods,
-        threshold=divergence_pct, min_compression=compression_bars,
+screener_progress.progress(30, text="Daily SMA...")
+results1 = list(run_sma_screener(
+    data, ticker_names, periods=sma_periods,
+    threshold=divergence_pct, min_compression=compression_bars,
+))
+
+screener_progress.progress(60, text="Hourly SMA...")
+results2 = list(run_sma_hourly_screener(
+    data, ticker_names, periods=sma_periods,
+    threshold=divergence_pct, min_compression=compression_bars,
+))
+
+screener_progress.progress(80, text="KDJ Divergence...")
+results3 = list(run_divergence_screener(data, ticker_names, lookback=div_lookback))
+
+# Stage 3: ROE scoring
+all_tickers = set()
+for r in results1:
+    all_tickers.add(r["ticker"])
+for r in results2:
+    all_tickers.add(r["ticker"])
+for r in results3:
+    all_tickers.add(r["ticker"])
+
+roe_map = {}
+if all_tickers:
+    screener_progress.progress(90, text=f"Fetching ROE for {len(all_tickers)} stocks...")
+    roe_map = fetch_roe_batch(all_tickers)
+
+# Merge ROE and sort (ROE first, then divergence tightness as fallback)
+def _attach_roe(results, roe_map):
+    for r in results:
+        r["ROE"] = roe_map.get(r["ticker"])
+    results.sort(key=lambda r: (
+        r["ROE"] is None,          # None last
+        -(r["ROE"] or 0),          # higher ROE first
+        r.get("divergence_pct", 999),  # tighter compression as fallback
     ))
 
-    progress.progress(60, text="Hourly SMA...")
-    results2 = list(run_sma_hourly_screener(
-        data, ticker_names, periods=sma_periods,
-        threshold=divergence_pct, min_compression=compression_bars,
-    ))
+_attach_roe(results1, roe_map)
+_attach_roe(results2, roe_map)
+_attach_roe(results3, roe_map)
 
-    progress.progress(80, text="KDJ Divergence...")
-    results3 = list(run_divergence_screener(data, ticker_names, lookback=div_lookback))
+screener_progress.progress(100, text="Done")
+screener_progress.empty()
 
-    # Stage 3: ROE scoring
-    all_tickers = set()
-    for r in results1:
-        all_tickers.add(r["ticker"])
-    for r in results2:
-        all_tickers.add(r["ticker"])
-    for r in results3:
-        all_tickers.add(r["ticker"])
-
-    roe_map = {}
-    if all_tickers:
-        progress.progress(90, text=f"Fetching ROE for {len(all_tickers)} stocks...")
-        roe_map = fetch_roe_batch(all_tickers)
-
-    # Merge ROE and sort
-    def _attach_roe(results, roe_map):
-        for r in results:
-            r["ROE"] = roe_map.get(r["ticker"])
-        results.sort(key=lambda r: (r["ROE"] is None, -(r["ROE"] or 0)))
-
-    _attach_roe(results1, roe_map)
-    _attach_roe(results2, roe_map)
-    _attach_roe(results3, roe_map)
-
-    progress.progress(100, text="Done")
-    progress.empty()
-
-    st.session_state.results_sma_daily = results1
-    st.session_state.results_sma_hourly = results2
-    st.session_state.results_div = results3
-    st.session_state.run_done = True
+st.session_state.results_sma_daily = results1
+st.session_state.results_sma_hourly = results2
+st.session_state.results_div = results3
+st.session_state.run_done = True
 
 # ── Show results ───────────────────────────────────────────────────────────
 if st.session_state.run_done:
@@ -505,14 +520,17 @@ if st.session_state.run_done:
     with tab1:
         if results1:
             df = _make_df(results1,
-                          ["ticker", "name", "close", "MA20", "divergence_pct", "ROE"],
+                          ["ticker", "name", "close", "trend", "MA20", "divergence_pct", "vol_ma", "ROE"],
                           {"ticker": "Code", "name": "Name", "close": "Price",
-                           "divergence_pct": "Div%", "ROE": "ROE%"})
+                           "trend": "T", "divergence_pct": "Div%",
+                           "vol_ma": "Vol MA", "ROE": "ROE%"})
             st.dataframe(df, hide_index=True, use_container_width=True, height=420,
                          column_config={
-                             "Div%": st.column_config.NumberColumn(format="%.2f%%"),
-                             "Price": st.column_config.NumberColumn(format="%.2f"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%"),
+                             "T": st.column_config.TextColumn(width="small"),
+                             "Div%": st.column_config.NumberColumn(format="%.2f%%", width="small"),
+                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
+                             "Vol MA": st.column_config.NumberColumn(format="%d", width="small"),
+                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
                          })
         else:
             st.caption("No stocks passed the filter.")
@@ -520,14 +538,17 @@ if st.session_state.run_done:
     with tab2:
         if results2:
             df = _make_df(results2,
-                          ["ticker", "name", "close", "MA20", "divergence_pct", "ROE"],
+                          ["ticker", "name", "close", "trend", "MA20", "divergence_pct", "vol_ma", "ROE"],
                           {"ticker": "Code", "name": "Name", "close": "Price",
-                           "divergence_pct": "Div%", "ROE": "ROE%"})
+                           "trend": "T", "divergence_pct": "Div%",
+                           "vol_ma": "Vol MA", "ROE": "ROE%"})
             st.dataframe(df, hide_index=True, use_container_width=True, height=420,
                          column_config={
-                             "Div%": st.column_config.NumberColumn(format="%.2f%%"),
-                             "Price": st.column_config.NumberColumn(format="%.2f"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%"),
+                             "T": st.column_config.TextColumn(width="small"),
+                             "Div%": st.column_config.NumberColumn(format="%.2f%%", width="small"),
+                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
+                             "Vol MA": st.column_config.NumberColumn(format="%d", width="small"),
+                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
                          })
         else:
             st.caption("No stocks passed the filter.")
@@ -535,13 +556,14 @@ if st.session_state.run_done:
     with tab3:
         if results3:
             df = _make_df(results3,
-                          ["ticker", "name", "close", "kdj_k", "kdj_d", "ROE"],
+                          ["ticker", "name", "close", "kdj_k", "kdj_d", "vol_ma", "ROE"],
                           {"ticker": "Code", "name": "Name", "close": "Price",
-                           "ROE": "ROE%"})
+                           "vol_ma": "Vol MA", "ROE": "ROE%"})
             st.dataframe(df, hide_index=True, use_container_width=True, height=420,
                          column_config={
-                             "Price": st.column_config.NumberColumn(format="%.2f"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%"),
+                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
+                             "Vol MA": st.column_config.NumberColumn(format="%d", width="small"),
+                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
                          })
         else:
             st.caption("No stocks passed the filter.")
@@ -552,10 +574,10 @@ else:
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:50vh;gap:1rem;">
         <div style="font-size:3rem;">📊</div>
         <div style="font-size:1.2rem;color:#8b949e;">
-            Tap <b>▶ Run Screener</b> in the sidebar to scan
+            Tap <b>🔄 Refresh Data</b> in the sidebar to start
         </div>
         <div style="font-size:0.8rem;color:#484f58;">
-            1,000+ Bursa Malaysia stocks • 3 strategies • Real-time data
+            First run downloads market data (~1-2 min) • Then param tweaks are instant
         </div>
     </div>
     """, unsafe_allow_html=True)

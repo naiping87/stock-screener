@@ -330,6 +330,10 @@ def run_sma_screener(data, ticker_names=None, periods=SMA_PERIODS,
             continue
         s2 += 1
 
+        vol = d.get("volume")
+        vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
+        trend = "↑" if close.iloc[-1] > sma[20] else "↓"
+
         name = d.get("name", "") or ticker_names.get(tkr, "")
         yield {
             "ticker": tkr,
@@ -341,6 +345,8 @@ def run_sma_screener(data, ticker_names=None, periods=SMA_PERIODS,
             "MA30": round(sma[30], 2),
             "MA50": round(sma[50], 2),
             "divergence_pct": round(div, 2),
+            "vol_ma": vol_ma_val,
+            "trend": trend,
         }
 
     print(f"  Stage 1 (compression):    {s1} passed")
@@ -376,6 +382,10 @@ def run_sma_hourly_screener(data, ticker_names=None, periods=SMA_PERIODS,
             continue
         s2 += 1
 
+        vol = d.get("volume_hourly")
+        vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
+        trend = "↑" if close.iloc[-1] > sma[20] else "↓"
+
         name = d.get("name", "") or ticker_names.get(tkr, "")
         yield {
             "ticker": tkr,
@@ -387,6 +397,8 @@ def run_sma_hourly_screener(data, ticker_names=None, periods=SMA_PERIODS,
             "MA30": round(sma[30], 2),
             "MA50": round(sma[50], 2),
             "divergence_pct": round(div, 2),
+            "vol_ma": vol_ma_val,
+            "trend": trend,
         }
 
     print(f"  Stage 1 (compression):      {s1} passed")
@@ -417,6 +429,9 @@ def run_divergence_screener(data, ticker_names=None,
             continue
         s2 += 1
 
+        vol = d.get("volume")
+        vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
+
         name = d.get("name", "") or ticker_names.get(tkr, "")
         price = round(d["close"].iloc[-1], 2)
 
@@ -429,6 +444,7 @@ def run_divergence_screener(data, ticker_names=None,
             "kdj_j": j_val,
             "price_slope": price_slope,
             "kdj_k_slope": k_slope,
+            "vol_ma": vol_ma_val,
         }
 
     print(f"  Stage 1 (divergence):     {s1} passed")
