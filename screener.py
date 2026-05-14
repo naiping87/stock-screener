@@ -471,10 +471,10 @@ def run_divergence_screener(data, ticker_names=None,
 
 
 def _detect_kdj_signal(k, d, j, lookback=KDJ_LOOKBACK, oversold=KDJ_OVERSOLD):
-    """Detect KDJ golden cross (or near-cross).
+    """Detect KDJ golden cross via J line (J=3K-2D, crosses K when K crosses D).
 
     Returns (signal, k_val, d_val, j_val):
-      signal: 'crossed' | 'near' | None
+      signal: 'crossed' (J just crossed K) | 'above' (J>K and J>D) | None
     """
     if k is None or len(k) < lookback + 2:
         return None, None, None, None
@@ -482,20 +482,22 @@ def _detect_kdj_signal(k, d, j, lookback=KDJ_LOOKBACK, oversold=KDJ_OVERSOLD):
     k_now, d_now = k.iloc[-1], d.iloc[-1]
     j_now = j.iloc[-1] if j is not None else float("nan")
 
-    # Recent golden cross (K crossed above D within lookback bars)
+    # Check if J is currently above both K and D (bullish J position)
+    j_above = j_now > k_now and j_now > d_now
+
+    # Recent J-cross-K (equivalent to K-cross-D)
     for i in range(-lookback, 0):
-        ki, ki1 = k.iloc[i], k.iloc[i - 1]
-        di, di1 = d.iloc[i], d.iloc[i - 1]
-        if ki > di and ki1 <= di1:
-            if ki < oversold:
+        j_i = j.iloc[i]
+        k_i = k.iloc[i]
+        j_prev = j.iloc[i - 1]
+        k_prev = k.iloc[i - 1]
+        if j_i > k_i and j_prev <= k_prev:
+            if k_i < oversold:
                 return "crossed", round(k_now, 1), round(d_now, 1), round(j_now, 1)
 
-    # About to cross: K < D but gap small, K rising, oversold
-    if k_now < d_now:
-        gap = d_now - k_now
-        k_rising = k_now > k.iloc[-2]
-        if gap < 2.0 and k_rising and k_now < oversold:
-            return "near", round(k_now, 1), round(d_now, 1), round(j_now, 1)
+    # J above K and D (already bullish, no recent cross)
+    if j_above and j_now < 70:  # not overbought yet
+        return "above", round(k_now, 1), round(d_now, 1), round(j_now, 1)
 
     return None, None, None, None
 
