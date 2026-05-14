@@ -249,30 +249,30 @@ with st.sidebar:
             sma_periods = [5, 10, 20, 30, 50]
 
         divergence_pct = st.slider(
-            "Divergence ≤ %", 0.5, 10.0, DEFAULTS["divergence"], 0.5, key="cfg_div",
+            "Divergence ≤ %", 0.5, 10.0, DEFAULTS["div"], 0.5, key="cfg_div",
         )
         compression_bars = st.slider(
-            "Min Compression Bars", 5, 60, DEFAULTS["compression"], 5, key="cfg_bars",
+            "Min Compression Bars", 5, 60, DEFAULTS["bars"], 5, key="cfg_bars",
         )
 
     with st.expander("Volume", expanded=True):
         vol_daily = st.number_input(
-            "Daily Vol MA >", 0, 10_000_000, DEFAULTS["vol_daily"], 100_000,
+            "Daily Vol MA >", 0, 10_000_000, DEFAULTS["vol_d"], 100_000,
             format="%d", key="cfg_vol_d",
         )
         vol_hourly = st.number_input(
-            "Hourly Vol MA >", 0, 5_000_000, DEFAULTS["vol_hourly"], 50_000,
+            "Hourly Vol MA >", 0, 5_000_000, DEFAULTS["vol_h"], 50_000,
             format="%d", key="cfg_vol_h",
         )
         vol_weekly = st.number_input(
-            "Weekly Vol MA >", 0, 10_000_000, DEFAULTS["vol_weekly"], 100_000,
+            "Weekly Vol MA >", 0, 10_000_000, DEFAULTS["vol_w"], 100_000,
             format="%d", key="cfg_vol_w",
         )
 
     with st.expander("KDJ Divergence", expanded=True):
-        kdj_period = st.slider("KDJ Period", 3, 30, DEFAULTS["kdj_period"], 1, key="cfg_kdj_p")
-        kdj_signal = st.slider("KDJ Signal", 1, 10, DEFAULTS["kdj_signal"], 1, key="cfg_kdj_s")
-        div_lookback = st.slider("Div Lookback", 10, 60, DEFAULTS["div_lookback"], 5, key="cfg_div_lb")
+        kdj_period = st.slider("KDJ Period", 3, 30, DEFAULTS["kdj_p"], 1, key="cfg_kdj_p")
+        kdj_signal = st.slider("KDJ Signal", 1, 10, DEFAULTS["kdj_s"], 1, key="cfg_kdj_s")
+        div_lookback = st.slider("Div Lookback", 10, 60, DEFAULTS["div_lb"], 5, key="cfg_div_lb")
 
     with st.expander("Auto-Refresh", expanded=True):
         auto_refresh = st.toggle("Enable", value=False, key="auto_refresh",
