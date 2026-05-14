@@ -13,3 +13,4 @@ __pycache__/
 # OS
 Thumbs.db
 Desktop.ini
+.streamlit/secrets.toml

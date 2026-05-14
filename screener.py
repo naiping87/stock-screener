@@ -1,7 +1,8 @@
 """
-Bursa Malaysia Stock Screener — two output modes:
-  1. SMA Compression — hourly SMA coil + daily KDJ cross + trend + volume
-  2. KDJ Divergence — daily price falling while KDJ rising (bullish divergence)
+Bursa Malaysia Stock Screener — 3 scripts → 1 combined CSV:
+  1. sma_daily      — daily SMA 5/10/20/30/50 compressed <3% for 20+ days
+  2. kdj_divergence — price falling, KDJ rising over 30 days
+  3. sma_hourly     — hourly SMA 5/10/20/30/50 compressed <3% for 20+ hours
 """
 import csv
 import os
@@ -15,21 +16,19 @@ import pandas as pd
 import requests
 
 # ── Configuration ────────────────────────────────────────────────────────────
-SMA_PERIODS = [20, 30, 50, 120, 200]
+SMA_PERIODS = [5, 10, 20, 30, 50]
 DIVERGENCE_THRESHOLD = 3.0          # percent
-VOL_RATIO_THRESHOLD = 1.2           # 5h avg vol >= 1.2x 50h avg vol
+VOL_MIN = 500000                    # min daily volume MA
+VOL_MIN_HOURLY = 100000             # min hourly volume MA
 MAX_WORKERS = 6                     # concurrent download threads
 REQUEST_DELAY = 0.3                 # seconds between requests per thread
 MAX_RETRIES = 3
 MIN_COMPRESSION_BARS = 20           # SMAs must be tight for this many bars
 KDJ_PERIOD = 9                      # KDJ lookback (same as Pine Script 'Period')
 KDJ_SIGNAL = 3                      # KDJ smooth (same as Pine Script 'Signal Period')
-KDJ_LOOKBACK = 3                    # bars to look back for golden cross
-KDJ_OVERSOLD = 50                   # K must be below this for valid signal
-KDJ_GAP_THRESHOLD = 2.0             # K-D gap for 'about to cross'
-KDJ_DAILY_DAYS = 45                 # days of daily data to fetch (KDJ needs ~15, extra for buffer)
-DAILY_TREND_SMA = 20                # daily close must be above this SMA (trend filter)
-DIVERGENCE_LOOKBACK = 20            # bars for KDJ/price divergence detection
+DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
+DAILY_DAYS = 150                    # days of daily data (50 SMA + 20 compression + buffer)
+HOURLY_DAYS = 15                    # days of hourly data (50h SMA + 20 bars, ~5 trading days)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TICKERS_FILE = os.path.join(SCRIPT_DIR, "tickers.csv")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
@@ -137,61 +136,63 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars):
     return None, ""
 
 
-def _fetch_ticker(sess, tkr, hp1, hp2, dp1, dp2, min_bars_h, min_bars_d):
-    """Download hourly + daily data for one ticker. Returns (tkr, data_dict | None)."""
-    # Hourly data
-    h_data, name = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h)
-    if h_data is None:
+def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
+    """Download daily + hourly data for one ticker. Returns (tkr, data_dict | None)."""
+    d_data, name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d)
+    if d_data is None:
         return tkr, None
 
-    # Daily data (for KDJ)
-    d_data, d_name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d)
-    name = name or d_name
-
-    h_close = h_data["close"].dropna()
-    h_vol = h_data["volume"].fillna(0)
-    idx = h_close.index.intersection(h_vol.index)
+    d_close = d_data["close"].dropna()
+    d_high = d_data["high"].dropna()
+    d_low = d_data["low"].dropna()
+    d_vol = d_data["volume"].fillna(0)
+    di = d_close.index.intersection(d_high.index).intersection(d_low.index).intersection(d_vol.index)
 
     result = {
-        "close": h_close.loc[idx],
-        "volume": h_vol.loc[idx],
+        "close": d_close.loc[di],
+        "high": d_high.loc[di],
+        "low": d_low.loc[di],
+        "volume": d_vol.loc[di],
         "name": name,
     }
 
-    if d_data is not None:
-        d_close = d_data["close"].dropna()
-        d_high = d_data["high"].dropna()
-        d_low = d_data["low"].dropna()
-        di = d_close.index.intersection(d_high.index).intersection(d_low.index)
-        result["daily_close"] = d_close.loc[di]
-        result["daily_high"] = d_high.loc[di]
-        result["daily_low"] = d_low.loc[di]
+    # Hourly data (for Script 3)
+    h_data, _ = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h)
+    if h_data is not None:
+        h_close = h_data["close"].dropna()
+        h_vol = h_data["volume"].fillna(0)
+        if len(h_close) >= min_bars_h:
+            hi = h_close.index.intersection(h_vol.index)
+            result["close_hourly"] = h_close.loc[hi]
+            result["volume_hourly"] = h_vol.loc[hi]
 
     return tkr, result
 
 
-def download_data(tickers):
-    """Download 60d hourly + daily data concurrently via Yahoo chart API."""
+def download_data(tickers, progress_cb=None):
+    """Download daily + hourly data concurrently via Yahoo chart API.
+    progress_cb(done, total) is called after each ticker completes, if provided.
+    """
     end_date = datetime.now()
-    h_start = end_date - timedelta(days=60)
-    d_start = end_date - timedelta(days=KDJ_DAILY_DAYS)
-    hp1, hp2 = int(h_start.timestamp()), int(end_date.timestamp())
+    d_start = end_date - timedelta(days=DAILY_DAYS)
+    h_start = end_date - timedelta(days=HOURLY_DAYS)
     dp1, dp2 = int(d_start.timestamp()), int(end_date.timestamp())
-    min_bars_h = max(SMA_PERIODS)
-    min_bars_d = KDJ_PERIOD + KDJ_SIGNAL + KDJ_LOOKBACK
+    hp1, hp2 = int(h_start.timestamp()), int(end_date.timestamp())
+    min_bars_d = max(SMA_PERIODS) + MIN_COMPRESSION_BARS
+    min_bars_h = max(SMA_PERIODS) + MIN_COMPRESSION_BARS
 
     ticker_list = sorted(tickers.keys())
     all_data = {}
     session = _build_session()
 
-    print(f"[DOWNLOAD] Fetching 60d hourly + {KDJ_DAILY_DAYS}d daily data "
+    print(f"[DOWNLOAD] Fetching {DAILY_DAYS}d daily + {HOURLY_DAYS}d hourly "
           f"for {len(ticker_list)} tickers (workers={MAX_WORKERS}) ...")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
             pool.submit(
                 _fetch_ticker, session, tkr,
-                hp1, hp2, dp1, dp2, min_bars_h, min_bars_d,
+                dp1, dp2, hp1, hp2, min_bars_d, min_bars_h,
             ): tkr
             for tkr in ticker_list
         }
@@ -201,7 +202,9 @@ def download_data(tickers):
             if data is not None:
                 all_data[tkr] = data
             done += 1
-            if done % 100 == 0:
+            if progress_cb:
+                progress_cb(done, len(ticker_list))
+            elif done % 100 == 0:
                 print(f"  {done}/{len(ticker_list)} tickers processed ...")
             time.sleep(REQUEST_DELAY)
 
@@ -260,38 +263,6 @@ def _calc_kdj(daily_high, daily_low, daily_close, period=KDJ_PERIOD, signal=KDJ_
     return k, d, j
 
 
-def _detect_kdj_signal(k, d, j, lookback=KDJ_LOOKBACK, oversold=KDJ_OVERSOLD,
-                       gap_threshold=KDJ_GAP_THRESHOLD):
-    """Detect KDJ golden cross (or near-cross).
-
-    Returns (signal, k_val, d_val, j_val):
-      signal: 'crossed' | 'near' | None
-    """
-    if k is None or len(k) < lookback + 2:
-        return None, None, None, None
-
-    k_now, d_now = k.iloc[-1], d.iloc[-1]
-    j_now = j.iloc[-1] if j is not None else float("nan")
-
-    # Check for recent golden cross (K crossed above D within lookback bars)
-    for i in range(-lookback, 0):
-        ki, ki1 = k.iloc[i], k.iloc[i - 1]
-        di, di1 = d.iloc[i], d.iloc[i - 1]
-        if ki > di and ki1 <= di1:
-            # Confirm: crossover happened at oversold levels
-            if ki < oversold:
-                return "crossed", round(k_now, 1), round(d_now, 1), round(j_now, 1)
-
-    # Check for "about to cross": K < D but gap is small, K rising, oversold zone
-    if k_now < d_now:
-        gap = d_now - k_now
-        k_rising = k_now > k.iloc[-2]
-        if gap < gap_threshold and k_rising and k_now < oversold:
-            return "near", round(k_now, 1), round(d_now, 1), round(j_now, 1)
-
-    return None, None, None, None
-
-
 def _detect_divergence(daily_high, daily_low, daily_close,
                        lookback=DIVERGENCE_LOOKBACK, kdj_period=KDJ_PERIOD,
                        kdj_signal=KDJ_SIGNAL):
@@ -305,11 +276,9 @@ def _detect_divergence(daily_high, daily_low, daily_close,
         return None, None, None, None, None, None
 
     x = np.arange(lookback, dtype=float)
-
     price_slice = daily_close.iloc[-lookback:].values.astype(float)
     k_slice = k.iloc[-lookback:].values.astype(float)
 
-    # Mask out NaN
     mask = ~np.isnan(price_slice) & ~np.isnan(k_slice)
     if mask.sum() < lookback // 2:
         return None, None, None, None, None, None
@@ -317,7 +286,6 @@ def _detect_divergence(daily_high, daily_low, daily_close,
     price_slope = np.polyfit(x[mask], price_slice[mask], 1)[0]
     k_slope = np.polyfit(x[mask], k_slice[mask], 1)[0]
 
-    # Bullish divergence: price falling, KDJ rising
     if price_slope < 0 and k_slope > 0:
         k_now = round(k.iloc[-1], 1)
         d_now = round(d.iloc[-1], 1)
@@ -327,122 +295,135 @@ def _detect_divergence(daily_high, daily_low, daily_close,
     return None, None, None, None, None, None
 
 
+def _check_volume(vol_series, min_vol=None, roll=20):
+    """Return True if volume MA > min_vol (reads VOL_MIN if not given)."""
+    if min_vol is None:
+        min_vol = VOL_MIN  # read module variable at call time
+    if vol_series is None or len(vol_series) < roll:
+        return False
+    return vol_series.rolling(roll).mean().iloc[-1] > min_vol
+
+
 def run_sma_screener(data, ticker_names=None, periods=SMA_PERIODS,
-                     threshold=DIVERGENCE_THRESHOLD, vol_threshold=VOL_RATIO_THRESHOLD,
-                     min_compression=MIN_COMPRESSION_BARS,
-                     kdj_period=KDJ_PERIOD, kdj_signal=KDJ_SIGNAL,
-                     kdj_lookback=KDJ_LOOKBACK, kdj_oversold=KDJ_OVERSOLD,
-                     trend_sma=DAILY_TREND_SMA):
+                     threshold=DIVERGENCE_THRESHOLD,
+                     min_compression=MIN_COMPRESSION_BARS):
     """
-    SMA Compression Screener:
-      Stage 1 — Hourly SMA compression (divergence <= threshold% for >= min_compression bars)
-      Stage 2 — Daily KDJ golden cross / near-cross in oversold zone
-      Stage 3 — Daily trend: close > SMA (price not under water)
-      Stage 4 — Volume surge: 5h avg >= vol_threshold * 50h avg
+    SMA Compression Screener (daily):
+      Stage 1 — SMA divergence <= threshold% for >= min_compression bars
+      Stage 2 — daily volume MA > min_vol
     """
     ticker_names = ticker_names or {}
     s1 = 0
-    s1_duration = 0
     s2 = 0
-    s3 = 0
-    s4 = 0
 
     for tkr, d in data.items():
-        div, sma = _calc_divergence(d["close"], periods)
+        close = d["close"]
+        div, sma = _calc_divergence(close, periods)
         if div is None or div > threshold:
+            continue
+
+        if not _check_compression_duration(close, periods, threshold, min_compression):
             continue
         s1 += 1
 
-        if not _check_compression_duration(d["close"], periods, threshold, min_compression):
-            continue
-        s1_duration += 1
-
-        # Stage 2 — Daily KDJ golden cross / near-cross
-        k, d_d, j = _calc_kdj(
-            d.get("daily_high"), d.get("daily_low"), d.get("daily_close"),
-            period=kdj_period, signal=kdj_signal,
-        )
-        kdj_sig, k_val, d_val, j_val = _detect_kdj_signal(
-            k, d_d, j, lookback=kdj_lookback, oversold=kdj_oversold,
-        )
-        if kdj_sig is None:
+        if not _check_volume(d.get("volume")):
             continue
         s2 += 1
-
-        # Stage 3 — Daily trend: close > trend_sma
-        daily_close = d.get("daily_close")
-        if daily_close is None or len(daily_close) < trend_sma:
-            continue
-        daily_sma_val = daily_close.rolling(trend_sma).mean().iloc[-1]
-        if pd.isna(daily_sma_val) or daily_close.iloc[-1] <= daily_sma_val:
-            continue
-        s3 += 1
-
-        # Stage 4 — Volume surge
-        vol = d.get("volume", pd.Series(dtype=float))
-        if len(vol) < 50:
-            continue
-        avg5 = vol.iloc[-5:].mean()
-        avg50 = vol.iloc[-50:].mean()
-        vr = round(avg5 / avg50, 2) if avg50 > 0 else 0.0
-        if vr < vol_threshold:
-            continue
-        s4 += 1
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
         yield {
             "ticker": tkr,
             "name": name,
-            "close": round(d["close"].iloc[-1], 2),
+            "close": round(close.iloc[-1], 2),
+            "MA5": round(sma[5], 2),
+            "MA10": round(sma[10], 2),
             "MA20": round(sma[20], 2),
             "MA30": round(sma[30], 2),
             "MA50": round(sma[50], 2),
-            "MA120": round(sma[120], 2),
-            "MA200": round(sma[200], 2),
             "divergence_pct": round(div, 2),
-            "kdj_signal": kdj_sig,
-            "kdj_k": k_val,
-            "kdj_d": d_val,
-            "kdj_j": j_val,
-            "daily_trend": round(daily_close.iloc[-1] / daily_sma_val - 1, 4),
-            "vol_ratio": vr,
         }
 
-    print(f"  Stage 1a (divergence <= {threshold}%):             {s1} passed")
-    print(f"  Stage 1b (tight for >= {min_compression} bars):    {s1_duration} passed")
-    print(f"  Stage 2  (daily KDJ golden cross / near):         {s2} passed")
-    print(f"  Stage 3  (daily close > {trend_sma}SMA):              {s3} passed")
-    print(f"  Stage 4  (vol ratio >= {vol_threshold}x):          {s4} passed")
+    print(f"  Stage 1 (compression):    {s1} passed")
+    print(f"  Stage 2 (vol > {VOL_MIN//1000}k):  {s2} passed")
+
+
+def run_sma_hourly_screener(data, ticker_names=None, periods=SMA_PERIODS,
+                            threshold=DIVERGENCE_THRESHOLD,
+                            min_compression=MIN_COMPRESSION_BARS):
+    """
+    SMA Compression Screener (hourly):
+      Stage 1 — SMA divergence <= threshold% for >= min_compression bars
+      Stage 2 — hourly volume MA > min_vol
+    """
+    ticker_names = ticker_names or {}
+    s1 = 0
+    s2 = 0
+
+    for tkr, d in data.items():
+        close = d.get("close_hourly")
+        if close is None:
+            continue
+
+        div, sma = _calc_divergence(close, periods)
+        if div is None or div > threshold:
+            continue
+
+        if not _check_compression_duration(close, periods, threshold, min_compression):
+            continue
+        s1 += 1
+
+        if not _check_volume(d.get("volume_hourly"), min_vol=VOL_MIN_HOURLY):
+            continue
+        s2 += 1
+
+        name = d.get("name", "") or ticker_names.get(tkr, "")
+        yield {
+            "ticker": tkr,
+            "name": name,
+            "close": round(close.iloc[-1], 2),
+            "MA5": round(sma[5], 2),
+            "MA10": round(sma[10], 2),
+            "MA20": round(sma[20], 2),
+            "MA30": round(sma[30], 2),
+            "MA50": round(sma[50], 2),
+            "divergence_pct": round(div, 2),
+        }
+
+    print(f"  Stage 1 (compression):      {s1} passed")
+    print(f"  Stage 2 (vol > {VOL_MIN_HOURLY//1000}k):     {s2} passed")
 
 
 def run_divergence_screener(data, ticker_names=None,
                             lookback=DIVERGENCE_LOOKBACK):
     """
     KDJ Divergence Screener:
-      Detects bullish divergence — price falling while KDJ rising (daily, >= lookback bars).
+      Stage 1 — Bullish divergence (price falling, KDJ rising, daily lookback bars)
+      Stage 2 — daily volume MA > min_vol
     """
     ticker_names = ticker_names or {}
-    passed = 0
+    s1 = 0
+    s2 = 0
 
     for tkr, d in data.items():
         sig, k_val, d_val, j_val, price_slope, k_slope = _detect_divergence(
-            d.get("daily_high"), d.get("daily_low"), d.get("daily_close"),
+            d["high"], d["low"], d["close"],
             lookback=lookback,
         )
         if sig is None:
             continue
-        passed += 1
+        s1 += 1
+
+        if not _check_volume(d.get("volume")):
+            continue
+        s2 += 1
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
-        daily_close = d.get("daily_close")
-        daily_price = round(daily_close.iloc[-1], 2) if daily_close is not None else 0
-        hourly_close = round(d["close"].iloc[-1], 2)
+        price = round(d["close"].iloc[-1], 2)
 
         yield {
             "ticker": tkr,
             "name": name,
-            "close": hourly_close,
-            "daily_close": daily_price,
+            "close": price,
             "kdj_k": k_val,
             "kdj_d": d_val,
             "kdj_j": j_val,
@@ -450,7 +431,8 @@ def run_divergence_screener(data, ticker_names=None,
             "kdj_k_slope": k_slope,
         }
 
-    print(f"  Divergence detected: {passed} passed")
+    print(f"  Stage 1 (divergence):     {s1} passed")
+    print(f"  Stage 2 (vol > {VOL_MIN//1000}k): {s2} passed")
 
 
 def _write_csv(results, prefix, cols, sort_key, output_dir=OUTPUT_DIR):
@@ -468,35 +450,57 @@ def _write_csv(results, prefix, cols, sort_key, output_dir=OUTPUT_DIR):
 
 def main():
     print("=" * 56)
-    print("  Bursa Malaysia Stock Screener  (2 outputs)")
-    print(f"  Timeframe: 1-hour + daily  |  SMA: {SMA_PERIODS}")
-    print(f"  KDJ: ({KDJ_PERIOD},{KDJ_SIGNAL}) | oversold < {KDJ_OVERSOLD} | lookback {KDJ_LOOKBACK}")
+    print("  Bursa Malaysia Stock Screener  (3 scripts, 1 output)")
+    print(f"  SMA: {SMA_PERIODS} | divergence < {DIVERGENCE_THRESHOLD}%")
+    print(f"  Compression >= {MIN_COMPRESSION_BARS} bars | Vol daily>{VOL_MIN//1000}k hourly>{VOL_MIN_HOURLY//1000}k")
+    print(f"  KDJ divergence {DIVERGENCE_LOOKBACK}d")
     print("=" * 56)
     print()
 
     tickers = load_tickers(TICKERS_FILE)
     data = download_data(tickers)
 
-    # ── Screener 1: SMA Compression ─────────────────────────────────────────
-    print("\n" + "=" * 56)
-    print("  [1/2] SMA Compression + KDJ + Trend + Volume")
-    print("=" * 56)
-    sma_results = list(run_sma_screener(data, tickers))
-    sma_cols = ["ticker", "name", "close", "MA20", "MA30", "MA50", "MA120", "MA200",
-                "divergence_pct", "kdj_signal", "kdj_k", "kdj_d", "kdj_j",
-                "daily_trend", "vol_ratio"]
-    _write_csv(sma_results, "screener_sma", sma_cols,
-               sort_key=lambda r: r["divergence_pct"])
+    all_results = []
 
-    # ── Screener 2: KDJ Divergence ──────────────────────────────────────────
+    # ── Script 1: Daily SMA Compression ─────────────────────────────────────
     print("\n" + "=" * 56)
-    print("  [2/2] KDJ Bullish Divergence  (price down, KDJ up)")
+    print("  [1/3] Daily SMA Compression")
+    print(f"        divergence <= {DIVERGENCE_THRESHOLD}% for >= {MIN_COMPRESSION_BARS} days")
     print("=" * 56)
-    div_results = list(run_divergence_screener(data, tickers))
-    div_cols = ["ticker", "name", "close", "daily_close",
-                "kdj_k", "kdj_d", "kdj_j", "price_slope", "kdj_k_slope"]
-    _write_csv(div_results, "screener_divergence", div_cols,
-               sort_key=lambda r: r["kdj_k_slope"] - abs(r["price_slope"]))
+    for r in run_sma_screener(data, tickers):
+        r["script"] = "sma_daily"
+        all_results.append(r)
+
+    # ── Script 2: KDJ Divergence ────────────────────────────────────────────
+    print("\n" + "=" * 56)
+    print("  [2/3] KDJ Bullish Divergence  (price down, KDJ up)")
+    print(f"        lookback {DIVERGENCE_LOOKBACK} days")
+    print("=" * 56)
+    for r in run_divergence_screener(data, tickers):
+        r["script"] = "kdj_divergence"
+        all_results.append(r)
+
+    # ── Script 3: Hourly SMA Compression ────────────────────────────────────
+    print("\n" + "=" * 56)
+    print("  [3/3] Hourly SMA Compression")
+    print(f"        divergence <= {DIVERGENCE_THRESHOLD}% for >= {MIN_COMPRESSION_BARS} hours")
+    print("=" * 56)
+    for r in run_sma_hourly_screener(data, tickers):
+        r["script"] = "sma_hourly"
+        all_results.append(r)
+
+    # ── Write combined CSV ──────────────────────────────────────────────────
+    print("\n" + "=" * 56)
+    combined_cols = ["script", "ticker", "name", "close",
+                     "MA5", "MA10", "MA20", "MA30", "MA50",
+                     "divergence_pct", "kdj_k", "kdj_d", "kdj_j",
+                     "price_slope", "kdj_k_slope"]
+    _write_csv(all_results, "screener_combined", combined_cols,
+               sort_key=lambda r: (
+                   0 if r["script"] == "sma_daily" else
+                   1 if r["script"] == "sma_hourly" else 2,
+                   r.get("divergence_pct", 999),
+               ))
 
     print("\nDone.")
 
