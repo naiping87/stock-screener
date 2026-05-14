@@ -268,6 +268,33 @@ with st.sidebar:
         kdj_signal = st.slider("KDJ Signal", 1, 10, DEFAULTS["kdj_signal"], 1, key="cfg_kdj_s")
         div_lookback = st.slider("Div Lookback", 10, 60, DEFAULTS["div_lookback"], 5, key="cfg_div_lb")
 
+    with st.expander("Auto-Refresh", expanded=True):
+        auto_refresh = st.toggle("Enable", value=False, key="auto_refresh",
+                                 help="Auto-reload data every N minutes")
+        refresh_min = st.select_slider(
+            "Interval", options=[5, 10, 15, 30], value=10, key="refresh_interval",
+            disabled=not auto_refresh,
+        )
+
+    # Auto-reload JavaScript
+    if auto_refresh and st.session_state.get("run_done"):
+        js = f"""
+        <script>
+        (function(){{
+            var sec = {refresh_min * 60};
+            var el = document.getElementById('countdown');
+            if (el) el.textContent = Math.floor(sec/60) + 'm ' + (sec%60) + 's';
+            var t = setInterval(function(){{
+                sec--;
+                if (el) el.textContent = Math.floor(sec/60) + 'm ' + (sec%60) + 's';
+                if (sec <= 0) window.location.reload();
+            }}, 1000);
+        }})();
+        </script>
+        """
+        st.components.v1.html(js, height=0)
+        st.info(f"⏱ Next refresh in {refresh_min} min")
+
     st.markdown("---")
 
     col_run, col_reset = st.columns([3, 1])
