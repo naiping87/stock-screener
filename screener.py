@@ -29,6 +29,10 @@ KDJ_SIGNAL = 3                      # KDJ smooth (same as Pine Script 'Signal Pe
 DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
 DAILY_DAYS = 150                    # days of daily data (50 SMA + 20 compression + buffer)
 HOURLY_DAYS = 30                    # days of hourly data (needs 70+ valid bars for 50h SMA + 20 compression)
+WEEKLY_DAYS = 500                   # days of weekly data (~70 bars, 9+3 KDJ + buffer)
+WEEKLY_VOL_MIN = 500000             # min weekly volume MA
+KDJ_LOOKBACK = 3                    # bars to look back for golden cross
+KDJ_OVERSOLD = 50                   # K must be below this for valid signal
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TICKERS_FILE = os.path.join(SCRIPT_DIR, "tickers.csv")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
@@ -136,8 +140,8 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars):
     return None, ""
 
 
-def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
-    """Download daily + hourly data for one ticker. Returns (tkr, data_dict | None)."""
+def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w):
+    """Download daily + hourly + weekly data for one ticker."""
     d_data, name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d)
     if d_data is None:
         return tkr, None
@@ -156,7 +160,7 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
         "name": name,
     }
 
-    # Hourly data (for Script 3)
+    # Hourly data
     h_data, _ = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h)
     if h_data is not None:
         h_close = h_data["close"].dropna()
@@ -166,33 +170,48 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
             result["close_hourly"] = h_close.loc[hi]
             result["volume_hourly"] = h_vol.loc[hi]
 
+    # Weekly data (for Script 4: KDJ golden cross)
+    w_data, _ = _fetch_chart(sess, tkr, wp1, wp2, "1wk", min_bars_w)
+    if w_data is not None:
+        w_close = w_data["close"].dropna()
+        w_high = w_data["high"].dropna()
+        w_low = w_data["low"].dropna()
+        w_vol = w_data["volume"].fillna(0)
+        if len(w_close) >= min_bars_w:
+            wi = w_close.index.intersection(w_high.index).intersection(w_low.index).intersection(w_vol.index)
+            result["close_weekly"] = w_close.loc[wi]
+            result["high_weekly"] = w_high.loc[wi]
+            result["low_weekly"] = w_low.loc[wi]
+            result["volume_weekly"] = w_vol.loc[wi]
+
     return tkr, result
 
 
 def download_data(tickers, progress_cb=None):
-    """Download daily + hourly data concurrently via Yahoo chart API.
-    progress_cb(done, total) is called after each ticker completes, if provided.
-    """
+    """Download daily + hourly + weekly data concurrently via Yahoo chart API."""
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
+    w_start = end_date - timedelta(days=WEEKLY_DAYS)
     dp1, dp2 = int(d_start.timestamp()), int(end_date.timestamp())
     hp1, hp2 = int(h_start.timestamp()), int(end_date.timestamp())
+    wp1, wp2 = int(w_start.timestamp()), int(end_date.timestamp())
     min_bars_d = max(SMA_PERIODS) + MIN_COMPRESSION_BARS
     min_bars_h = max(SMA_PERIODS) + MIN_COMPRESSION_BARS
+    min_bars_w = KDJ_PERIOD + KDJ_SIGNAL + KDJ_LOOKBACK
 
     ticker_list = sorted(tickers.keys())
     all_data = {}
     session = _build_session()
 
     print(f"[DOWNLOAD] Fetching {DAILY_DAYS}d daily + {HOURLY_DAYS}d hourly "
-          f"for {len(ticker_list)} tickers (workers={MAX_WORKERS}) ...")
+          f"+ {WEEKLY_DAYS}d weekly for {len(ticker_list)} tickers (workers={MAX_WORKERS}) ...")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
             pool.submit(
                 _fetch_ticker, session, tkr,
-                dp1, dp2, hp1, hp2, min_bars_d, min_bars_h,
+                dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w,
             ): tkr
             for tkr in ticker_list
         }
@@ -449,6 +468,85 @@ def run_divergence_screener(data, ticker_names=None,
 
     print(f"  Stage 1 (divergence):     {s1} passed")
     print(f"  Stage 2 (vol > {VOL_MIN//1000}k): {s2} passed")
+
+
+def _detect_kdj_signal(k, d, j, lookback=KDJ_LOOKBACK, oversold=KDJ_OVERSOLD):
+    """Detect KDJ golden cross (or near-cross).
+
+    Returns (signal, k_val, d_val, j_val):
+      signal: 'crossed' | 'near' | None
+    """
+    if k is None or len(k) < lookback + 2:
+        return None, None, None, None
+
+    k_now, d_now = k.iloc[-1], d.iloc[-1]
+    j_now = j.iloc[-1] if j is not None else float("nan")
+
+    # Recent golden cross (K crossed above D within lookback bars)
+    for i in range(-lookback, 0):
+        ki, ki1 = k.iloc[i], k.iloc[i - 1]
+        di, di1 = d.iloc[i], d.iloc[i - 1]
+        if ki > di and ki1 <= di1:
+            if ki < oversold:
+                return "crossed", round(k_now, 1), round(d_now, 1), round(j_now, 1)
+
+    # About to cross: K < D but gap small, K rising, oversold
+    if k_now < d_now:
+        gap = d_now - k_now
+        k_rising = k_now > k.iloc[-2]
+        if gap < 2.0 and k_rising and k_now < oversold:
+            return "near", round(k_now, 1), round(d_now, 1), round(j_now, 1)
+
+    return None, None, None, None
+
+
+def run_weekly_kdj_screener(data, ticker_names=None,
+                            vol_min=WEEKLY_VOL_MIN):
+    """
+    Weekly KDJ Golden Cross Screener:
+      Stage 1 — Weekly KDJ golden cross / near-cross in oversold zone
+      Stage 2 — Weekly volume MA > vol_min
+    """
+    ticker_names = ticker_names or {}
+    s1 = 0
+    s2 = 0
+
+    for tkr, d in data.items():
+        w_close = d.get("close_weekly")
+        w_high = d.get("high_weekly")
+        w_low = d.get("low_weekly")
+        if w_close is None or len(w_close) < KDJ_PERIOD + KDJ_SIGNAL:
+            continue
+
+        k, d_kdj, j = _calc_kdj(w_high, w_low, w_close,
+                                period=KDJ_PERIOD, signal=KDJ_SIGNAL)
+        kdj_sig, k_val, d_val, j_val = _detect_kdj_signal(k, d_kdj, j)
+        if kdj_sig is None:
+            continue
+        s1 += 1
+
+        w_vol = d.get("volume_weekly")
+        if not _check_volume(w_vol, min_vol=vol_min):
+            continue
+        s2 += 1
+
+        name = d.get("name", "") or ticker_names.get(tkr, "")
+        price = round(w_close.iloc[-1], 2)
+        vol_ma_val = int(w_vol.rolling(20).mean().iloc[-1]) if w_vol is not None and len(w_vol) >= 20 else 0
+
+        yield {
+            "ticker": tkr,
+            "name": name,
+            "close": price,
+            "kdj_k": k_val,
+            "kdj_d": d_val,
+            "kdj_j": j_val,
+            "kdj_signal": kdj_sig,
+            "vol_ma": vol_ma_val,
+        }
+
+    print(f"  Stage 1 (weekly KDJ cross): {s1} passed")
+    print(f"  Stage 2 (weekly vol > {vol_min//1000}k):   {s2} passed")
 
 
 def _write_csv(results, prefix, cols, sort_key, output_dir=OUTPUT_DIR):
