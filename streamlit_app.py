@@ -317,59 +317,46 @@ with st.sidebar:
 
 
 # ── ROE fetcher ────────────────────────────────────────────────────────────
-def _build_roe_session():
-    """Create a session with Yahoo cookie + crumb for ROE endpoint."""
+def _fetch_one_roe(tkr):
+    """Fetch ROE for a single ticker (own session + crumb, avoids thread conflicts)."""
     sess = requests.Session()
     sess.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     })
-    # Get cookie
     try:
         sess.get("https://fc.yahoo.com/", timeout=10)
+        r = sess.get("https://query2.finance.yahoo.com/v1/test/getcrumb", timeout=10)
+        if r.status_code != 200:
+            return None
+        crumb = r.text.strip()
+
+        r = sess.get(
+            f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{tkr}",
+            params={"modules": "financialData", "crumb": crumb},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            j = r.json()
+            fd = j.get("quoteSummary", {}).get("result", [{}])[0].get("financialData", {})
+            roe = fd.get("returnOnEquity", {})
+            if isinstance(roe, dict) and roe.get("raw") is not None:
+                return roe["raw"]
     except Exception:
         pass
-    # Get crumb
-    try:
-        r = sess.get("https://query2.finance.yahoo.com/v1/test/getcrumb", timeout=10)
-        if r.status_code == 200:
-            sess.crumb = r.text.strip()
-    except Exception:
-        sess.crumb = ""
-    return sess
-
-
-def _fetch_roe(tkr, sess, retries=2):
-    """Fetch ROE for one ticker via Yahoo quoteSummary (with crumb auth)."""
-    crumb = getattr(sess, "crumb", "")
-    url = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/" + tkr
-    params = {"modules": "financialData", "crumb": crumb}
-    for attempt in range(retries + 1):
-        try:
-            r = sess.get(url, params=params, timeout=10)
-            if r.status_code == 200:
-                j = r.json()
-                fd = j.get("quoteSummary", {}).get("result", [{}])[0].get("financialData", {})
-                roe = fd.get("returnOnEquity", {})
-                if isinstance(roe, dict):
-                    return roe.get("raw")
-            time.sleep(0.5)
-        except Exception:
-            pass
     return None
 
 
-def fetch_roe_batch(tickers, workers=8):
-    """Fetch ROE for a list of tickers concurrently."""
-    sess = _build_roe_session()
+def fetch_roe_batch(tickers, workers=4):
+    """Fetch ROE for a list of tickers (concurrent, each gets its own session)."""
     results = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = {pool.submit(_fetch_roe, tkr, sess): tkr for tkr in tickers}
+        futs = {pool.submit(_fetch_one_roe, tkr): tkr for tkr in tickers}
         for f in as_completed(futs):
             tkr = futs[f]
             try:
                 roe = f.result()
                 if roe is not None:
-                    results[tkr] = round(roe * 100, 2)  # convert to %
+                    results[tkr] = round(roe * 100, 2)
             except Exception:
                 pass
     return results
@@ -416,13 +403,13 @@ def load_data_with_progress(tickers):
     return data
 
 
-def get_cached_data():
-    """Return cached data if fresh, otherwise download."""
+def get_cached_data(force=False):
+    """Return cached data if fresh, otherwise download. force=True always re-downloads."""
     now = time.time()
     cache = st.session_state.get("_data_cache")
     cache_time = st.session_state.get("_data_ts", 0)
 
-    if cache is not None and (now - cache_time) < DATA_CACHE_TTL:
+    if not force and cache is not None and (now - cache_time) < DATA_CACHE_TTL:
         return cache
 
     tickers = load_tickers(TICKERS_FILE)
@@ -447,7 +434,7 @@ have_cache = st.session_state.get("_data_cache") is not None
 need_download = refresh_clicked or not have_cache
 
 if need_download:
-    data = get_cached_data()
+    data = get_cached_data(force=refresh_clicked)
     ticker_names = st.session_state.get("_ticker_names", {})
 else:
     data = st.session_state._data_cache
