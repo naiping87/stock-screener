@@ -311,8 +311,9 @@ with st.sidebar:
         reset_clicked = st.button("↺", help="Reset all parameters to defaults", key="reset_btn",
                                   type="secondary", use_container_width=True)
         if reset_clicked:
-            for k, v in DEFAULTS.items():
-                st.session_state[f"cfg_{k}"] = v
+            for k in list(st.session_state.keys()):
+                if k.startswith("cfg_"):
+                    del st.session_state[k]
             st.rerun()
 
     cache_age = ""
