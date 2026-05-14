@@ -436,7 +436,7 @@ scr.VOL_MIN = vol_daily
 scr.VOL_MIN_HOURLY = vol_hourly
 scr.WEEKLY_VOL_MIN = vol_weekly
 
-# Stage 1: Download (only if forced refresh or no cache)
+# Stage 1: Download (only when forced refresh or no cache)
 have_cache = st.session_state.get("_data_cache") is not None
 need_download = refresh_clicked or not have_cache
 
@@ -447,28 +447,35 @@ else:
     data = st.session_state._data_cache
     ticker_names = st.session_state.get("_ticker_names", {})
 
-# Stage 2: Run screeners (always on cached data)
-screener_progress = st.progress(0, text="Running screeners...")
+# Stage 2: Run screeners (show progress only during download, else instant)
+show_progress = need_download
+screener_progress = st.empty()
+if show_progress:
+    screener_progress = st.progress(0, text="Running screeners...")
 
-screener_progress.progress(30, text="Daily SMA...")
+if show_progress:
+    screener_progress.progress(30, text="Daily SMA...")
 results1 = list(run_sma_screener(
     data, ticker_names, periods=sma_periods,
     threshold=divergence_pct, min_compression=compression_bars,
 ))
 
-screener_progress.progress(60, text="Hourly SMA...")
+if show_progress:
+    screener_progress.progress(60, text="Hourly SMA...")
 results2 = list(run_sma_hourly_screener(
     data, ticker_names, periods=sma_periods,
     threshold=divergence_pct, min_compression=compression_bars,
 ))
 
-screener_progress.progress(75, text="KDJ Divergence...")
+if show_progress:
+    screener_progress.progress(75, text="KDJ Divergence...")
 results3 = list(run_divergence_screener(data, ticker_names, lookback=div_lookback))
 
-screener_progress.progress(85, text="Weekly KDJ Cross...")
+if show_progress:
+    screener_progress.progress(85, text="Weekly KDJ Cross...")
 results4 = list(run_weekly_kdj_screener(data, ticker_names))
 
-# Stage 3: ROE scoring
+# Stage 3: ROE scoring (cache ROE results in session)
 all_tickers = set()
 for r in results1:
     all_tickers.add(r["ticker"])
@@ -479,19 +486,26 @@ for r in results3:
 for r in results4:
     all_tickers.add(r["ticker"])
 
-roe_map = {}
-if all_tickers:
-    screener_progress.progress(90, text=f"Fetching ROE for {len(all_tickers)} stocks...")
-    roe_map = fetch_roe_batch(all_tickers)
+roe_cache = st.session_state.get("_roe_cache", {})
+new_tickers = all_tickers - set(roe_cache.keys())
+roe_map = {t: v for t, v in roe_cache.items() if t in all_tickers}
 
-# Merge ROE and sort (ROE first, then divergence tightness as fallback)
+if new_tickers:
+    if show_progress:
+        screener_progress.progress(90, text=f"Fetching ROE for {len(new_tickers)} stocks...")
+    new_roe = fetch_roe_batch(new_tickers)
+    roe_map.update(new_roe)
+    roe_cache.update(new_roe)
+    st.session_state._roe_cache = roe_cache
+
+# Merge ROE and sort
 def _attach_roe(results, roe_map):
     for r in results:
         r["ROE"] = roe_map.get(r["ticker"])
     results.sort(key=lambda r: (
-        r["ROE"] is None,          # None last
-        -(r["ROE"] or 0),          # higher ROE first
-        r.get("divergence_pct", 999),  # tighter compression as fallback
+        r["ROE"] is None,
+        -(r["ROE"] or 0),
+        r.get("divergence_pct", 999),
     ))
 
 _attach_roe(results1, roe_map)
@@ -499,8 +513,9 @@ _attach_roe(results2, roe_map)
 _attach_roe(results3, roe_map)
 _attach_roe(results4, roe_map)
 
-screener_progress.progress(100, text="Done")
-screener_progress.empty()
+if show_progress:
+    screener_progress.progress(100, text="Done")
+    screener_progress.empty()
 
 st.session_state.results_sma_daily = results1
 st.session_state.results_sma_hourly = results2
