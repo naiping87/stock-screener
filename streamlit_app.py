@@ -39,7 +39,7 @@ DEFAULTS = {
     "kdj_p": KDJ_PERIOD,
     "kdj_s": KDJ_SIGNAL,
     "div_lb": DIVERGENCE_LOOKBACK,
-    "score_trend_periods": "20,30,60,120",
+    "score_trend_periods": [20, 30, 60, 120],
     "score_trend_div": SCORE_TREND_THRESHOLD,
     "score_slope_bars": SCORE_SMA200_SLOPE_BARS,
     "score_vol_p": SCORE_VOL_PERIOD,
@@ -288,8 +288,10 @@ with st.sidebar:
     with st.expander("Scoring System", expanded=True):
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            score_trend_periods_str = st.text_input(
-                "Trend Periods", value=DEFAULTS["score_trend_periods"],
+            score_trend_periods_sel = st.multiselect(
+                "Trend Periods",
+                options=[5, 10, 20, 30, 50, 60, 120, 200],
+                default=DEFAULTS["score_trend_periods"],
                 key="cfg_score_trend_periods",
             )
             score_trend_div = st.number_input(
@@ -553,8 +555,8 @@ else:
     results4 = st.session_state.results_weekly
 
 # Screener 5: Scoring — only re-run if data refreshed or scoring params changed
-stp = [int(x.strip()) for x in score_trend_periods_str.split(",") if x.strip().isdigit()] or [20, 30, 60, 120]
-score_fingerprint = (str(stp), score_trend_div, score_slope_bars, score_vol_p,
+stp = sorted(score_trend_periods_sel) or [20, 30, 60, 120]
+score_fingerprint = (tuple(stp), score_trend_div, score_slope_bars, score_vol_p,
                      score_vol_t, score_vol_ma_b, score_vol_ma_t, score_top_n)
 last_fp = st.session_state.get("_score_fp")
 
