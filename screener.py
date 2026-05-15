@@ -658,6 +658,106 @@ def run_scoring_screener(data, ticker_names=None,
     return results[:top_n]
 
 
+def backtest_scoring(data, ticker_names=None,
+                     trend_periods=SCORE_TREND_PERIODS,
+                     trend_threshold=SCORE_TREND_THRESHOLD,
+                     sma200_slope_bars=SCORE_SMA200_SLOPE_BARS,
+                     vol_period=SCORE_VOL_PERIOD,
+                     vol_threshold=SCORE_VOL_THRESHOLD,
+                     vol_ma_bars=SCORE_VOL_MA_BARS,
+                     vol_ma_threshold=SCORE_VOL_MA_THRESHOLD,
+                     top_n=20, interval_weeks=2, min_bars_needed=250):
+    """
+    Backtest the scoring system over historical data.
+    Every `interval_weeks`, scores stocks using only data available at that date,
+    then tracks forward returns at 1w, 2w, 4w.
+    Returns list of {date, avg_1w, avg_2w, avg_4w, win_1w, win_2w, win_4w, top_tickers}.
+    """
+    ticker_names = ticker_names or {}
+
+    # Find stocks with enough data
+    valid_tkrs = [tkr for tkr, d in data.items() if len(d.get("close", [])) >= min_bars_needed]
+    if len(valid_tkrs) < top_n:
+        print(f"  Only {len(valid_tkrs)} stocks with >= {min_bars_needed} bars, need {top_n}")
+        return []
+
+    # Build time index from a reference stock
+    ref_close = data[valid_tkrs[0]]["close"]
+    all_dates = ref_close.index
+
+    # Generate test dates (every interval_weeks, excluding last 4 weeks for forward returns)
+    test_dates = []
+    for i in range(min_bars_needed, len(all_dates) - 20, interval_weeks * 5):
+        test_dates.append(all_dates[i])
+    if not test_dates:
+        return []
+
+    print(f"  Backtesting {len(test_dates)} dates, {len(valid_tkrs)} stocks ...")
+    results = []
+
+    for test_date in test_dates:
+        # Build truncated data for this date
+        snap_data = {}
+        for tkr in valid_tkrs:
+            d = data[tkr]
+            loc = d["close"].index.get_loc(test_date)
+            if isinstance(loc, slice) or isinstance(loc, np.ndarray):
+                continue
+            snap_data[tkr] = {
+                "close": d["close"].iloc[:loc + 1],
+                "high": d["high"].iloc[:loc + 1],
+                "low": d["low"].iloc[:loc + 1],
+                "volume": d["volume"].iloc[:loc + 1] if d.get("volume") is not None else None,
+                "name": d.get("name", ""),
+            }
+        if len(snap_data) < top_n:
+            continue
+
+        # Score
+        scored = run_scoring_screener(
+            snap_data, ticker_names,
+            trend_periods=trend_periods, trend_threshold=trend_threshold,
+            sma200_slope_bars=sma200_slope_bars,
+            vol_period=vol_period, vol_threshold=vol_threshold,
+            vol_ma_bars=vol_ma_bars, vol_ma_threshold=vol_ma_threshold,
+            top_n=top_n,
+        )
+
+        # Track forward returns
+        fwd_1w = []
+        fwd_2w = []
+        fwd_4w = []
+        for r in scored:
+            tkr = r["ticker"]
+            full_close = data[tkr]["close"]
+            entry_price = r["close"]
+            try:
+                loc = full_close.index.get_loc(test_date)
+                if isinstance(loc, slice) or isinstance(loc, np.ndarray):
+                    continue
+                for horizon_days, fwd_list in [(5, fwd_1w), (10, fwd_2w), (20, fwd_4w)]:
+                    fwd_idx = loc + horizon_days
+                    if fwd_idx < len(full_close):
+                        exit_price = full_close.iloc[fwd_idx]
+                        ret_pct = (exit_price / entry_price - 1) * 100 if entry_price > 0 else 0
+                        fwd_list.append(ret_pct)
+            except (KeyError, IndexError):
+                pass
+
+        results.append({
+            "date": test_date.strftime("%Y-%m-%d"),
+            "top_tickers": ", ".join(r["ticker"].replace(".KL", "") for r in scored[:5]),
+            "avg_1w": round(np.mean(fwd_1w), 2) if fwd_1w else 0,
+            "avg_2w": round(np.mean(fwd_2w), 2) if fwd_2w else 0,
+            "avg_4w": round(np.mean(fwd_4w), 2) if fwd_4w else 0,
+            "win_1w": round(sum(1 for r in fwd_1w if r > 0) / len(fwd_1w) * 100, 1) if fwd_1w else 0,
+            "win_2w": round(sum(1 for r in fwd_2w if r > 0) / len(fwd_2w) * 100, 1) if fwd_2w else 0,
+            "win_4w": round(sum(1 for r in fwd_4w if r > 0) / len(fwd_4w) * 100, 1) if fwd_4w else 0,
+        })
+
+    return results
+
+
 def _write_csv(results, prefix, cols, sort_key, output_dir=OUTPUT_DIR):
     """Sort results and write {prefix}_{date}.csv."""
     results.sort(key=sort_key)

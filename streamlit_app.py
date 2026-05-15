@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from screener import (
     load_tickers, download_data,
     run_sma_screener, run_sma_hourly_screener, run_divergence_screener,
-    run_weekly_kdj_screener, run_scoring_screener,
+    run_weekly_kdj_screener, run_scoring_screener, backtest_scoring,
     SMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
     KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
     VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN,
@@ -728,6 +728,39 @@ if st.session_state.run_done:
                          })
         else:
             st.caption("No stocks scored.")
+
+        # Backtest
+        st.markdown("---")
+        st.markdown("#### 🔬 Backtest Scoring System")
+        col_bt1, col_bt2, col_bt3 = st.columns(3)
+        with col_bt1:
+            bt_top_n = st.number_input("Top N", 5, 30, 20, 5, key="bt_top_n")
+        with col_bt2:
+            bt_interval = st.slider("Interval (weeks)", 1, 4, 2, key="bt_interval")
+        with col_bt3:
+            bt_run = st.button("Run Backtest", type="secondary", use_container_width=True)
+
+        if bt_run:
+            with st.spinner(f"Backtesting over historical dates..."):
+                bt_results = backtest_scoring(
+                    data, ticker_names,
+                    trend_periods=stp, trend_threshold=score_trend_div,
+                    sma200_slope_bars=score_slope_bars,
+                    vol_period=score_vol_p, vol_threshold=score_vol_t,
+                    vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
+                    top_n=bt_top_n, interval_weeks=bt_interval,
+                )
+            if bt_results:
+                df_bt = pd.DataFrame(bt_results)
+                # Summary stats
+                avg_4w = df_bt["avg_4w"].mean()
+                win_4w = df_bt["win_4w"].mean()
+                c1, c2 = st.columns(2)
+                c1.metric("Avg 4-Week Return", f"{avg_4w:.2f}%")
+                c2.metric("Avg 4-Week Win Rate", f"{win_4w:.1f}%")
+                st.dataframe(df_bt, hide_index=True, use_container_width=True, height=300)
+            else:
+                st.warning("Not enough historical data for backtest.")
 
 else:
     # Idle state
