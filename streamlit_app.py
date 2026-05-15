@@ -524,18 +524,27 @@ if show_progress:
     screener_progress.progress(83, text="Weekly KDJ Cross...")
 results4 = list(run_weekly_kdj_screener(data, ticker_names))
 
-# Parse scoring params
+# Stage 2.5: Scoring (only re-run if data refreshed or scoring params changed)
 stp = [int(x.strip()) for x in score_trend_periods_str.split(",") if x.strip().isdigit()] or [20, 30, 60, 120]
+score_fingerprint = (str(stp), score_trend_div, score_slope_bars, score_vol_p,
+                     score_vol_t, score_vol_ma_b, score_vol_ma_t, score_top_n)
+last_fp = st.session_state.get("_score_fp")
 
-screener_progress.progress(88, text="Scoring all stocks...")
-results5 = run_scoring_screener(
-    data, ticker_names,
-    trend_periods=stp, trend_threshold=score_trend_div,
-    sma200_slope_bars=score_slope_bars,
-    vol_period=score_vol_p, vol_threshold=score_vol_t,
-    vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
-    top_n=score_top_n,
-)
+if need_download or last_fp != score_fingerprint:
+    if show_progress:
+        screener_progress.progress(88, text="Scoring all stocks...")
+    results5 = run_scoring_screener(
+        data, ticker_names,
+        trend_periods=stp, trend_threshold=score_trend_div,
+        sma200_slope_bars=score_slope_bars,
+        vol_period=score_vol_p, vol_threshold=score_vol_t,
+        vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
+        top_n=score_top_n,
+    )
+    st.session_state.results_scoring = results5
+    st.session_state._score_fp = score_fingerprint
+else:
+    results5 = st.session_state.results_scoring
 
 # Stage 3: ROE scoring (cache ROE results in session)
 all_tickers = set()
