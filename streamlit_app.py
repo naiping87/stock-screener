@@ -18,10 +18,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from screener import (
     load_tickers, download_data,
     run_sma_screener, run_sma_hourly_screener, run_divergence_screener,
-    run_weekly_kdj_screener,
+    run_weekly_kdj_screener, run_scoring_screener,
     SMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
     KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
     VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN,
+    SCORE_TREND_PERIODS, SCORE_TREND_THRESHOLD, SCORE_SMA200_SLOPE_BARS,
+    SCORE_VOL_PERIOD, SCORE_VOL_THRESHOLD, SCORE_VOL_MA_BARS, SCORE_VOL_MA_THRESHOLD,
+    SCORE_TOP_N,
     TICKERS_FILE,
 )
 
@@ -36,6 +39,14 @@ DEFAULTS = {
     "kdj_p": KDJ_PERIOD,
     "kdj_s": KDJ_SIGNAL,
     "div_lb": DIVERGENCE_LOOKBACK,
+    "score_trend_periods": "20,30,60,120",
+    "score_trend_div": SCORE_TREND_THRESHOLD,
+    "score_slope_bars": SCORE_SMA200_SLOPE_BARS,
+    "score_vol_p": SCORE_VOL_PERIOD,
+    "score_vol_t": SCORE_VOL_THRESHOLD,
+    "score_vol_ma_b": SCORE_VOL_MA_BARS,
+    "score_vol_ma_t": SCORE_VOL_MA_THRESHOLD,
+    "score_top_n": SCORE_TOP_N,
 }
 
 # ── Page config ────────────────────────────────────────────────────────────
@@ -274,6 +285,43 @@ with st.sidebar:
         kdj_signal = st.slider("KDJ Signal", 1, 10, DEFAULTS["kdj_s"], 1, key="cfg_kdj_s")
         div_lookback = st.slider("Div Lookback", 10, 60, DEFAULTS["div_lb"], 5, key="cfg_div_lb")
 
+    with st.expander("Scoring System", expanded=True):
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            score_trend_periods_str = st.text_input(
+                "Trend Periods", value=DEFAULTS["score_trend_periods"],
+                key="cfg_score_trend_periods",
+            )
+            score_trend_div = st.number_input(
+                "Trend Div <%", 0.1, 10.0, DEFAULTS["score_trend_div"], 0.5,
+                key="cfg_score_trend_div",
+            )
+            score_slope_bars = st.slider(
+                "SMA200 Slope Bars", 5, 60, DEFAULTS["score_slope_bars"], 5,
+                key="cfg_score_slope_bars",
+            )
+            score_vol_p = st.slider(
+                "Vol Period Days", 10, 120, DEFAULTS["score_vol_p"], 10,
+                key="cfg_score_vol_p",
+            )
+        with col_s2:
+            score_vol_t = st.number_input(
+                "Volatility >%", 1.0, 50.0, DEFAULTS["score_vol_t"], 1.0,
+                key="cfg_score_vol_t",
+            )
+            score_vol_ma_b = st.slider(
+                "Vol MA Bars", 3, 50, DEFAULTS["score_vol_ma_b"], 1,
+                key="cfg_score_vol_ma_b",
+            )
+            score_vol_ma_t = st.number_input(
+                "Vol MA >", 0, 10_000_000, DEFAULTS["score_vol_ma_t"], 100_000,
+                format="%d", key="cfg_score_vol_ma_t",
+            )
+            score_top_n = st.slider(
+                "Top N", 10, 200, DEFAULTS["score_top_n"], 10,
+                key="cfg_score_top_n",
+            )
+
     with st.expander("Auto-Refresh", expanded=True):
         auto_refresh = st.toggle("Enable", value=False, key="auto_refresh",
                                  help="Auto-reload data every N minutes")
@@ -473,8 +521,21 @@ if show_progress:
 results3 = list(run_divergence_screener(data, ticker_names, lookback=div_lookback))
 
 if show_progress:
-    screener_progress.progress(85, text="Weekly KDJ Cross...")
+    screener_progress.progress(83, text="Weekly KDJ Cross...")
 results4 = list(run_weekly_kdj_screener(data, ticker_names))
+
+# Parse scoring params
+stp = [int(x.strip()) for x in score_trend_periods_str.split(",") if x.strip().isdigit()] or [20, 30, 60, 120]
+
+screener_progress.progress(88, text="Scoring all stocks...")
+results5 = run_scoring_screener(
+    data, ticker_names,
+    trend_periods=stp, trend_threshold=score_trend_div,
+    sma200_slope_bars=score_slope_bars,
+    vol_period=score_vol_p, vol_threshold=score_vol_t,
+    vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
+    top_n=score_top_n,
+)
 
 # Stage 3: ROE scoring (cache ROE results in session)
 all_tickers = set()
@@ -485,6 +546,8 @@ for r in results2:
 for r in results3:
     all_tickers.add(r["ticker"])
 for r in results4:
+    all_tickers.add(r["ticker"])
+for r in results5:
     all_tickers.add(r["ticker"])
 
 roe_cache = st.session_state.get("_roe_cache", {})
@@ -513,6 +576,7 @@ _attach_roe(results1, roe_map)
 _attach_roe(results2, roe_map)
 _attach_roe(results3, roe_map)
 _attach_roe(results4, roe_map)
+_attach_roe(results5, roe_map)
 
 if show_progress:
     screener_progress.progress(100, text="Done")
@@ -522,6 +586,7 @@ st.session_state.results_sma_daily = results1
 st.session_state.results_sma_hourly = results2
 st.session_state.results_div = results3
 st.session_state.results_weekly = results4
+st.session_state.results_scoring = results5
 st.session_state.run_done = True
 
 # ── Show results ───────────────────────────────────────────────────────────
@@ -530,9 +595,10 @@ if st.session_state.run_done:
     results2 = st.session_state.results_sma_hourly or []
     results3 = st.session_state.results_div or []
     results4 = st.session_state.results_weekly or []
+    results5 = st.session_state.results_scoring or []
 
-    # Summary bar — 4 columns
-    tc1, tc2, tc3, tc4 = st.columns(4)
+    # Summary bar — 5 columns
+    tc1, tc2, tc3, tc4, tc5 = st.columns(5)
     with tc1:
         st.markdown(f"""
         <div class="metric-card">
@@ -561,13 +627,21 @@ if st.session_state.run_done:
             <div class="metric-label"><span class="tag-div section-tag">Weekly KDJ Cross</span></div>
         </div>
         """, unsafe_allow_html=True)
+    with tc5:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{len(results5)}</div>
+            <div class="metric-label"><span style="background:#2a1a3a;color:#bc8cff;" class="section-tag">Scoring Top</span></div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Detail tables
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         f"📅 Daily SMA ({len(results1)})",
         f"⏱ Hourly SMA ({len(results2)})",
         f"📉 KDJ Divergence ({len(results3)})",
         f"📆 Weekly KDJ ({len(results4)})",
+        f"⭐ Scoring ({len(results5)})",
     ])
 
     with tab1:
@@ -636,6 +710,24 @@ if st.session_state.run_done:
                          })
         else:
             st.caption("No stocks passed the filter.")
+
+    with tab5:
+        if results5:
+            df = _make_df(results5,
+                          ["ticker", "name", "close", "score",
+                           "above_200", "sma200_up", "trend_tight", "kdj_sig", "vol_ok", "vol_ma_ok", "ROE"],
+                          {"ticker": "Code", "name": "Name", "close": "Price",
+                           "score": "Score",
+                           "above_200": ">200", "sma200_up": "200↑", "trend_tight": "Tight",
+                           "kdj_sig": "KDJ", "vol_ok": "Vol%", "vol_ma_ok": "VolMA", "ROE": "ROE%"})
+            st.dataframe(df, hide_index=True, use_container_width=True, height=420,
+                         column_config={
+                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
+                             "Score": st.column_config.NumberColumn(format="%d", width="small"),
+                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
+                         })
+        else:
+            st.caption("No stocks scored.")
 
 else:
     # Idle state

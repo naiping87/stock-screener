@@ -32,6 +32,14 @@ HOURLY_DAYS = 30                    # days of hourly data (needs 70+ valid bars 
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
 KDJ_OVERSOLD = 50                   # K must be below this for valid signal
+SCORE_TREND_PERIODS = [20, 30, 60, 120]  # SMA periods for trend divergence
+SCORE_TREND_THRESHOLD = 1.0         # max divergence % for trend score
+SCORE_SMA200_SLOPE_BARS = 20        # bars for SMA200 slope check
+SCORE_VOL_PERIOD = 60               # days for volatility check
+SCORE_VOL_THRESHOLD = 5.0           # min annualized volatility %
+SCORE_VOL_MA_BARS = 5               # bars for volume MA
+SCORE_VOL_MA_THRESHOLD = 1_000_000  # min volume MA
+SCORE_TOP_N = 50                    # top N results to show
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TICKERS_FILE = os.path.join(SCRIPT_DIR, "tickers.csv")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
@@ -547,6 +555,107 @@ def run_weekly_kdj_screener(data, ticker_names=None,
 
     print(f"  Stage 1 (weekly KDJ cross): {s1} passed")
     print(f"  Stage 2 (weekly vol > {vol_min//1000}k):   {s2} passed")
+
+
+def run_scoring_screener(data, ticker_names=None,
+                         trend_periods=SCORE_TREND_PERIODS,
+                         trend_threshold=SCORE_TREND_THRESHOLD,
+                         sma200_slope_bars=SCORE_SMA200_SLOPE_BARS,
+                         vol_period=SCORE_VOL_PERIOD,
+                         vol_threshold=SCORE_VOL_THRESHOLD,
+                         vol_ma_bars=SCORE_VOL_MA_BARS,
+                         vol_ma_threshold=SCORE_VOL_MA_THRESHOLD,
+                         top_n=SCORE_TOP_N):
+    """
+    Weighted Scoring Screener — scores every stock on 6 factors.
+    Returns top_n stocks sorted by total score descending.
+    """
+    ticker_names = ticker_names or {}
+    results = []
+
+    for tkr, d in data.items():
+        close = d["close"]
+        high = d["high"]
+        low = d["low"]
+        vol = d.get("volume")
+        score = 0
+        details = {}
+
+        # 1. Close > SMA200 (+1)
+        sma200 = close.rolling(200).mean()
+        above_200 = len(sma200.dropna()) > 0 and close.iloc[-1] > sma200.iloc[-1]
+        if above_200:
+            score += 1
+        details["above_200"] = above_200
+
+        # 2. SMA200 slope > 0 (+1)
+        slope_up = False
+        if len(sma200.dropna()) >= sma200_slope_bars:
+            y = sma200.iloc[-sma200_slope_bars:].values.astype(float)
+            if not np.isnan(y).any():
+                slope = np.polyfit(np.arange(sma200_slope_bars, dtype=float), y, 1)[0]
+                slope_up = slope > 0
+        if slope_up:
+            score += 1
+        details["sma200_up"] = slope_up
+
+        # 3. SMA divergence < threshold (+1)
+        trend_tight = False
+        sma_vals = {}
+        for p in trend_periods:
+            sma_vals[p] = close.rolling(p).mean()
+        vals = [sma_vals[p].iloc[-1] for p in trend_periods]
+        if not any(pd.isna(v) for v in vals):
+            div = (max(vals) - min(vals)) / close.iloc[-1] * 100.0
+            trend_tight = div < trend_threshold
+        if trend_tight:
+            score += 1
+        details["trend_tight"] = trend_tight
+
+        # 4. KDJ golden cross / near-cross (+1)
+        k, d_kdj, j = _calc_kdj(high, low, close)
+        kdj_sig = _detect_kdj_signal(k, d_kdj, j)[0]
+        kdj_ok = kdj_sig is not None
+        if kdj_ok:
+            score += 1
+        details["kdj_sig"] = kdj_sig or ""
+
+        # 5. Volatility > threshold (+1)
+        vol_ok = False
+        if len(close) >= vol_period:
+            returns = close.pct_change().dropna()
+            if len(returns) >= vol_period:
+                ann_vol = returns.iloc[-vol_period:].std() * (252 ** 0.5) * 100
+                vol_ok = ann_vol > vol_threshold
+        if vol_ok:
+            score += 1
+        details["vol_ok"] = vol_ok
+
+        # 6. Volume MA > threshold (+1)
+        vol_ma_ok = False
+        if vol is not None and len(vol) >= vol_ma_bars:
+            vol_ma_ok = vol.rolling(vol_ma_bars).mean().iloc[-1] > vol_ma_threshold
+        if vol_ma_ok:
+            score += 1
+        details["vol_ma_ok"] = vol_ma_ok
+
+        name = d.get("name", "") or ticker_names.get(tkr, "")
+        results.append({
+            "ticker": tkr,
+            "name": name,
+            "close": round(close.iloc[-1], 2),
+            "score": score,
+            "above_200": "Y" if above_200 else "",
+            "sma200_up": "Y" if slope_up else "",
+            "trend_tight": "Y" if trend_tight else "",
+            "kdj_sig": kdj_sig or "",
+            "vol_ok": "Y" if vol_ok else "",
+            "vol_ma_ok": "Y" if vol_ma_ok else "",
+        })
+
+    results.sort(key=lambda r: r["score"], reverse=True)
+    print(f"  Scored {len(results)} stocks, top score: {results[0]['score'] if results else 0}")
+    return results[:top_n]
 
 
 def _write_csv(results, prefix, cols, sort_key, output_dir=OUTPUT_DIR):
