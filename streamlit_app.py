@@ -496,35 +496,63 @@ else:
     data = st.session_state._data_cache
     ticker_names = st.session_state.get("_ticker_names", {})
 
-# Stage 2: Run screeners (show progress only during download, else instant)
+# Stage 2: Run screeners — cached by param fingerprint, skip on unrelated changes
 show_progress = need_download
 screener_progress = st.empty()
 if show_progress:
     screener_progress = st.progress(0, text="Running screeners...")
 
-if show_progress:
-    screener_progress.progress(30, text="Daily SMA...")
-results1 = list(run_sma_screener(
-    data, ticker_names, periods=sma_periods,
-    threshold=divergence_pct, min_compression=compression_bars,
-))
+# Screener 1: Daily SMA — params: periods, divergence, compression, vol_daily
+fp1 = (str(sma_periods), divergence_pct, compression_bars, vol_daily)
+if need_download or st.session_state.get("_fp1") != fp1:
+    if show_progress:
+        screener_progress.progress(30, text="Daily SMA...")
+    results1 = list(run_sma_screener(
+        data, ticker_names, periods=sma_periods,
+        threshold=divergence_pct, min_compression=compression_bars,
+    ))
+    st.session_state.results_sma_daily = results1
+    st.session_state._fp1 = fp1
+else:
+    results1 = st.session_state.results_sma_daily
 
-if show_progress:
-    screener_progress.progress(60, text="Hourly SMA...")
-results2 = list(run_sma_hourly_screener(
-    data, ticker_names, periods=sma_periods,
-    threshold=divergence_pct, min_compression=compression_bars,
-))
+# Screener 2: Hourly SMA — params: periods, divergence, compression, vol_hourly
+fp2 = (str(sma_periods), divergence_pct, compression_bars, vol_hourly)
+if need_download or st.session_state.get("_fp2") != fp2:
+    if show_progress:
+        screener_progress.progress(60, text="Hourly SMA...")
+    results2 = list(run_sma_hourly_screener(
+        data, ticker_names, periods=sma_periods,
+        threshold=divergence_pct, min_compression=compression_bars,
+    ))
+    st.session_state.results_sma_hourly = results2
+    st.session_state._fp2 = fp2
+else:
+    results2 = st.session_state.results_sma_hourly
 
-if show_progress:
-    screener_progress.progress(75, text="KDJ Divergence...")
-results3 = list(run_divergence_screener(data, ticker_names, lookback=div_lookback))
+# Screener 3: KDJ Divergence — params: div_lookback, vol_daily, kdj_period, kdj_signal
+fp3 = (div_lookback, vol_daily, kdj_period, kdj_signal)
+if need_download or st.session_state.get("_fp3") != fp3:
+    if show_progress:
+        screener_progress.progress(75, text="KDJ Divergence...")
+    results3 = list(run_divergence_screener(data, ticker_names, lookback=div_lookback))
+    st.session_state.results_div = results3
+    st.session_state._fp3 = fp3
+else:
+    results3 = st.session_state.results_div
 
-if show_progress:
-    screener_progress.progress(83, text="Weekly KDJ Cross...")
-results4 = list(run_weekly_kdj_screener(data, ticker_names))
+# Screener 4: Weekly KDJ — params: kdj_period, kdj_signal, vol_weekly
+fp4 = (kdj_period, kdj_signal, vol_weekly)
+if need_download or st.session_state.get("_fp4") != fp4:
+    if show_progress:
+        screener_progress.progress(83, text="Weekly KDJ Cross...")
+    results4 = list(run_weekly_kdj_screener(data, ticker_names))
+    st.session_state.results_weekly = results4
+    st.session_state._fp4 = fp4
+else:
+    results4 = st.session_state.results_weekly
 
-# Stage 2.5: Scoring (only re-run if data refreshed or scoring params changed)
+# Screener 5: Scoring — only re-run if data refreshed or scoring params changed
 stp = [int(x.strip()) for x in score_trend_periods_str.split(",") if x.strip().isdigit()] or [20, 30, 60, 120]
 score_fingerprint = (str(stp), score_trend_div, score_slope_bars, score_vol_p,
                      score_vol_t, score_vol_ma_b, score_vol_ma_t, score_top_n)
@@ -591,11 +619,6 @@ if show_progress:
     screener_progress.progress(100, text="Done")
     screener_progress.empty()
 
-st.session_state.results_sma_daily = results1
-st.session_state.results_sma_hourly = results2
-st.session_state.results_div = results3
-st.session_state.results_weekly = results4
-st.session_state.results_scoring = results5
 st.session_state.run_done = True
 
 # ── Show results ───────────────────────────────────────────────────────────
