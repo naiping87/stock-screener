@@ -729,12 +729,13 @@ if st.session_state.run_done:
             df = _make_df(results5,
                           ["ticker", "name", "close", "score",
                            "above_200", "aligned", "trend_tight", "bb_squeeze",
-                           "kdj_sig", "vol_spike", "vol_expand", "vol_ma_ok", "ROE"],
+                           "kdj_sig", "vol_ok", "vol_spike", "vol_expand", "vol_ma_ok", "ROE"],
                           {"ticker": "Code", "name": "Name", "close": "Price",
                            "score": "Score",
                            "above_200": ">200", "aligned": "Align", "trend_tight": "Tight",
-                           "bb_squeeze": "BB", "kdj_sig": "KDJ", "vol_spike": "Spike",
-                           "vol_expand": "Vol↑", "vol_ma_ok": "VolMA", "ROE": "ROE%"})
+                           "bb_squeeze": "BB", "kdj_sig": "KDJ", "vol_ok": "Vol%",
+                           "vol_spike": "Spike", "vol_expand": "Vol↑", "vol_ma_ok": "VolMA",
+                           "ROE": "ROE%"})
             st.dataframe(df, hide_index=True, use_container_width=True, height=420,
                          column_config={
                              "Price": st.column_config.NumberColumn(format="%.2f", width="small", help="Latest close price"),
@@ -744,6 +745,7 @@ if st.session_state.run_done:
                              "Tight": st.column_config.TextColumn(width="small", help="SMA divergence below threshold (compression)"),
                              "BB": st.column_config.TextColumn(width="small", help="Bollinger Band width at 20-bar low (max squeeze)"),
                              "KDJ": st.column_config.TextColumn(width="small", help="J > K (bullish KDJ)"),
+                             "Vol%": st.column_config.TextColumn(width="small", help="60-day annualized volatility > threshold"),
                              "Spike": st.column_config.TextColumn(width="small", help="Today vol > 2x 20d avg (ignition)"),
                              "Vol↑": st.column_config.TextColumn(width="small", help="Vol MA20 > Vol MA60 (volume expanding)"),
                              "VolMA": st.column_config.TextColumn(width="small", help="Vol MA5 > threshold (liquid)"),
