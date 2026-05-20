@@ -737,9 +737,17 @@ if st.session_state.run_done:
                            "vol_expand": "Vol↑", "vol_ma_ok": "VolMA", "ROE": "ROE%"})
             st.dataframe(df, hide_index=True, use_container_width=True, height=420,
                          column_config={
-                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
-                             "Score": st.column_config.NumberColumn(format="%d", width="small"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
+                             "Price": st.column_config.NumberColumn(format="%.2f", width="small", help="Latest close price"),
+                             "Score": st.column_config.NumberColumn(format="%d", width="small", help="Total score (max 10)"),
+                             ">200": st.column_config.TextColumn(width="small", help="Close > SMA200 (trend up)"),
+                             "Align": st.column_config.TextColumn(width="small", help="SMA20 > SMA50 > SMA200 (perfect bullish alignment)"),
+                             "Tight": st.column_config.TextColumn(width="small", help="SMA divergence below threshold (compression)"),
+                             "BB": st.column_config.TextColumn(width="small", help="Bollinger Band width at 20-bar low (max squeeze)"),
+                             "KDJ": st.column_config.TextColumn(width="small", help="J > K (bullish KDJ)"),
+                             "Spike": st.column_config.TextColumn(width="small", help="Today vol > 2x 20d avg (ignition)"),
+                             "Vol↑": st.column_config.TextColumn(width="small", help="Vol MA20 > Vol MA60 (volume expanding)"),
+                             "VolMA": st.column_config.TextColumn(width="small", help="Vol MA5 > threshold (liquid)"),
+                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small", help="Return on Equity"),
                          })
         else:
             st.caption("No stocks scored.")
