@@ -639,6 +639,49 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["vol_ma_ok"] = vol_ma_ok
 
+        # 7. Vol MA20 > Vol MA60 (+1) — volume expansion
+        vol_expand = False
+        if vol is not None and len(vol) >= 60:
+            ma20 = vol.rolling(20).mean().iloc[-1]
+            ma60 = vol.rolling(60).mean().iloc[-1]
+            vol_expand = ma20 > ma60
+        if vol_expand:
+            score += 1
+        details["vol_expand"] = vol_expand
+
+        # 8. SMA Alignment: 20 > 50 > 200 (+1) — perfect bullish alignment
+        aligned = False
+        sma20 = close.rolling(20).mean().iloc[-1]
+        sma50 = close.rolling(50).mean().iloc[-1]
+        if not pd.isna(sma200.iloc[-1]) and not pd.isna(sma50) and not pd.isna(sma20):
+            aligned = sma20 > sma50 > sma200.iloc[-1]
+        if aligned:
+            score += 1
+        details["aligned"] = aligned
+
+        # 9. Bollinger Band squeeze: BB width at 20-bar low (+1)
+        bb_squeeze = False
+        bb_mid = close.rolling(20).mean()
+        bb_std = close.rolling(20).std()
+        bb_width = (4 * bb_std) / bb_mid
+        if len(bb_width.dropna()) >= 20:
+            bb_now = bb_width.iloc[-1]
+            bb_min_20 = bb_width.iloc[-20:].min()
+            bb_squeeze = bb_now <= bb_min_20 * 1.01  # within 1% of 20-bar low
+        if bb_squeeze:
+            score += 1
+        details["bb_squeeze"] = bb_squeeze
+
+        # 10. Volume spike: today vol > 2x 20-day avg vol (+1)
+        vol_spike = False
+        if vol is not None and len(vol) >= 20:
+            avg20 = vol.rolling(20).mean().iloc[-1]
+            today_vol = vol.iloc[-1]
+            vol_spike = avg20 > 0 and today_vol > 2 * avg20
+        if vol_spike:
+            score += 1
+        details["vol_spike"] = vol_spike
+
         name = d.get("name", "") or ticker_names.get(tkr, "")
         results.append({
             "ticker": tkr,
@@ -651,6 +694,10 @@ def run_scoring_screener(data, ticker_names=None,
             "kdj_sig": kdj_sig or "",
             "vol_ok": "Y" if vol_ok else "",
             "vol_ma_ok": "Y" if vol_ma_ok else "",
+            "vol_expand": "Y" if vol_expand else "",
+            "aligned": "Y" if aligned else "",
+            "bb_squeeze": "Y" if bb_squeeze else "",
+            "vol_spike": "Y" if vol_spike else "",
         })
 
     results.sort(key=lambda r: r["score"], reverse=True)

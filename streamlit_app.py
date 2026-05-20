@@ -728,11 +728,13 @@ if st.session_state.run_done:
         if results5:
             df = _make_df(results5,
                           ["ticker", "name", "close", "score",
-                           "above_200", "sma200_up", "trend_tight", "kdj_sig", "vol_ok", "vol_ma_ok", "ROE"],
+                           "above_200", "aligned", "trend_tight", "bb_squeeze",
+                           "kdj_sig", "vol_spike", "vol_expand", "vol_ma_ok", "ROE"],
                           {"ticker": "Code", "name": "Name", "close": "Price",
                            "score": "Score",
-                           "above_200": ">200", "sma200_up": "200↑", "trend_tight": "Tight",
-                           "kdj_sig": "KDJ", "vol_ok": "Vol%", "vol_ma_ok": "VolMA", "ROE": "ROE%"})
+                           "above_200": ">200", "aligned": "Align", "trend_tight": "Tight",
+                           "bb_squeeze": "BB", "kdj_sig": "KDJ", "vol_spike": "Spike",
+                           "vol_expand": "Vol↑", "vol_ma_ok": "VolMA", "ROE": "ROE%"})
             st.dataframe(df, hide_index=True, use_container_width=True, height=420,
                          column_config={
                              "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
