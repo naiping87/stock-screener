@@ -882,7 +882,7 @@ def main():
     combined_cols = ["script", "ticker", "name", "close",
                      "MA5", "MA10", "MA20", "MA30", "MA50",
                      "divergence_pct", "kdj_k", "kdj_d", "kdj_j",
-                     "price_slope", "kdj_k_slope"]
+                     "price_slope", "kdj_k_slope", "vol_ma", "trend"]
     _write_csv(all_results, "screener_combined", combined_cols,
                sort_key=lambda r: (
                    0 if r["script"] == "sma_daily" else

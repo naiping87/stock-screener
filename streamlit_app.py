@@ -164,7 +164,7 @@ APP_PASSWORD = st.secrets.get("APP_PASSWORD", "demo123")
 
 # Auto-login via URL query param (persists across refreshes)
 if not st.session_state.authenticated:
-    if st.query_params.get("auth") == ["1"]:
+    if "1" in st.query_params.get_all("auth"):
         st.session_state.authenticated = True
         st.rerun()
 
@@ -206,14 +206,7 @@ if not st.session_state.authenticated:
 # Redirect to ?auth=1 after first login so URL persists across refreshes
 if not st.query_params.get("auth"):
     st.query_params["auth"] = "1"
-    st.markdown("""
-    <script>
-    if (window.location.search.indexOf('auth=1') === -1) {
-        window.location.search = '?auth=1';
-    }
-    </script>
-    """, unsafe_allow_html=True)
-    st.stop()
+    st.rerun()
 
 # ── Logout button (top-right) ──────────────────────────────────────────────
 c1, c2 = st.columns([6, 1])
@@ -429,7 +422,7 @@ def _make_df(results, cols_show, col_map, col_fmt=None):
 
 
 # ── Data loader (@st.cache_data persists across refreshes, 1hr TTL) ────────
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner="Downloading market data from Yahoo Finance... (1-2 min)")
 def _cached_download(_tickers_json):
     """Download data (cached on server, survives page refresh).
     _tickers_json is a JSON string used as cache key — change it to invalidate."""
