@@ -491,18 +491,17 @@ def _detect_kdj_signal(k, d, j, lookback=KDJ_LOOKBACK, oversold=KDJ_OVERSOLD):
     # Check if J is currently above both K and D (bullish J position)
     j_above = j_now > k_now and j_now > d_now
 
-    # Recent J-cross-K (equivalent to K-cross-D)
+    # Recent J-cross-K (equivalent to K-cross-D) — any zone, no oversold restriction
     for i in range(-lookback, 0):
         j_i = j.iloc[i]
         k_i = k.iloc[i]
         j_prev = j.iloc[i - 1]
         k_prev = k.iloc[i - 1]
         if j_i > k_i and j_prev <= k_prev:
-            if k_i < oversold:
-                return "crossed", round(k_now, 1), round(d_now, 1), round(j_now, 1)
+            return "crossed", round(k_now, 1), round(d_now, 1), round(j_now, 1)
 
-    # J above K and D (already bullish, no recent cross)
-    if j_above and j_now < 70:  # not overbought yet
+    # J above K and D (already bullish) — any zone, no overbought restriction
+    if j_above:
         return "above", round(k_now, 1), round(d_now, 1), round(j_now, 1)
 
     return None, None, None, None
@@ -620,15 +619,20 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["kdj_sig"] = kdj_sig or ""
 
-        # 5. Weekly KDJ golden cross / near-cross (+1)
+        # 5. Weekly KDJ golden cross / near-cross + volume confirmation (+1)
         wkdj_sig = None
         w_close = d.get("close_weekly")
         w_high = d.get("high_weekly")
         w_low = d.get("low_weekly")
+        w_vol = d.get("volume_weekly")
         if w_close is not None and w_high is not None and w_low is not None:
             wk, wd, wj = _calc_kdj(w_high, w_low, w_close)
             wkdj_sig = _detect_kdj_signal(wk, wd, wj)[0]
-        wkdj_ok = wkdj_sig is not None
+        # Weekly volume > 60-week MA for confirmation
+        wkdj_vol_ok = False
+        if w_vol is not None and len(w_vol) >= 60:
+            wkdj_vol_ok = w_vol.iloc[-1] > w_vol.rolling(60).mean().iloc[-1]
+        wkdj_ok = wkdj_sig is not None and wkdj_vol_ok
         if wkdj_ok:
             score += 1
         details["wkdj_sig"] = wkdj_sig or ""
