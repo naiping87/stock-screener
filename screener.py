@@ -620,7 +620,20 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["kdj_sig"] = kdj_sig or ""
 
-        # 5. Volatility > threshold (+1)
+        # 5. Weekly KDJ golden cross / near-cross (+1)
+        wkdj_sig = None
+        w_close = d.get("close_weekly")
+        w_high = d.get("high_weekly")
+        w_low = d.get("low_weekly")
+        if w_close is not None and w_high is not None and w_low is not None:
+            wk, wd, wj = _calc_kdj(w_high, w_low, w_close)
+            wkdj_sig = _detect_kdj_signal(wk, wd, wj)[0]
+        wkdj_ok = wkdj_sig is not None
+        if wkdj_ok:
+            score += 1
+        details["wkdj_sig"] = wkdj_sig or ""
+
+        # 6. Volatility > threshold (+1)
         vol_ok = False
         if len(close) >= vol_period:
             returns = close.pct_change().dropna()
@@ -631,7 +644,7 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["vol_ok"] = vol_ok
 
-        # 6. Volume MA > threshold (+1)
+        # 7. Volume MA > threshold (+1)
         vol_ma_ok = False
         if vol is not None and len(vol) >= vol_ma_bars:
             vol_ma_ok = vol.rolling(vol_ma_bars).mean().iloc[-1] > vol_ma_threshold
@@ -639,7 +652,7 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["vol_ma_ok"] = vol_ma_ok
 
-        # 7. Vol MA20 > Vol MA60 (+1) — volume expansion
+        # 8. Vol MA20 > Vol MA60 (+1) — volume expansion
         vol_expand = False
         if vol is not None and len(vol) >= 60:
             ma20 = vol.rolling(20).mean().iloc[-1]
@@ -649,7 +662,7 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["vol_expand"] = vol_expand
 
-        # 8. SMA Alignment: 20 > 50 > 200 (+1) — perfect bullish alignment
+        # 9. SMA Alignment: 20 > 50 > 200 (+1) — perfect bullish alignment
         aligned = False
         sma20 = close.rolling(20).mean().iloc[-1]
         sma50 = close.rolling(50).mean().iloc[-1]
@@ -659,7 +672,7 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["aligned"] = aligned
 
-        # 9. Bollinger Band squeeze: BB width at 20-bar low (+1)
+        # 10. Bollinger Band squeeze: BB width at 20-bar low (+1)
         bb_squeeze = False
         bb_mid = close.rolling(20).mean()
         bb_std = close.rolling(20).std()
@@ -672,7 +685,7 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["bb_squeeze"] = bb_squeeze
 
-        # 10. Volume spike: today vol > 2x 20-day avg vol (+1)
+        # 11. Volume spike: today vol > 2x 20-day avg vol (+1)
         vol_spike = False
         if vol is not None and len(vol) >= 20:
             avg20 = vol.rolling(20).mean().iloc[-1]
@@ -692,6 +705,7 @@ def run_scoring_screener(data, ticker_names=None,
             "sma200_up": "Y" if slope_up else "",
             "trend_tight": "Y" if trend_tight else "",
             "kdj_sig": kdj_sig or "",
+            "wkdj_sig": wkdj_sig or "",
             "vol_ok": "Y" if vol_ok else "",
             "vol_ma_ok": "Y" if vol_ma_ok else "",
             "vol_expand": "Y" if vol_expand else "",

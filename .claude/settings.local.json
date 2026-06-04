@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.bursamalaysia.com)",
+      "WebFetch(domain:www.investing.com)",
+      "WebFetch(domain:klse.i3investor.com)",
+      "WebFetch(domain:announcements.bursamalaysia.com)",
+      "WebFetch(domain:tradingeconomics.com)",
+      "WebFetch(domain:www.annualreports.com)"
+    ]
+  }
+}
