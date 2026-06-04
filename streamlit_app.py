@@ -166,13 +166,12 @@ APP_PASSWORD = st.secrets.get("APP_PASSWORD", "demo123")
 if not st.session_state.authenticated:
     if st.query_params.get("auth") == ["1"]:
         st.session_state.authenticated = True
-        st.query_params.clear()
+        st.rerun()
 
 # ── Password gate ──────────────────────────────────────────────────────────
 def handle_unlock():
     if st.session_state.pwd_input == APP_PASSWORD:
         st.session_state.authenticated = True
-        st.query_params["auth"] = "1"
     else:
         st.session_state.pwd_error = True
 
@@ -204,12 +203,26 @@ if not st.session_state.authenticated:
                 st.error("Wrong password")
     st.stop()
 
+# Redirect to ?auth=1 after first login so URL persists across refreshes
+if not st.query_params.get("auth"):
+    st.query_params["auth"] = "1"
+    st.markdown("""
+    <script>
+    if (window.location.search.indexOf('auth=1') === -1) {
+        window.location.search = '?auth=1';
+    }
+    </script>
+    """, unsafe_allow_html=True)
+    st.stop()
+
 # ── Logout button (top-right) ──────────────────────────────────────────────
 c1, c2 = st.columns([6, 1])
 with c2:
     if st.button("🔒 Lock", key="lock_btn", help="Lock the app"):
         st.session_state.authenticated = False
         st.session_state.pwd_input = ""
+        st.query_params.clear()
+        st.markdown("""<script>window.location.search='';</script>""", unsafe_allow_html=True)
         st.rerun()
 
 # ── Header ─────────────────────────────────────────────────────────────────
