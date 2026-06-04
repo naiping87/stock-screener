@@ -156,19 +156,23 @@ for key, default in [
     ("results_sma_hourly", None),
     ("results_div", None),
     ("run_done", False),
-    ("data_loaded", False),
-    ("last_params", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
 
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", "demo123")
 
+# Auto-login via URL query param (persists across refreshes)
+if not st.session_state.authenticated:
+    if st.query_params.get("auth") == ["1"]:
+        st.session_state.authenticated = True
+        st.query_params.clear()
 
 # ── Password gate ──────────────────────────────────────────────────────────
 def handle_unlock():
     if st.session_state.pwd_input == APP_PASSWORD:
         st.session_state.authenticated = True
+        st.query_params["auth"] = "1"
     else:
         st.session_state.pwd_error = True
 
@@ -345,11 +349,7 @@ with st.sidebar:
                     del st.session_state[k]
             st.rerun()
 
-    cache_age = ""
-    if st.session_state.get("_data_ts"):
-        age_min = (time.time() - st.session_state["_data_ts"]) // 60
-        cache_age = f" | Cache: {int(age_min)}m ago"
-    st.caption(f"Tickers: {len(load_tickers(TICKERS_FILE))}{cache_age}")
+    st.caption(f"Tickers: {len(load_tickers(TICKERS_FILE))} | Data cached 1hr")
 
 
 # ── ROE fetcher ────────────────────────────────────────────────────────────
@@ -415,47 +415,23 @@ def _make_df(results, cols_show, col_map, col_fmt=None):
     return df
 
 
-# ── Data loader (manual cache, 1hr TTL) ────────────────────────────────────
-DATA_CACHE_TTL = 3600  # seconds
+# ── Data loader (@st.cache_data persists across refreshes, 1hr TTL) ────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_download(_tickers_json):
+    """Download data (cached on server, survives page refresh).
+    _tickers_json is a JSON string used as cache key — change it to invalidate."""
+    import json
+    tickers = json.loads(_tickers_json)
+    return download_data(tickers, progress_cb=None)
 
-def load_data_with_progress(tickers):
-    """Download all data with real-time progress bar."""
-    progress = st.progress(0, text="Connecting...")
-    status = st.empty()
-
-    last_pct = [0]  # mutable for closure
-
-    def on_ticker(done, total):
-        pct = int(done / total * 100)
-        if pct > last_pct[0]:
-            last_pct[0] = pct
-            progress.progress(pct, text=f"Downloading {done}/{total}")
-            status.info(f"{done}/{total} tickers loaded — ~{(total - done) * 0.3 // 60:.0f}m remaining")
-
-    data = download_data(tickers, progress_cb=on_ticker)
-    progress.progress(100, text=f"Complete — {len(data)} stocks")
-    progress.empty()
-    status.empty()
-    return data
-
-
-def get_cached_data(force=False):
-    """Return cached data if fresh, otherwise download. force=True always re-downloads."""
-    now = time.time()
-    cache = st.session_state.get("_data_cache")
-    cache_time = st.session_state.get("_data_ts", 0)
-
-    if not force and cache is not None and (now - cache_time) < DATA_CACHE_TTL:
-        return cache
-
+def get_data():
+    """Return data (from cache if fresh, otherwise download)."""
     tickers = load_tickers(TICKERS_FILE)
     ticker_names = {f"{c}.KL": n for c, n in tickers.items()}
-    data = load_data_with_progress(tickers)
-
-    st.session_state._data_cache = data
-    st.session_state._data_ts = now
-    st.session_state._ticker_names = ticker_names
-    return data
+    import json
+    tickers_json = json.dumps(dict(sorted(tickers.items())))
+    data = _cached_download(tickers_json)
+    return data, ticker_names
 
 
 # ── Run screeners (auto if cached data exists) ──────────────────────────────
@@ -466,28 +442,20 @@ scr.VOL_MIN = vol_daily
 scr.VOL_MIN_HOURLY = vol_hourly
 scr.WEEKLY_VOL_MIN = vol_weekly
 
-# Stage 1: Download (only when forced refresh or no cache)
-have_cache = st.session_state.get("_data_cache") is not None
-need_download = refresh_clicked or not have_cache
+# Stage 1: Download (cached — survives refresh, force when button clicked)
+if refresh_clicked:
+    _cached_download.clear()
 
-if need_download:
-    data = get_cached_data(force=refresh_clicked)
-    ticker_names = st.session_state.get("_ticker_names", {})
-else:
-    data = st.session_state._data_cache
-    ticker_names = st.session_state.get("_ticker_names", {})
+data, ticker_names = get_data()
 
 # Stage 2: Run screeners — cached by param fingerprint, skip on unrelated changes
-show_progress = need_download
 screener_progress = st.empty()
-if show_progress:
-    screener_progress = st.progress(0, text="Running screeners...")
+screener_progress.progress(0, text="Running screeners...")
 
 # Screener 1: Daily SMA — params: periods, divergence, compression, vol_daily
 fp1 = (str(sma_periods), divergence_pct, compression_bars, vol_daily)
-if need_download or st.session_state.get("_fp1") != fp1:
-    if show_progress:
-        screener_progress.progress(30, text="Daily SMA...")
+if st.session_state.get("_fp1") != fp1:
+    screener_progress.progress(30, text="Daily SMA...")
     results1 = list(run_sma_screener(
         data, ticker_names, periods=sma_periods,
         threshold=divergence_pct, min_compression=compression_bars,
@@ -499,9 +467,8 @@ else:
 
 # Screener 2: Hourly SMA — params: periods, divergence, compression, vol_hourly
 fp2 = (str(sma_periods), divergence_pct, compression_bars, vol_hourly)
-if need_download or st.session_state.get("_fp2") != fp2:
-    if show_progress:
-        screener_progress.progress(60, text="Hourly SMA...")
+if st.session_state.get("_fp2") != fp2:
+    screener_progress.progress(60, text="Hourly SMA...")
     results2 = list(run_sma_hourly_screener(
         data, ticker_names, periods=sma_periods,
         threshold=divergence_pct, min_compression=compression_bars,
@@ -513,9 +480,8 @@ else:
 
 # Screener 3: KDJ Divergence — params: div_lookback, vol_daily, kdj_period, kdj_signal
 fp3 = (div_lookback, vol_daily, kdj_period, kdj_signal)
-if need_download or st.session_state.get("_fp3") != fp3:
-    if show_progress:
-        screener_progress.progress(75, text="KDJ Divergence...")
+if st.session_state.get("_fp3") != fp3:
+    screener_progress.progress(75, text="KDJ Divergence...")
     results3 = list(run_divergence_screener(data, ticker_names, lookback=div_lookback))
     st.session_state.results_div = results3
     st.session_state._fp3 = fp3
@@ -524,9 +490,8 @@ else:
 
 # Screener 4: Weekly KDJ — params: kdj_period, kdj_signal, vol_weekly
 fp4 = (kdj_period, kdj_signal, vol_weekly)
-if need_download or st.session_state.get("_fp4") != fp4:
-    if show_progress:
-        screener_progress.progress(83, text="Weekly KDJ Cross...")
+if st.session_state.get("_fp4") != fp4:
+    screener_progress.progress(83, text="Weekly KDJ Cross...")
     results4 = list(run_weekly_kdj_screener(data, ticker_names))
     st.session_state.results_weekly = results4
     st.session_state._fp4 = fp4
@@ -539,9 +504,8 @@ score_fingerprint = (tuple(stp), score_trend_div, score_slope_bars, score_vol_p,
                      score_vol_t, score_vol_ma_b, score_vol_ma_t, score_top_n)
 last_fp = st.session_state.get("_score_fp")
 
-if need_download or last_fp != score_fingerprint:
-    if show_progress:
-        screener_progress.progress(88, text="Scoring all stocks...")
+if last_fp != score_fingerprint:
+    screener_progress.progress(88, text="Scoring all stocks...")
     results5 = run_scoring_screener(
         data, ticker_names,
         trend_periods=stp, trend_threshold=score_trend_div,
@@ -573,8 +537,7 @@ new_tickers = all_tickers - set(roe_cache.keys())
 roe_map = {t: v for t, v in roe_cache.items() if t in all_tickers}
 
 if new_tickers:
-    if show_progress:
-        screener_progress.progress(90, text=f"Fetching ROE for {len(new_tickers)} stocks...")
+    screener_progress.progress(90, text=f"Fetching ROE for {len(new_tickers)} stocks...")
     new_roe = fetch_roe_batch(new_tickers)
     roe_map.update(new_roe)
     roe_cache.update(new_roe)
@@ -596,9 +559,8 @@ _attach_roe(results3, roe_map)
 _attach_roe(results4, roe_map)
 _attach_roe(results5, roe_map)
 
-if show_progress:
-    screener_progress.progress(100, text="Done")
-    screener_progress.empty()
+screener_progress.progress(100, text="Done")
+screener_progress.empty()
 
 st.session_state.run_done = True
 
