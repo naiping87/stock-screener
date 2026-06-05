@@ -28,7 +28,7 @@ KDJ_PERIOD = 9                      # KDJ lookback (same as Pine Script 'Period'
 KDJ_SIGNAL = 3                      # KDJ smooth (same as Pine Script 'Signal Period')
 DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
 DAILY_DAYS = 400                    # days of daily data (max EMA period 200 + 20 compression bars)
-HOURLY_DAYS = 30                    # days of hourly data (needs 70+ valid bars for 50h EMA + 20 compression)
+HOURLY_DAYS = 50                    # days of hourly data (needs 200+20=220 bars, ~6h/day on Bursa)
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
 KDJ_OVERSOLD = 50                   # K must be below this for valid signal
