@@ -204,7 +204,8 @@ def download_data(tickers, progress_cb=None):
     dp1, dp2 = int(d_start.timestamp()), int(end_date.timestamp())
     hp1, hp2 = int(h_start.timestamp()), int(end_date.timestamp())
     min_bars_d = max(EMA_PERIODS) + MIN_COMPRESSION_BARS
-    min_bars_h = max(EMA_PERIODS) + MIN_COMPRESSION_BARS
+    # Hourly: Yahoo may return fewer bars; cap requirement at EMA50+compression
+    min_bars_h = 50 + MIN_COMPRESSION_BARS
 
     ticker_list = sorted(tickers.keys())
     all_data = {}
