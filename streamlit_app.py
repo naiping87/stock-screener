@@ -30,7 +30,7 @@ from screener import (
 
 # ── Defaults for reset ─────────────────────────────────────────────────────
 DEFAULTS = {
-    "periods": [10, 20, 50, 100, 200, 1000],
+    "periods": [10, 20, 50, 100, 200],
     "div": DIVERGENCE_THRESHOLD,
     "bars": MIN_COMPRESSION_BARS,
     "vol_d": VOL_MIN,
@@ -242,12 +242,12 @@ with st.sidebar:
     with st.expander("EMA Compression", expanded=True):
         ema_periods = st.multiselect(
             "EMA Periods",
-            options=[10, 20, 50, 100, 200, 1000],
+            options=[10, 20, 50, 100, 200],
             default=DEFAULTS["periods"],
             key="cfg_periods",
         )
         if not ema_periods:
-            ema_periods = [10, 20, 50, 100, 200, 1000]
+            ema_periods = [10, 20, 50, 100, 200]
 
         divergence_pct = st.slider(
             "Divergence ≤ %", 0.5, 10.0, DEFAULTS["div"], 0.5, key="cfg_div",
@@ -280,7 +280,7 @@ with st.sidebar:
         with col_s1:
             score_trend_periods_sel = st.multiselect(
                 "Trend Periods",
-                options=[10, 20, 50, 100, 200, 1000],
+                options=[10, 20, 50, 100, 200],
                 default=DEFAULTS["score_trend_periods"],
                 key="cfg_score_trend_periods",
             )
@@ -334,7 +334,7 @@ with st.sidebar:
                 sec--;
                 if (el) el.textContent = Math.floor(sec/60) + 'm ' + (sec%60) + 's';
                 if (sec <= 0) window.location.reload();
-            }}, 1000);
+            }}, 200);
         }})();
         </script>
         """

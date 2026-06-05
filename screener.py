@@ -1,8 +1,8 @@
 """
 Bursa Malaysia Stock Screener — 3 scripts → 1 combined CSV:
-  1. ema_daily      — daily EMA 10/20/50/100/200/1000 compressed <3% for 20+ days
+  1. ema_daily      — daily EMA 10/20/50/100/200 compressed <3% for 20+ days
   2. kdj_divergence — price falling, KDJ rising over 30 days
-  3. ema_hourly     — hourly EMA 10/20/50/100/200/1000 compressed <3% for 20+ hours
+  3. ema_hourly     — hourly EMA 10/20/50/100/200 compressed <3% for 20+ hours
 """
 import csv
 import os
@@ -16,7 +16,7 @@ import pandas as pd
 import requests
 
 # ── Configuration ────────────────────────────────────────────────────────────
-EMA_PERIODS = [10, 20, 50, 100, 200, 1000]
+EMA_PERIODS = [10, 20, 50, 100, 200]
 DIVERGENCE_THRESHOLD = 3.0          # percent
 VOL_MIN = 500000                    # min daily volume MA
 VOL_MIN_HOURLY = 100000             # min hourly volume MA
@@ -27,7 +27,7 @@ MIN_COMPRESSION_BARS = 20           # SMAs must be tight for this many bars
 KDJ_PERIOD = 9                      # KDJ lookback (same as Pine Script 'Period')
 KDJ_SIGNAL = 3                      # KDJ smooth (same as Pine Script 'Signal Period')
 DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
-DAILY_DAYS = 400                    # days of daily data (weekly KDJ needs 60+ bars, ~400 days)
+DAILY_DAYS = 400                    # days of daily data (max EMA period 200 + 20 compression bars)
 HOURLY_DAYS = 30                    # days of hourly data (needs 70+ valid bars for 50h EMA + 20 compression)
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
@@ -238,11 +238,14 @@ def download_data(tickers, progress_cb=None):
 
 
 def _calc_divergence(close_series, periods):
-    """Return (divergence_pct, ema_dict) or (None, None)."""
-    if len(close_series) < max(periods):
+    """Return (divergence_pct, ema_dict) or (None, None).
+    Automatically skips periods that are too large for the available data."""
+    # Filter to periods that fit within available data
+    valid_periods = [p for p in periods if len(close_series) >= p]
+    if len(valid_periods) < 2:
         return None, None
     ema = {}
-    for p in periods:
+    for p in valid_periods:
         val = close_series.ewm(span=p, adjust=False).mean().iloc[-1]
         if pd.isna(val):
             return None, None
@@ -253,14 +256,15 @@ def _calc_divergence(close_series, periods):
 
 
 def _check_compression_duration(close_series, periods, threshold, min_bars):
-    """Return True if EMA divergence stayed <= threshold for the last min_bars bars."""
-    needed = max(periods) + min_bars
-    if len(close_series) < needed:
+    """Return True if EMA divergence stayed <= threshold for the last min_bars bars.
+    Automatically skips periods that are too large for the available data."""
+    valid_periods = [p for p in periods if p + min_bars <= len(close_series)]
+    if len(valid_periods) < 2:
         return False
 
-    emas = {p: close_series.ewm(span=p, adjust=False).mean() for p in periods}
+    emas = {p: close_series.ewm(span=p, adjust=False).mean() for p in valid_periods}
     for i in range(-min_bars, 0):
-        vals = [emas[p].iloc[i] for p in periods]
+        vals = [emas[p].iloc[i] for p in valid_periods]
         if any(pd.isna(v) for v in vals):
             return False
         div = (max(vals) - min(vals)) / close_series.iloc[i] * 100.0
@@ -359,7 +363,8 @@ def run_ema_screener(data, ticker_names=None, periods=None,
 
         vol = d.get("volume")
         vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
-        trend = "↑" if close.iloc[-1] > ema[50] else "↓"
+        trend_ema = 50 if 50 in ema else min(ema.keys(), key=lambda x: abs(x - 50))
+        trend = "↑" if close.iloc[-1] > ema[trend_ema] else "↓"
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
         result = {
@@ -371,7 +376,8 @@ def run_ema_screener(data, ticker_names=None, periods=None,
             "trend": trend,
         }
         for p in periods:
-            result[f"EMA{p}"] = round(ema[p], 2)
+            if p in ema:
+                result[f"EMA{p}"] = round(ema[p], 2)
         yield result
 
     print(f"  Stage 1 (compression):    {s1} passed")
