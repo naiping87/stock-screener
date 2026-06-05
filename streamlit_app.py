@@ -17,12 +17,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from screener import (
     load_tickers, download_data,
-    run_sma_screener, run_sma_hourly_screener, run_divergence_screener,
+    run_ema_screener, run_ema_hourly_screener, run_divergence_screener,
     run_weekly_kdj_screener, run_scoring_screener, backtest_scoring,
-    SMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
+    EMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
     KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
     VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN,
-    SCORE_TREND_PERIODS, SCORE_TREND_THRESHOLD, SCORE_SMA200_SLOPE_BARS,
+    SCORE_TREND_PERIODS, SCORE_TREND_THRESHOLD, SCORE_EMA200_SLOPE_BARS,
     SCORE_VOL_PERIOD, SCORE_VOL_THRESHOLD, SCORE_VOL_MA_BARS, SCORE_VOL_MA_THRESHOLD,
     SCORE_TOP_N,
     TICKERS_FILE,
@@ -30,7 +30,7 @@ from screener import (
 
 # ── Defaults for reset ─────────────────────────────────────────────────────
 DEFAULTS = {
-    "periods": "5,10,20,30,50",
+    "periods": [10, 20, 50, 100, 200, 1000],
     "div": DIVERGENCE_THRESHOLD,
     "bars": MIN_COMPRESSION_BARS,
     "vol_d": VOL_MIN,
@@ -39,9 +39,9 @@ DEFAULTS = {
     "kdj_p": KDJ_PERIOD,
     "kdj_s": KDJ_SIGNAL,
     "div_lb": DIVERGENCE_LOOKBACK,
-    "score_trend_periods": [20, 30, 60, 120],
+    "score_trend_periods": [10, 20, 50, 100, 200],
     "score_trend_div": SCORE_TREND_THRESHOLD,
-    "score_slope_bars": SCORE_SMA200_SLOPE_BARS,
+    "score_slope_bars": SCORE_EMA200_SLOPE_BARS,
     "score_vol_p": SCORE_VOL_PERIOD,
     "score_vol_t": SCORE_VOL_THRESHOLD,
     "score_vol_ma_b": SCORE_VOL_MA_BARS,
@@ -152,8 +152,8 @@ st.markdown("""
 for key, default in [
     ("authenticated", False),
     ("pwd_input", ""),
-    ("results_sma_daily", None),
-    ("results_sma_hourly", None),
+    ("results_ema_daily", None),
+    ("results_ema_hourly", None),
     ("results_div", None),
     ("run_done", False),
 ]:
@@ -239,14 +239,15 @@ with st.sidebar:
 
     st.markdown("### ⚙️ Parameters")
 
-    with st.expander("SMA Compression", expanded=True):
-        periods_str = st.text_input(
-            "SMA Periods", value=DEFAULTS["periods"],
-            help="Comma-separated", key="cfg_periods",
+    with st.expander("EMA Compression", expanded=True):
+        ema_periods = st.multiselect(
+            "EMA Periods",
+            options=[10, 20, 50, 100, 200, 1000],
+            default=DEFAULTS["periods"],
+            key="cfg_periods",
         )
-        sma_periods = [int(x.strip()) for x in periods_str.split(",") if x.strip().isdigit()]
-        if not sma_periods:
-            sma_periods = [5, 10, 20, 30, 50]
+        if not ema_periods:
+            ema_periods = [10, 20, 50, 100, 200, 1000]
 
         divergence_pct = st.slider(
             "Divergence ≤ %", 0.5, 10.0, DEFAULTS["div"], 0.5, key="cfg_div",
@@ -279,7 +280,7 @@ with st.sidebar:
         with col_s1:
             score_trend_periods_sel = st.multiselect(
                 "Trend Periods",
-                options=[5, 10, 20, 30, 50, 60, 120, 200],
+                options=[10, 20, 50, 100, 200, 1000],
                 default=DEFAULTS["score_trend_periods"],
                 key="cfg_score_trend_periods",
             )
@@ -288,7 +289,7 @@ with st.sidebar:
                 key="cfg_score_trend_div",
             )
             score_slope_bars = st.slider(
-                "SMA200 Slope Bars", 5, 60, DEFAULTS["score_slope_bars"], 5,
+                "EMA200 Slope Bars", 5, 60, DEFAULTS["score_slope_bars"], 5,
                 key="cfg_score_slope_bars",
             )
             score_vol_p = st.slider(
@@ -458,31 +459,31 @@ data, ticker_names = get_data()
 screener_progress = st.empty()
 screener_progress.progress(0, text="Running screeners...")
 
-# Screener 1: Daily SMA — params: periods, divergence, compression, vol_daily
-fp1 = (str(sma_periods), divergence_pct, compression_bars, vol_daily)
+# Screener 1: Daily EMA — params: periods, divergence, compression, vol_daily
+fp1 = (str(ema_periods), divergence_pct, compression_bars, vol_daily)
 if st.session_state.get("_fp1") != fp1:
-    screener_progress.progress(30, text="Daily SMA...")
-    results1 = list(run_sma_screener(
-        data, ticker_names, periods=sma_periods,
+    screener_progress.progress(30, text="Daily EMA...")
+    results1 = list(run_ema_screener(
+        data, ticker_names, periods=ema_periods,
         threshold=divergence_pct, min_compression=compression_bars,
     ))
-    st.session_state.results_sma_daily = results1
+    st.session_state.results_ema_daily = results1
     st.session_state._fp1 = fp1
 else:
-    results1 = st.session_state.results_sma_daily
+    results1 = st.session_state.results_ema_daily
 
-# Screener 2: Hourly SMA — params: periods, divergence, compression, vol_hourly
-fp2 = (str(sma_periods), divergence_pct, compression_bars, vol_hourly)
+# Screener 2: Hourly EMA — params: periods, divergence, compression, vol_hourly
+fp2 = (str(ema_periods), divergence_pct, compression_bars, vol_hourly)
 if st.session_state.get("_fp2") != fp2:
-    screener_progress.progress(60, text="Hourly SMA...")
-    results2 = list(run_sma_hourly_screener(
-        data, ticker_names, periods=sma_periods,
+    screener_progress.progress(60, text="Hourly EMA...")
+    results2 = list(run_ema_hourly_screener(
+        data, ticker_names, periods=ema_periods,
         threshold=divergence_pct, min_compression=compression_bars,
     ))
-    st.session_state.results_sma_hourly = results2
+    st.session_state.results_ema_hourly = results2
     st.session_state._fp2 = fp2
 else:
-    results2 = st.session_state.results_sma_hourly
+    results2 = st.session_state.results_ema_hourly
 
 # Screener 3: KDJ Divergence — params: div_lookback, vol_daily, kdj_period, kdj_signal
 fp3 = (div_lookback, vol_daily, kdj_period, kdj_signal)
@@ -505,7 +506,7 @@ else:
     results4 = st.session_state.results_weekly
 
 # Screener 5: Scoring — only re-run if data refreshed or scoring params changed
-stp = sorted(score_trend_periods_sel) or [20, 30, 60, 120]
+stp = sorted(score_trend_periods_sel) or [10, 20, 50, 100, 200]
 score_fingerprint = (tuple(stp), score_trend_div, score_slope_bars, score_vol_p,
                      score_vol_t, score_vol_ma_b, score_vol_ma_t, score_top_n)
 last_fp = st.session_state.get("_score_fp")
@@ -515,7 +516,7 @@ if last_fp != score_fingerprint:
     results5 = run_scoring_screener(
         data, ticker_names,
         trend_periods=stp, trend_threshold=score_trend_div,
-        sma200_slope_bars=score_slope_bars,
+        ema200_slope_bars=score_slope_bars,
         vol_period=score_vol_p, vol_threshold=score_vol_t,
         vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
         top_n=score_top_n,
@@ -572,8 +573,8 @@ st.session_state.run_done = True
 
 # ── Show results ───────────────────────────────────────────────────────────
 if st.session_state.run_done:
-    results1 = st.session_state.results_sma_daily or []
-    results2 = st.session_state.results_sma_hourly or []
+    results1 = st.session_state.results_ema_daily or []
+    results2 = st.session_state.results_ema_hourly or []
     results3 = st.session_state.results_div or []
     results4 = st.session_state.results_weekly or []
     results5 = st.session_state.results_scoring or []
@@ -584,14 +585,14 @@ if st.session_state.run_done:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value">{len(results1)}</div>
-            <div class="metric-label"><span class="tag-daily section-tag">Daily SMA</span></div>
+            <div class="metric-label"><span class="tag-daily section-tag">Daily EMA</span></div>
         </div>
         """, unsafe_allow_html=True)
     with tc2:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value">{len(results2)}</div>
-            <div class="metric-label"><span class="tag-hourly section-tag">Hourly SMA</span></div>
+            <div class="metric-label"><span class="tag-hourly section-tag">Hourly EMA</span></div>
         </div>
         """, unsafe_allow_html=True)
     with tc3:
@@ -618,8 +619,8 @@ if st.session_state.run_done:
 
     # Detail tables
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        f"📅 Daily SMA ({len(results1)})",
-        f"⏱ Hourly SMA ({len(results2)})",
+        f"📅 Daily EMA ({len(results1)})",
+        f"⏱ Hourly EMA ({len(results2)})",
         f"📉 KDJ Divergence ({len(results3)})",
         f"📆 Weekly KDJ ({len(results4)})",
         f"⭐ Scoring ({len(results5)})",
@@ -628,7 +629,7 @@ if st.session_state.run_done:
     with tab1:
         if results1:
             df = _make_df(results1,
-                          ["ticker", "name", "close", "trend", "MA20", "divergence_pct", "vol_ma", "ROE"],
+                          ["ticker", "name", "close", "trend", "EMA50", "divergence_pct", "vol_ma", "ROE"],
                           {"ticker": "Code", "name": "Name", "close": "Price",
                            "trend": "T", "divergence_pct": "Div%",
                            "vol_ma": "Vol MA", "ROE": "ROE%"})
@@ -646,7 +647,7 @@ if st.session_state.run_done:
     with tab2:
         if results2:
             df = _make_df(results2,
-                          ["ticker", "name", "close", "trend", "MA20", "divergence_pct", "vol_ma", "ROE"],
+                          ["ticker", "name", "close", "trend", "EMA50", "divergence_pct", "vol_ma", "ROE"],
                           {"ticker": "Code", "name": "Name", "close": "Price",
                            "trend": "T", "divergence_pct": "Div%",
                            "vol_ma": "Vol MA", "ROE": "ROE%"})
@@ -708,9 +709,9 @@ if st.session_state.run_done:
                          column_config={
                              "Price": st.column_config.NumberColumn(format="%.2f", width="small", help="Latest close price"),
                              "Score": st.column_config.NumberColumn(format="%d", width="small", help="Total score (max 10)"),
-                             ">200": st.column_config.TextColumn(width="small", help="Close > SMA200 (trend up)"),
-                             "Align": st.column_config.TextColumn(width="small", help="SMA20 > SMA50 > SMA200 (perfect bullish alignment)"),
-                             "Tight": st.column_config.TextColumn(width="small", help="SMA divergence below threshold (compression)"),
+                             ">200": st.column_config.TextColumn(width="small", help="Close > EMA200 (trend up)"),
+                             "Align": st.column_config.TextColumn(width="small", help="EMA50 > EMA100 > EMA200 (perfect bullish alignment)"),
+                             "Tight": st.column_config.TextColumn(width="small", help="EMA divergence below threshold (compression)"),
                              "BB": st.column_config.TextColumn(width="small", help="Bollinger Band width at 20-bar low (max squeeze)"),
                              "KDJ": st.column_config.TextColumn(width="small", help="Daily J > K (bullish daily KDJ)"),
                              "WKDJ": st.column_config.TextColumn(width="small", help="Weekly KDJ golden cross / near-cross (bullish weekly KDJ)"),
@@ -739,7 +740,7 @@ if st.session_state.run_done:
                 bt_results = backtest_scoring(
                     data, ticker_names,
                     trend_periods=stp, trend_threshold=score_trend_div,
-                    sma200_slope_bars=score_slope_bars,
+                    ema200_slope_bars=score_slope_bars,
                     vol_period=score_vol_p, vol_threshold=score_vol_t,
                     vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
                     top_n=bt_top_n, interval_weeks=bt_interval,

@@ -1,8 +1,8 @@
 """
 Bursa Malaysia Stock Screener — 3 scripts → 1 combined CSV:
-  1. sma_daily      — daily SMA 5/10/20/30/50 compressed <3% for 20+ days
+  1. ema_daily      — daily EMA 10/20/50/100/200/1000 compressed <3% for 20+ days
   2. kdj_divergence — price falling, KDJ rising over 30 days
-  3. sma_hourly     — hourly SMA 5/10/20/30/50 compressed <3% for 20+ hours
+  3. ema_hourly     — hourly EMA 10/20/50/100/200/1000 compressed <3% for 20+ hours
 """
 import csv
 import os
@@ -16,7 +16,7 @@ import pandas as pd
 import requests
 
 # ── Configuration ────────────────────────────────────────────────────────────
-SMA_PERIODS = [5, 10, 20, 30, 50]
+EMA_PERIODS = [10, 20, 50, 100, 200, 1000]
 DIVERGENCE_THRESHOLD = 3.0          # percent
 VOL_MIN = 500000                    # min daily volume MA
 VOL_MIN_HOURLY = 100000             # min hourly volume MA
@@ -28,13 +28,13 @@ KDJ_PERIOD = 9                      # KDJ lookback (same as Pine Script 'Period'
 KDJ_SIGNAL = 3                      # KDJ smooth (same as Pine Script 'Signal Period')
 DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
 DAILY_DAYS = 400                    # days of daily data (weekly KDJ needs 60+ bars, ~400 days)
-HOURLY_DAYS = 30                    # days of hourly data (needs 70+ valid bars for 50h SMA + 20 compression)
+HOURLY_DAYS = 30                    # days of hourly data (needs 70+ valid bars for 50h EMA + 20 compression)
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
 KDJ_OVERSOLD = 50                   # K must be below this for valid signal
-SCORE_TREND_PERIODS = [20, 30, 60, 120]  # SMA periods for trend divergence
+SCORE_TREND_PERIODS = [10, 20, 50, 100, 200]  # EMA periods for trend divergence
 SCORE_TREND_THRESHOLD = 1.0         # max divergence % for trend score
-SCORE_SMA200_SLOPE_BARS = 20        # bars for SMA200 slope check
+SCORE_EMA200_SLOPE_BARS = 20         # bars for EMA200 slope check
 SCORE_VOL_PERIOD = 60               # days for volatility check
 SCORE_VOL_THRESHOLD = 5.0           # min annualized volatility %
 SCORE_VOL_MA_BARS = 5               # bars for volume MA
@@ -203,8 +203,8 @@ def download_data(tickers, progress_cb=None):
     h_start = end_date - timedelta(days=HOURLY_DAYS)
     dp1, dp2 = int(d_start.timestamp()), int(end_date.timestamp())
     hp1, hp2 = int(h_start.timestamp()), int(end_date.timestamp())
-    min_bars_d = max(SMA_PERIODS) + MIN_COMPRESSION_BARS
-    min_bars_h = max(SMA_PERIODS) + MIN_COMPRESSION_BARS
+    min_bars_d = max(EMA_PERIODS) + MIN_COMPRESSION_BARS
+    min_bars_h = max(EMA_PERIODS) + MIN_COMPRESSION_BARS
 
     ticker_list = sorted(tickers.keys())
     all_data = {}
@@ -238,29 +238,29 @@ def download_data(tickers, progress_cb=None):
 
 
 def _calc_divergence(close_series, periods):
-    """Return (divergence_pct, sma_dict) or (None, None)."""
+    """Return (divergence_pct, ema_dict) or (None, None)."""
     if len(close_series) < max(periods):
         return None, None
-    sma = {}
+    ema = {}
     for p in periods:
-        val = close_series.rolling(p).mean().iloc[-1]
+        val = close_series.ewm(span=p, adjust=False).mean().iloc[-1]
         if pd.isna(val):
             return None, None
-        sma[p] = val
+        ema[p] = val
     close = close_series.iloc[-1]
-    vals = list(sma.values())
-    return (max(vals) - min(vals)) / close * 100.0, sma
+    vals = list(ema.values())
+    return (max(vals) - min(vals)) / close * 100.0, ema
 
 
 def _check_compression_duration(close_series, periods, threshold, min_bars):
-    """Return True if SMA divergence stayed <= threshold for the last min_bars bars."""
+    """Return True if EMA divergence stayed <= threshold for the last min_bars bars."""
     needed = max(periods) + min_bars
     if len(close_series) < needed:
         return False
 
-    smas = {p: close_series.rolling(p).mean() for p in periods}
+    emas = {p: close_series.ewm(span=p, adjust=False).mean() for p in periods}
     for i in range(-min_bars, 0):
-        vals = [smas[p].iloc[i] for p in periods]
+        vals = [emas[p].iloc[i] for p in periods]
         if any(pd.isna(v) for v in vals):
             return False
         div = (max(vals) - min(vals)) / close_series.iloc[i] * 100.0
@@ -329,21 +329,23 @@ def _check_volume(vol_series, min_vol=None, roll=20):
     return vol_series.rolling(roll).mean().iloc[-1] > min_vol
 
 
-def run_sma_screener(data, ticker_names=None, periods=SMA_PERIODS,
+def run_ema_screener(data, ticker_names=None, periods=None,
                      threshold=DIVERGENCE_THRESHOLD,
                      min_compression=MIN_COMPRESSION_BARS):
     """
-    SMA Compression Screener (daily):
-      Stage 1 — SMA divergence <= threshold% for >= min_compression bars
+    EMA Compression Screener (daily):
+      Stage 1 — EMA divergence <= threshold% for >= min_compression bars
       Stage 2 — daily volume MA > min_vol
     """
+    if periods is None:
+        periods = EMA_PERIODS
     ticker_names = ticker_names or {}
     s1 = 0
     s2 = 0
 
     for tkr, d in data.items():
         close = d["close"]
-        div, sma = _calc_divergence(close, periods)
+        div, ema = _calc_divergence(close, periods)
         if div is None or div > threshold:
             continue
 
@@ -357,35 +359,35 @@ def run_sma_screener(data, ticker_names=None, periods=SMA_PERIODS,
 
         vol = d.get("volume")
         vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
-        trend = "↑" if close.iloc[-1] > sma[20] else "↓"
+        trend = "↑" if close.iloc[-1] > ema[50] else "↓"
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
-        yield {
+        result = {
             "ticker": tkr,
             "name": name,
             "close": round(close.iloc[-1], 2),
-            "MA5": round(sma[5], 2),
-            "MA10": round(sma[10], 2),
-            "MA20": round(sma[20], 2),
-            "MA30": round(sma[30], 2),
-            "MA50": round(sma[50], 2),
             "divergence_pct": round(div, 2),
             "vol_ma": vol_ma_val,
             "trend": trend,
         }
+        for p in periods:
+            result[f"EMA{p}"] = round(ema[p], 2)
+        yield result
 
     print(f"  Stage 1 (compression):    {s1} passed")
     print(f"  Stage 2 (vol > {VOL_MIN//1000}k):  {s2} passed")
 
 
-def run_sma_hourly_screener(data, ticker_names=None, periods=SMA_PERIODS,
+def run_ema_hourly_screener(data, ticker_names=None, periods=None,
                             threshold=DIVERGENCE_THRESHOLD,
                             min_compression=MIN_COMPRESSION_BARS):
     """
-    SMA Compression Screener (hourly):
-      Stage 1 — SMA divergence <= threshold% for >= min_compression bars
+    EMA Compression Screener (hourly):
+      Stage 1 — EMA divergence <= threshold% for >= min_compression bars
       Stage 2 — hourly volume MA > min_vol
     """
+    if periods is None:
+        periods = EMA_PERIODS
     ticker_names = ticker_names or {}
     s1 = 0
     s2 = 0
@@ -395,7 +397,7 @@ def run_sma_hourly_screener(data, ticker_names=None, periods=SMA_PERIODS,
         if close is None:
             continue
 
-        div, sma = _calc_divergence(close, periods)
+        div, ema = _calc_divergence(close, periods)
         if div is None or div > threshold:
             continue
 
@@ -409,22 +411,20 @@ def run_sma_hourly_screener(data, ticker_names=None, periods=SMA_PERIODS,
 
         vol = d.get("volume_hourly")
         vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
-        trend = "↑" if close.iloc[-1] > sma[20] else "↓"
+        trend = "↑" if close.iloc[-1] > ema[50] else "↓"
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
-        yield {
+        result = {
             "ticker": tkr,
             "name": name,
             "close": round(close.iloc[-1], 2),
-            "MA5": round(sma[5], 2),
-            "MA10": round(sma[10], 2),
-            "MA20": round(sma[20], 2),
-            "MA30": round(sma[30], 2),
-            "MA50": round(sma[50], 2),
             "divergence_pct": round(div, 2),
             "vol_ma": vol_ma_val,
             "trend": trend,
         }
+        for p in periods:
+            result[f"EMA{p}"] = round(ema[p], 2)
+        yield result
 
     print(f"  Stage 1 (compression):      {s1} passed")
     print(f"  Stage 2 (vol > {VOL_MIN_HOURLY//1000}k):     {s2} passed")
@@ -559,14 +559,14 @@ def run_weekly_kdj_screener(data, ticker_names=None,
 def run_scoring_screener(data, ticker_names=None,
                          trend_periods=SCORE_TREND_PERIODS,
                          trend_threshold=SCORE_TREND_THRESHOLD,
-                         sma200_slope_bars=SCORE_SMA200_SLOPE_BARS,
+                         ema200_slope_bars=SCORE_EMA200_SLOPE_BARS,
                          vol_period=SCORE_VOL_PERIOD,
                          vol_threshold=SCORE_VOL_THRESHOLD,
                          vol_ma_bars=SCORE_VOL_MA_BARS,
                          vol_ma_threshold=SCORE_VOL_MA_THRESHOLD,
                          top_n=SCORE_TOP_N):
     """
-    Weighted Scoring Screener — scores every stock on 6 factors.
+    Weighted Scoring Screener — scores every stock on 11 factors.
     Returns top_n stocks sorted by total score descending.
     """
     ticker_names = ticker_names or {}
@@ -580,30 +580,30 @@ def run_scoring_screener(data, ticker_names=None,
         score = 0
         details = {}
 
-        # 1. Close > SMA200 (+1)
-        sma200 = close.rolling(200).mean()
-        above_200 = len(sma200.dropna()) > 0 and close.iloc[-1] > sma200.iloc[-1]
+        # 1. Close > EMA200 (+1)
+        ema200 = close.ewm(span=200, adjust=False).mean()
+        above_200 = len(ema200.dropna()) > 0 and close.iloc[-1] > ema200.iloc[-1]
         if above_200:
             score += 1
         details["above_200"] = above_200
 
-        # 2. SMA200 slope > 0 (+1)
+        # 2. EMA200 slope > 0 (+1)
         slope_up = False
-        if len(sma200.dropna()) >= sma200_slope_bars:
-            y = sma200.iloc[-sma200_slope_bars:].values.astype(float)
+        if len(ema200.dropna()) >= ema200_slope_bars:
+            y = ema200.iloc[-ema200_slope_bars:].values.astype(float)
             if not np.isnan(y).any():
-                slope = np.polyfit(np.arange(sma200_slope_bars, dtype=float), y, 1)[0]
+                slope = np.polyfit(np.arange(ema200_slope_bars, dtype=float), y, 1)[0]
                 slope_up = slope > 0
         if slope_up:
             score += 1
-        details["sma200_up"] = slope_up
+        details["ema200_up"] = slope_up
 
-        # 3. SMA divergence < threshold (+1)
+        # 3. EMA divergence < threshold (+1)
         trend_tight = False
-        sma_vals = {}
+        ema_vals = {}
         for p in trend_periods:
-            sma_vals[p] = close.rolling(p).mean()
-        vals = [sma_vals[p].iloc[-1] for p in trend_periods]
+            ema_vals[p] = close.ewm(span=p, adjust=False).mean()
+        vals = [ema_vals[p].iloc[-1] for p in trend_periods]
         if not any(pd.isna(v) for v in vals):
             div = (max(vals) - min(vals)) / close.iloc[-1] * 100.0
             trend_tight = div < trend_threshold
@@ -666,19 +666,19 @@ def run_scoring_screener(data, ticker_names=None,
             score += 1
         details["vol_expand"] = vol_expand
 
-        # 9. SMA Alignment: 20 > 50 > 200 (+1) — perfect bullish alignment
+        # 9. EMA Alignment: 50 > 100 > 200 (+1) — perfect bullish alignment
         aligned = False
-        sma20 = close.rolling(20).mean().iloc[-1]
-        sma50 = close.rolling(50).mean().iloc[-1]
-        if not pd.isna(sma200.iloc[-1]) and not pd.isna(sma50) and not pd.isna(sma20):
-            aligned = sma20 > sma50 > sma200.iloc[-1]
+        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
+        ema100 = close.ewm(span=100, adjust=False).mean().iloc[-1]
+        if not pd.isna(ema200.iloc[-1]) and not pd.isna(ema100) and not pd.isna(ema50):
+            aligned = ema50 > ema100 > ema200.iloc[-1]
         if aligned:
             score += 1
         details["aligned"] = aligned
 
-        # 10. Bollinger Band squeeze: BB width at 20-bar low (+1)
+        # 10. Bollinger Band squeeze (EMA-based): BB width at 20-bar low (+1)
         bb_squeeze = False
-        bb_mid = close.rolling(20).mean()
+        bb_mid = close.ewm(span=20, adjust=False).mean()
         bb_std = close.rolling(20).std()
         bb_width = (4 * bb_std) / bb_mid
         if len(bb_width.dropna()) >= 20:
@@ -706,7 +706,7 @@ def run_scoring_screener(data, ticker_names=None,
             "close": round(close.iloc[-1], 2),
             "score": score,
             "above_200": "Y" if above_200 else "",
-            "sma200_up": "Y" if slope_up else "",
+            "ema200_up": "Y" if slope_up else "",
             "trend_tight": "Y" if trend_tight else "",
             "kdj_sig": kdj_sig or "",
             "wkdj_sig": wkdj_sig or "",
@@ -726,7 +726,7 @@ def run_scoring_screener(data, ticker_names=None,
 def backtest_scoring(data, ticker_names=None,
                      trend_periods=SCORE_TREND_PERIODS,
                      trend_threshold=SCORE_TREND_THRESHOLD,
-                     sma200_slope_bars=SCORE_SMA200_SLOPE_BARS,
+                     ema200_slope_bars=SCORE_EMA200_SLOPE_BARS,
                      vol_period=SCORE_VOL_PERIOD,
                      vol_threshold=SCORE_VOL_THRESHOLD,
                      vol_ma_bars=SCORE_VOL_MA_BARS,
@@ -782,7 +782,7 @@ def backtest_scoring(data, ticker_names=None,
         scored = run_scoring_screener(
             snap_data, ticker_names,
             trend_periods=trend_periods, trend_threshold=trend_threshold,
-            sma200_slope_bars=sma200_slope_bars,
+            ema200_slope_bars=ema200_slope_bars,
             vol_period=vol_period, vol_threshold=vol_threshold,
             vol_ma_bars=vol_ma_bars, vol_ma_threshold=vol_ma_threshold,
             top_n=top_n,
@@ -839,7 +839,7 @@ def _write_csv(results, prefix, cols, sort_key, output_dir=OUTPUT_DIR):
 def main():
     print("=" * 56)
     print("  Bursa Malaysia Stock Screener  (3 scripts, 1 output)")
-    print(f"  SMA: {SMA_PERIODS} | divergence < {DIVERGENCE_THRESHOLD}%")
+    print(f"  EMA: {EMA_PERIODS} | divergence < {DIVERGENCE_THRESHOLD}%")
     print(f"  Compression >= {MIN_COMPRESSION_BARS} bars | Vol daily>{VOL_MIN//1000}k hourly>{VOL_MIN_HOURLY//1000}k")
     print(f"  KDJ divergence {DIVERGENCE_LOOKBACK}d")
     print("=" * 56)
@@ -850,13 +850,13 @@ def main():
 
     all_results = []
 
-    # ── Script 1: Daily SMA Compression ─────────────────────────────────────
+    # ── Script 1: Daily EMA Compression ─────────────────────────────────────
     print("\n" + "=" * 56)
-    print("  [1/3] Daily SMA Compression")
+    print("  [1/3] Daily EMA Compression")
     print(f"        divergence <= {DIVERGENCE_THRESHOLD}% for >= {MIN_COMPRESSION_BARS} days")
     print("=" * 56)
-    for r in run_sma_screener(data, tickers):
-        r["script"] = "sma_daily"
+    for r in run_ema_screener(data, tickers):
+        r["script"] = "ema_daily"
         all_results.append(r)
 
     # ── Script 2: KDJ Divergence ────────────────────────────────────────────
@@ -868,25 +868,25 @@ def main():
         r["script"] = "kdj_divergence"
         all_results.append(r)
 
-    # ── Script 3: Hourly SMA Compression ────────────────────────────────────
+    # ── Script 3: Hourly EMA Compression ────────────────────────────────────
     print("\n" + "=" * 56)
-    print("  [3/3] Hourly SMA Compression")
+    print("  [3/3] Hourly EMA Compression")
     print(f"        divergence <= {DIVERGENCE_THRESHOLD}% for >= {MIN_COMPRESSION_BARS} hours")
     print("=" * 56)
-    for r in run_sma_hourly_screener(data, tickers):
-        r["script"] = "sma_hourly"
+    for r in run_ema_hourly_screener(data, tickers):
+        r["script"] = "ema_hourly"
         all_results.append(r)
 
     # ── Write combined CSV ──────────────────────────────────────────────────
     print("\n" + "=" * 56)
-    combined_cols = ["script", "ticker", "name", "close",
-                     "MA5", "MA10", "MA20", "MA30", "MA50",
-                     "divergence_pct", "kdj_k", "kdj_d", "kdj_j",
-                     "price_slope", "kdj_k_slope", "vol_ma", "trend"]
+    ema_cols = [f"EMA{p}" for p in EMA_PERIODS]
+    combined_cols = ["script", "ticker", "name", "close"] + ema_cols + [
+        "divergence_pct", "kdj_k", "kdj_d", "kdj_j",
+        "price_slope", "kdj_k_slope", "vol_ma", "trend"]
     _write_csv(all_results, "screener_combined", combined_cols,
                sort_key=lambda r: (
-                   0 if r["script"] == "sma_daily" else
-                   1 if r["script"] == "sma_hourly" else 2,
+                   0 if r["script"] == "ema_daily" else
+                   1 if r["script"] == "ema_hourly" else 2,
                    r.get("divergence_pct", 999),
                ))
 

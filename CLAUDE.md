@@ -25,8 +25,8 @@ pip install -r requirements.txt
 ## Architecture
 
 **`screener.py`** — pure engine. No UI. Three screener functions:
-- `run_sma_screener(data, ...)` → daily SMA compression filter
-- `run_sma_hourly_screener(data, ...)` → hourly SMA compression filter
+- `run_ema_screener(data, ...)` → daily EMA compression filter
+- `run_ema_hourly_screener(data, ...)` → hourly EMA compression filter
 - `run_divergence_screener(data, ...)` → KDJ bullish divergence filter
 
 All three consume the same data dict from `download_data()`, which fetches daily + hourly OHLCV from Yahoo v8 chart API concurrently (ThreadPoolExecutor, 10 workers). Data dict keys: `close`, `high`, `low`, `volume` (daily); `close_hourly`, `volume_hourly` (hourly); `name`.
@@ -45,8 +45,8 @@ All three consume the same data dict from `download_data()`, which fetches daily
 
 ## Key config (screener.py top)
 
-- `SMA_PERIODS` — MA periods used by compression filter
-- `DIVERGENCE_THRESHOLD` — max divergence % for SMA compression
+- `EMA_PERIODS` — EMA periods used by compression filter
+- `DIVERGENCE_THRESHOLD` — max divergence % for EMA compression
 - `MIN_COMPRESSION_BARS` — how many consecutive bars must be tight
 - `VOL_MIN` / `VOL_MIN_HOURLY` — volume MA thresholds
 - `KDJ_PERIOD` / `KDJ_SIGNAL` / `DIVERGENCE_LOOKBACK` — KDJ params

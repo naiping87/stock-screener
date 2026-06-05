@@ -2,7 +2,7 @@
 title Bursa Malaysia Stock Screener
 echo ============================================
 echo   Bursa Malaysia Stock Screener
-echo   SMA Divergence + Bullish Alignment Filter
+echo   EMA Divergence + Bullish Alignment Filter
 echo ============================================
 echo.
 
