@@ -418,7 +418,8 @@ def run_ema_hourly_screener(data, ticker_names=None, periods=None,
 
         vol = d.get("volume_hourly")
         vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
-        trend = "↑" if close.iloc[-1] > ema[50] else "↓"
+        trend_ema = 50 if 50 in ema else min(ema.keys(), key=lambda x: abs(x - 50))
+        trend = "↑" if close.iloc[-1] > ema[trend_ema] else "↓"
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
         result = {
@@ -430,7 +431,8 @@ def run_ema_hourly_screener(data, ticker_names=None, periods=None,
             "trend": trend,
         }
         for p in periods:
-            result[f"EMA{p}"] = round(ema[p], 2)
+            if p in ema:
+                result[f"EMA{p}"] = round(ema[p], 2)
         yield result
 
     print(f"  Stage 1 (compression):      {s1} passed")
