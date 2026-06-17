@@ -308,17 +308,17 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       AgGrid — Institutional Grade dark table
+       AgGrid — Institutional Grade dark table (alpine-dark base)
        ══════════════════════════════════════════════════════════════════════ */
 
-    .ag-theme-quartz-dark {
+    .ag-theme-alpine-dark {
         --ag-background-color: #0d1117 !important;
         --ag-foreground-color: #e6edf3 !important;
         --ag-secondary-foreground-color: #6e7681 !important;
         --ag-header-background-color: #161b22 !important;
         --ag-header-foreground-color: #6e7681 !important;
         --ag-odd-row-background-color: #131720 !important;
-        --ag-row-hover-color: rgba(31,111,235,0.10) !important;   /* #1F6FEB 10% */
+        --ag-row-hover-color: rgba(31,111,235,0.10) !important;
         --ag-selected-row-background-color: rgba(31,111,235,0.14) !important;
         --ag-border-color: rgba(255,255,255,0.05) !important;
         --ag-secondary-border-color: rgba(255,255,255,0.03) !important;
@@ -336,74 +336,73 @@ st.markdown("""
         overflow: hidden !important;
     }
 
-    /* ── Header — #161B22 + subtle bottom border ─────── */
-    .ag-theme-quartz-dark .ag-header {
+    /* ── Header ──────────────────────────────────────── */
+    .ag-theme-alpine-dark .ag-header {
         background: #161b22 !important;
         border-bottom: 1px solid rgba(255,255,255,0.08) !important;
     }
-    .ag-theme-quartz-dark .ag-header-cell {
+    .ag-theme-alpine-dark .ag-header-cell {
         padding: 0 10px !important; color: #6e7681 !important;
         font-weight: 600; font-size: 10.5px;
     }
-    .ag-theme-quartz-dark .ag-header-cell-label {
+    .ag-theme-alpine-dark .ag-header-cell-label {
         font-weight: 600; font-size: 10.5px;
         text-transform: uppercase; letter-spacing: 0.05em;
     }
-    .ag-theme-quartz-dark .ag-sort-indicator-icon {
+    .ag-theme-alpine-dark .ag-sort-indicator-icon {
         color: #58a6ff !important; opacity: 0.9;
     }
 
-    /* ── Rows — zebra via JS, hover #1F6FEB 10% ─────── */
-    .ag-theme-quartz-dark .ag-row {
+    /* ── Rows ────────────────────────────────────────── */
+    .ag-theme-alpine-dark .ag-row {
         border-bottom: 1px solid rgba(255,255,255,0.015) !important;
         color: #e6edf3 !important;
-        transition: background-color 0.12s ease;
     }
-    .ag-theme-quartz-dark .ag-row:hover {
-        background: rgba(31,111,235,0.10) !important;  /* #1F6FEB 10% */
+    .ag-theme-alpine-dark .ag-row:hover {
+        background: rgba(31,111,235,0.10) !important;
         cursor: pointer;
     }
-    .ag-theme-quartz-dark .ag-cell {
+    .ag-theme-alpine-dark .ag-cell {
         padding: 0 10px !important; line-height: 34px !important;
         color: #e6edf3 !important; border-right: none !important;
     }
-    .ag-theme-quartz-dark .ag-cell:focus {
+    .ag-theme-alpine-dark .ag-cell:focus {
         border-color: #58a6ff !important;
         box-shadow: inset 0 0 0 1px rgba(88,166,255,0.3) !important;
         outline: none !important;
     }
 
     /* ── Pagination ──────────────────────────────────── */
-    .ag-theme-quartz-dark .ag-paging-panel {
+    .ag-theme-alpine-dark .ag-paging-panel {
         background: #0d1117 !important;
         border-top: 1px solid rgba(255,255,255,0.06) !important;
         color: #6e7681 !important; font-size: 12px !important; height: 40px !important;
     }
-    .ag-theme-quartz-dark .ag-paging-button {
+    .ag-theme-alpine-dark .ag-paging-button {
         background: rgba(255,255,255,0.03) !important;
         border: 1px solid rgba(255,255,255,0.07) !important;
         border-radius: 5px !important; color: #6e7681 !important;
     }
-    .ag-theme-quartz-dark .ag-paging-button:hover {
+    .ag-theme-alpine-dark .ag-paging-button:hover {
         background: rgba(255,255,255,0.08) !important;
     }
 
     /* ── Filters / Popups ────────────────────────────── */
-    .ag-theme-quartz-dark .ag-floating-filter {
+    .ag-theme-alpine-dark .ag-floating-filter {
         background: #0d1117 !important;
     }
-    .ag-theme-quartz-dark .ag-floating-filter-body input {
+    .ag-theme-alpine-dark .ag-floating-filter-body input {
         background: rgba(255,255,255,0.04) !important;
         border: 1px solid #30363d !important;
         border-radius: 5px !important; color: #e6edf3 !important;
         font-size: 11.5px !important; padding: 4px 8px !important;
     }
-    .ag-theme-quartz-dark .ag-floating-filter-body input:focus {
+    .ag-theme-alpine-dark .ag-floating-filter-body input:focus {
         border-color: #58a6ff !important;
         box-shadow: 0 0 0 2px rgba(88,166,255,0.12) !important;
     }
-    .ag-theme-quartz-dark .ag-menu,
-    .ag-theme-quartz-dark .ag-filter {
+    .ag-theme-alpine-dark .ag-menu,
+    .ag-theme-alpine-dark .ag-filter {
         background: #161b22 !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
         border-radius: 8px !important;
@@ -411,11 +410,11 @@ st.markdown("""
     }
 
     /* ── Scrollbar ───────────────────────────────────── */
-    .ag-theme-quartz-dark ::-webkit-scrollbar { width: 5px; height: 5px; }
-    .ag-theme-quartz-dark ::-webkit-scrollbar-thumb {
+    .ag-theme-alpine-dark ::-webkit-scrollbar { width: 5px; height: 5px; }
+    .ag-theme-alpine-dark ::-webkit-scrollbar-thumb {
         background: rgba(255,255,255,0.06); border-radius: 3px;
     }
-    .ag-theme-quartz-dark ::-webkit-scrollbar-thumb:hover {
+    .ag-theme-alpine-dark ::-webkit-scrollbar-thumb:hover {
         background: rgba(255,255,255,0.14);
     }
 
@@ -786,21 +785,18 @@ with st.sidebar:
             )
 
     with st.expander("🔄 Auto-Refresh", expanded=False):
-        st.markdown('<div style="margin-bottom:0.35rem;font-size:0.72rem;color:#6e7681;display:flex;align-items:center;gap:0.3rem;">'
-                     'Enable automatic data reload'
+        st.markdown('<div style="margin-bottom:0.25rem;font-size:0.7rem;color:#6e7681;display:flex;align-items:center;gap:0.25rem;">'
+                     'Enable automatic data reload '
                      '<span title="Data is cached for 1 hour. Auto-refresh forces a fresh download from Yahoo Finance at the selected interval." '
-                     'style="cursor:help;opacity:0.45;font-size:0.7rem;line-height:1;">ⓘ</span>'
+                     'style="cursor:help;opacity:0.4;font-size:0.65rem;line-height:1;">ⓘ</span>'
                      '</div>', unsafe_allow_html=True)
-        col_tog, col_int = st.columns([0.9, 1.6])
-        with col_tog:
-            auto_refresh = st.toggle("Active", value=False, key="auto_refresh")
-        with col_int:
-            refresh_min = st.select_slider(
-                "Interval", options=["5 min", "10 min", "15 min", "30 min"],
-                value="10 min", key="refresh_interval", disabled=not auto_refresh,
-            )
-            _ref_map = {"5 min": 5, "10 min": 10, "15 min": 15, "30 min": 30}
-            refresh_min_int = _ref_map.get(refresh_min, 10)
+        auto_refresh = st.toggle("Active", value=False, key="auto_refresh")
+        refresh_min = st.select_slider(
+            "Interval", options=["5 min", "10 min", "15 min", "30 min"],
+            value="10 min", key="refresh_interval", disabled=not auto_refresh,
+        )
+        _ref_map = {"5 min": 5, "10 min": 10, "15 min": 15, "30 min": 30}
+        refresh_min_int = _ref_map.get(refresh_min, 10)
 
     # Auto-reload JavaScript + institutional status tag
     if auto_refresh and st.session_state.get("run_done"):
@@ -1070,24 +1066,24 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     AgGrid(
         df, gridOptions=grid_options,
         height=height, width='100%',
-        theme='quartz-dark',
+        theme='alpine-dark',
         update_on=[],
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
     )
 
-    # Double-tap: inject JS to force background on outer AgGrid containers post-render
+    # Post-render: JS safety net to force dark background on grid containers
     st.components.v1.html("""
     <script>
     setTimeout(function() {
-        var grids = document.querySelectorAll('.ag-theme-quartz-dark, .ag-theme-alpine-dark');
+        var grids = document.querySelectorAll('.ag-theme-alpine-dark');
         grids.forEach(function(g) {
-            g.style.setProperty('background', '#090c10', 'important');
+            g.style.setProperty('background', '#0d1117', 'important');
             g.querySelectorAll('.ag-root-wrapper, .ag-root, .ag-body-viewport, .ag-center-cols-viewport').forEach(function(el) {
-                el.style.setProperty('background', '#090c10', 'important');
+                el.style.setProperty('background', '#0d1117', 'important');
             });
         });
-    }, 600);
+    }, 400);
     </script>
     """, height=0)
 
