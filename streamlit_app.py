@@ -444,23 +444,6 @@ st.markdown("""
         color: var(--text-primary) !important;
     }
 
-    /* ── Toggle — capsule shape, blue active, dark inactive ── */
-    [data-baseweb="checkbox"] {
-        background: #30363d !important;
-        border: 1px solid rgba(255,255,255,0.08) !important;
-        border-radius: 12px !important; width: 38px !important; height: 21px !important;
-        transition: background 0.2s ease !important;
-    }
-    [data-baseweb="checkbox"][aria-checked="true"] {
-        background: #58a6ff !important; border-color: #58a6ff !important;
-    }
-    [data-baseweb="checkbox"] div {
-        background: #fff !important; border-radius: 50% !important;
-        width: 15px !important; height: 15px !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
-        transition: transform 0.2s ease !important;
-    }
-
     /* ── Select / Dropdown ─────────────────────────────── */
     [data-testid="stSelectbox"] div[data-baseweb="select"] > div {
         background: rgba(255,255,255,0.04) !important;
