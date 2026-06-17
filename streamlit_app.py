@@ -306,10 +306,10 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       AgGrid — Apple dark table (alpine-dark + full CSS variable reset)
+       AgGrid — Apple dark table (quartz-dark + full CSS variable reset)
        ══════════════════════════════════════════════════════════════════════ */
 
-    .ag-theme-alpine-dark {
+    .ag-theme-quartz-dark {
         /* ── 核心颜色变量（必须设满，否则 AgGrid 内部用默认灰白）── */
         --ag-background-color: #090c10 !important;
         --ag-foreground-color: #e6edf3 !important;
@@ -339,104 +339,104 @@ st.markdown("""
     }
 
     /* ── 表头 ────────────────────────────────────────── */
-    .ag-theme-alpine-dark .ag-header {
+    .ag-theme-quartz-dark .ag-header {
         background: #0d1117 !important;
         border-bottom: 1px solid rgba(255,255,255,0.06) !important;
     }
-    .ag-theme-alpine-dark .ag-header-cell {
+    .ag-theme-quartz-dark .ag-header-cell {
         padding: 0 10px !important; color: #6e7681 !important;
     }
-    .ag-theme-alpine-dark .ag-header-cell-label {
+    .ag-theme-quartz-dark .ag-header-cell-label {
         font-weight: 600; font-size: 10.5px;
         text-transform: uppercase; letter-spacing: 0.04em;
     }
-    .ag-theme-alpine-dark .ag-header-cell-resize::after {
+    .ag-theme-quartz-dark .ag-header-cell-resize::after {
         background: rgba(255,255,255,0.03) !important; width: 1px !important;
     }
-    .ag-theme-alpine-dark .ag-sort-indicator-icon,
-    .ag-theme-alpine-dark .ag-header-icon {
+    .ag-theme-quartz-dark .ag-sort-indicator-icon,
+    .ag-theme-quartz-dark .ag-header-icon {
         color: #58a6ff !important; opacity: 0.8;
     }
 
     /* ── 行与单元格 ──────────────────────────────────── */
-    .ag-theme-alpine-dark .ag-row {
+    .ag-theme-quartz-dark .ag-row {
         background: #090c10 !important;
         border-bottom: 1px solid rgba(255,255,255,0.02) !important;
         color: #e6edf3 !important;
     }
-    .ag-theme-alpine-dark .ag-row:hover {
+    .ag-theme-quartz-dark .ag-row:hover {
         background: rgba(88,166,255,0.04) !important;
     }
-    .ag-theme-alpine-dark .ag-cell {
+    .ag-theme-quartz-dark .ag-cell {
         padding: 0 10px !important; line-height: 34px !important;
         color: #e6edf3 !important; border-right: none !important;
     }
-    .ag-theme-alpine-dark .ag-cell:focus {
+    .ag-theme-quartz-dark .ag-cell:focus {
         border-color: #58a6ff !important;
         box-shadow: inset 0 0 0 1px rgba(88,166,255,0.25) !important;
         outline: none !important;
     }
 
     /* ── 分页栏 ──────────────────────────────────────── */
-    .ag-theme-alpine-dark .ag-paging-panel {
+    .ag-theme-quartz-dark .ag-paging-panel {
         background: #0d1117 !important;
         border-top: 1px solid rgba(255,255,255,0.05) !important;
         color: #8b949e !important; font-size: 12px !important; height: 40px !important;
     }
-    .ag-theme-alpine-dark .ag-paging-button {
+    .ag-theme-quartz-dark .ag-paging-button {
         background: rgba(255,255,255,0.02) !important;
         border: 1px solid rgba(255,255,255,0.06) !important;
         border-radius: 5px !important; color: #8b949e !important;
     }
-    .ag-theme-alpine-dark .ag-paging-button:hover {
+    .ag-theme-quartz-dark .ag-paging-button:hover {
         background: rgba(255,255,255,0.06) !important;
     }
 
     /* ── 浮动筛选 ────────────────────────────────────── */
-    .ag-theme-alpine-dark .ag-floating-filter {
+    .ag-theme-quartz-dark .ag-floating-filter {
         background: #0d1117 !important;
     }
-    .ag-theme-alpine-dark .ag-floating-filter-body input {
+    .ag-theme-quartz-dark .ag-floating-filter-body input {
         background: rgba(255,255,255,0.04) !important;
         border: 1px solid rgba(255,255,255,0.08) !important;
         border-radius: 5px !important; color: #e6edf3 !important;
         font-size: 11.5px !important; padding: 4px 8px !important;
     }
-    .ag-theme-alpine-dark .ag-floating-filter-body input:focus {
+    .ag-theme-quartz-dark .ag-floating-filter-body input:focus {
         border-color: #58a6ff !important;
         box-shadow: 0 0 0 2px rgba(88,166,255,0.12) !important;
     }
 
     /* ── 弹窗 ────────────────────────────────────────── */
-    .ag-theme-alpine-dark .ag-menu,
-    .ag-theme-alpine-dark .ag-filter {
+    .ag-theme-quartz-dark .ag-menu,
+    .ag-theme-quartz-dark .ag-filter {
         background: #0d1117 !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
         border-radius: 8px !important;
         box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
     }
-    .ag-theme-alpine-dark .ag-filter input,
-    .ag-theme-alpine-dark .ag-filter select {
+    .ag-theme-quartz-dark .ag-filter input,
+    .ag-theme-quartz-dark .ag-filter select {
         background: rgba(255,255,255,0.04) !important;
         border: 1px solid rgba(255,255,255,0.08) !important;
         border-radius: 5px !important; color: #e6edf3 !important;
     }
-    .ag-theme-alpine-dark .ag-filter-apply-panel button:first-child {
+    .ag-theme-quartz-dark .ag-filter-apply-panel button:first-child {
         background: #58a6ff !important; border: none !important;
         color: #fff !important; border-radius: 5px !important;
     }
 
     /* ── 滚动条 ──────────────────────────────────────── */
-    .ag-theme-alpine-dark ::-webkit-scrollbar { width: 5px; height: 5px; }
-    .ag-theme-alpine-dark ::-webkit-scrollbar-thumb {
+    .ag-theme-quartz-dark ::-webkit-scrollbar { width: 5px; height: 5px; }
+    .ag-theme-quartz-dark ::-webkit-scrollbar-thumb {
         background: rgba(255,255,255,0.06); border-radius: 3px;
     }
-    .ag-theme-alpine-dark ::-webkit-scrollbar-thumb:hover {
+    .ag-theme-quartz-dark ::-webkit-scrollbar-thumb:hover {
         background: rgba(255,255,255,0.12);
     }
 
     /* ── 空状态 ──────────────────────────────────────── */
-    .ag-theme-alpine-dark .ag-overlay-no-rows-wrapper {
+    .ag-theme-quartz-dark .ag-overlay-no-rows-wrapper {
         color: #484f58 !important; font-size: 13px !important;
     }
 
@@ -804,12 +804,12 @@ with st.sidebar:
                 key="cfg_score_top_n",
             )
 
-    with st.expander("Auto-Refresh", expanded=True):
-        auto_refresh = st.toggle("Enable", value=False, key="auto_refresh",
+    with st.expander("Auto-Refresh", expanded=False):
+        auto_refresh = st.toggle("Auto-reload data", value=False, key="auto_refresh",
                                  help="Auto-reload data every N minutes")
         refresh_min = st.select_slider(
-            "Interval", options=[5, 10, 15, 30], value=10, key="refresh_interval",
-            disabled=not auto_refresh,
+            "Reload interval (minutes)", options=[5, 10, 15, 30], value=10,
+            key="refresh_interval", disabled=not auto_refresh,
         )
 
     # Auto-reload JavaScript
@@ -829,7 +829,7 @@ with st.sidebar:
         </script>
         """
         st.components.v1.html(js, height=0)
-        st.info(f"⏱ Next refresh in {refresh_min} min")
+        st.info(f"⏱ 下次自动刷新：{refresh_min} 分钟后")
 
     st.markdown('<hr class="backtest-divider">', unsafe_allow_html=True)
 
@@ -1046,16 +1046,39 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     if score_col and 'Score' in df.columns:
         gb.configure_column('Score', cellStyle=_SCORE_CONDITION)
 
+    # Force dark row background via AgGrid callback (bypasses CSS loading issues)
+    _dark_row_style = JsCode("""
+    function(params) {
+        return { 'background-color': '#090c10' };
+    }
+    """)
+    gb.configure_grid_options(getRowStyle=_dark_row_style)
+
     grid_options = gb.build()
 
     AgGrid(
         df, gridOptions=grid_options,
         height=height, width='100%',
-        theme='alpine-dark',
+        theme='quartz-dark',
         update_on=[],
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
     )
+
+    # Double-tap: inject JS to force background on outer AgGrid containers post-render
+    st.components.v1.html("""
+    <script>
+    setTimeout(function() {
+        var grids = document.querySelectorAll('.ag-theme-quartz-dark, .ag-theme-alpine-dark');
+        grids.forEach(function(g) {
+            g.style.setProperty('background', '#090c10', 'important');
+            g.querySelectorAll('.ag-root-wrapper, .ag-root, .ag-body-viewport, .ag-center-cols-viewport').forEach(function(el) {
+                el.style.setProperty('background', '#090c10', 'important');
+            });
+        });
+    }, 600);
+    </script>
+    """, height=0)
 
 
 # ── Data loader (@st.cache_data persists across refreshes, 1hr TTL) ────────
