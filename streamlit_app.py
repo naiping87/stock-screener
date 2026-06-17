@@ -88,60 +88,298 @@ st.markdown("""
 # ── CSS ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .main .block-container { padding-top: 1rem; }
+    /* ══════════════════════════════════════════════════════════════════════════
+       Global — dark premium theme
+       ══════════════════════════════════════════════════════════════════════ */
+    :root {
+        --bg-deep: #090c10;
+        --bg-card: rgba(255,255,255,0.025);
+        --border-subtle: rgba(255,255,255,0.06);
+        --border-card: rgba(255,255,255,0.08);
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --text-muted: #484f58;
+        --accent: #58a6ff;
+        --accent-glow: rgba(88,166,255,0.15);
+        --green: #3fb950;
+        --green-bg: rgba(63,185,80,0.12);
+        --red: #f85149;
+        --orange: #d2991d;
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+        --font-mono: 'SF Mono', 'JetBrains Mono', 'Cascadia Code', monospace;
+    }
 
-    /* ── Sidebar: wider, resizable ─────────────────────── */
+    /* Force dark Streamlit theme */
+    .stApp {
+        background: var(--bg-deep);
+    }
+
+    .main .block-container {
+        padding-top: 0.75rem;
+        max-width: 100%;
+    }
+
+    /* Hide Streamlit default elements */
+    header[data-testid="stHeader"] { background: transparent !important; }
+    #MainMenu, footer { display: none !important; }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Top Navigation Bar — frosted glass
+       ══════════════════════════════════════════════════════════════════════ */
+    .nav-bar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.6rem 1.2rem; margin-bottom: 0.75rem;
+        background: rgba(13,17,23,0.85);
+        backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+        position: sticky; top: 0; z-index: 100;
+    }
+    .nav-brand {
+        display: flex; align-items: center; gap: 0.5rem;
+        font-size: 1.1rem; font-weight: 700; color: var(--text-primary);
+        letter-spacing: -0.02em;
+    }
+    .nav-brand-icon {
+        width: 28px; height: 28px; border-radius: 7px;
+        background: linear-gradient(135deg, #1a6ff5, #3b9fff);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.8rem;
+    }
+    .nav-badge {
+        font-size: 0.65rem; font-weight: 600; padding: 2px 8px;
+        border-radius: 10px; background: var(--accent-glow); color: var(--accent);
+        letter-spacing: 0.03em;
+    }
+    .nav-status {
+        display: flex; align-items: center; gap: 0.4rem;
+        font-size: 0.7rem; color: var(--text-secondary);
+    }
+    .nav-dot {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--green); box-shadow: 0 0 6px var(--green);
+        animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Sidebar — glass panel
+       ══════════════════════════════════════════════════════════════════════ */
     [data-testid="stSidebar"] {
         min-width: 320px !important; max-width: 480px !important;
         resize: horizontal; overflow: auto;
+        background: rgba(13,17,23,0.7) !important;
+        backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+        border-right: 1px solid var(--border-subtle) !important;
     }
     [data-testid="stSidebar"] > div:first-child {
         min-width: 320px !important; max-width: 480px !important; width: 100% !important;
+        padding: 1rem 1.2rem !important;
     }
 
-    /* ── Buttons ───────────────────────────────────────── */
-    .stButton > button {
-        width: 100%; border-radius: 8px; font-weight: 600;
-        border: none; padding: 0.6rem 1rem; transition: all 0.2s;
+    /* Sidebar expanders */
+    [data-testid="stSidebar"] .streamlit-expanderHeader {
+        font-size: 0.82rem; font-weight: 600; color: var(--text-primary);
+        border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+        padding: 0.6rem 0.8rem; background: var(--bg-card);
+        transition: all 0.15s;
     }
-    .stButton > button:hover { opacity: 0.9; transform: translateY(-1px); }
+    [data-testid="stSidebar"] .streamlit-expanderHeader:hover {
+        border-color: rgba(255,255,255,0.12);
+    }
+    [data-testid="stSidebar"] .streamlit-expanderContent {
+        border: 1px solid var(--border-subtle); border-top: none;
+        border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+        padding: 0.6rem 0.8rem; margin-top: -1px;
+    }
+
+    /* Sidebar section titles */
+    .sidebar-section-title {
+        font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.08em; color: var(--text-muted); margin: 1rem 0 0.4rem 0;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Buttons
+       ══════════════════════════════════════════════════════════════════════ */
+    .stButton > button {
+        width: 100%; border-radius: var(--radius-sm); font-weight: 600;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        padding: 0.55rem 1rem; transition: all 0.2s ease;
+        font-size: 0.82rem; letter-spacing: 0.01em;
+    }
+    .stButton > button:hover {
+        border-color: rgba(255,255,255,0.2) !important;
+        transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
     .stButton > button:active { transform: translateY(0); }
 
-    /* ── Metric cards ──────────────────────────────────── */
+    /* Primary button */
+    button[kind="primary"] {
+        background: linear-gradient(135deg, #1a6ff5, #3b9fff) !important;
+        color: #fff !important; border: none !important;
+        box-shadow: 0 2px 8px rgba(26,111,245,0.3);
+    }
+    button[kind="primary"]:hover {
+        box-shadow: 0 4px 16px rgba(26,111,245,0.45) !important;
+    }
+
+    /* Lock button */
+    button[kind="secondary"] {
+        background: rgba(255,255,255,0.04) !important; color: var(--text-secondary) !important;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Metric cards — glass + subtle glow
+       ══════════════════════════════════════════════════════════════════════ */
     .metric-card {
-        border: 1px solid rgba(128,128,128,0.2);
-        border-radius: 10px; padding: 1rem; text-align: center;
+        background: var(--bg-card);
+        border: 1px solid var(--border-card); border-radius: var(--radius-md);
+        padding: 1rem 0.8rem; text-align: center;
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        transition: all 0.2s ease; cursor: default;
     }
-    .metric-value { font-size: 2rem; font-weight: 700; }
-    .metric-label { font-size: 0.8rem; margin-top: 0.25rem; opacity: 0.7; }
+    .metric-card:hover {
+        border-color: rgba(255,255,255,0.14);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .metric-value {
+        font-size: 2.2rem; font-weight: 700; color: var(--text-primary);
+        letter-spacing: -0.03em; font-family: var(--font-mono);
+        line-height: 1.1;
+    }
+    .metric-label {
+        font-size: 0.72rem; margin-top: 0.35rem; opacity: 0.7;
+        font-weight: 500; letter-spacing: 0.02em;
+    }
 
-    /* ── Tags ──────────────────────────────────────────── */
+    /* Metric accent colors */
+    .metric-accent-daily .metric-value { color: var(--green); }
+    .metric-accent-hourly .metric-value { color: var(--accent); }
+    .metric-accent-kdj .metric-value { color: #f78166; }
+    .metric-accent-weekly .metric-value { color: #d2a8ff; }
+    .metric-accent-score .metric-value {
+        background: linear-gradient(135deg, #f0883e, #ffd740);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Section tags
+       ══════════════════════════════════════════════════════════════════════ */
     .section-tag {
-        font-size: 0.75rem; font-weight: 600; padding: 2px 8px;
-        border-radius: 6px; display: inline-block; margin-bottom: 0.4rem;
-        opacity: 0.9;
+        font-size: 0.68rem; font-weight: 600; padding: 2px 8px;
+        border-radius: 5px; display: inline-block; margin-bottom: 0.3rem;
+        letter-spacing: 0.02em;
     }
-    .tag-daily { background: rgba(63,185,80,0.15); color: #3fb950; }
-    .tag-hourly { background: rgba(88,166,255,0.15); color: #58a6ff; }
-    .tag-div { background: rgba(247,129,102,0.15); color: #f78166; }
+    .tag-daily { background: var(--green-bg); color: var(--green); }
+    .tag-hourly { background: var(--accent-glow); color: var(--accent); }
+    .tag-div { background: rgba(247,129,102,0.12); color: #f78166; }
+    .tag-score { background: rgba(210,168,255,0.12); color: #d2a8ff; }
 
-    /* ── Multiselect tags ──────────────────────────────── */
+    /* ══════════════════════════════════════════════════════════════════════════
+       Tabs — underline style
+       ══════════════════════════════════════════════════════════════════════ */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0; border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 0.75rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 0.82rem; font-weight: 500; padding: 0.6rem 1rem;
+        color: var(--text-secondary); border-radius: 0;
+        background: transparent !important; border: none !important;
+        border-bottom: 2px solid transparent !important;
+        transition: all 0.15s;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: var(--text-primary);
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: var(--accent) !important;
+        border-bottom-color: var(--accent) !important;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Data tables — clean & dense
+       ══════════════════════════════════════════════════════════════════════ */
+    div[data-testid="stDataFrame"] {
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: var(--radius-md) !important;
+        overflow: hidden;
+    }
+    div[data-testid="stDataFrame"] table {
+        font-size: 0.8rem;
+    }
+    div[data-testid="stDataFrame"] th {
+        font-weight: 600 !important; font-size: 0.72rem !important;
+        text-transform: uppercase; letter-spacing: 0.04em;
+        color: var(--text-muted) !important;
+    }
+    div[data-testid="stDataFrame"] td {
+        font-size: 0.8rem; color: var(--text-primary);
+        border-bottom: 1px solid rgba(255,255,255,0.03) !important;
+    }
+    div[data-testid="stDataFrame"] tr:hover td {
+        background: rgba(255,255,255,0.02) !important;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Backtest section
+       ══════════════════════════════════════════════════════════════════════ */
+    .backtest-divider {
+        margin: 1.5rem 0 1rem 0; border: none;
+        border-top: 1px solid var(--border-subtle);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Slider / Input overrides
+       ══════════════════════════════════════════════════════════════════════ */
+    [data-testid="stSlider"] label, [data-testid="stNumberInput"] label {
+        font-size: 0.78rem !important; color: var(--text-secondary) !important;
+    }
+    [data-testid="stSlider"] div[data-baseweb="slider"] div {
+        background: rgba(255,255,255,0.08) !important;
+    }
+    [data-testid="stSlider"] div[data-baseweb="slider"] div[role="slider"] {
+        background: var(--accent) !important;
+    }
+
+    /* Multiselect tags */
     [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-        font-size: 0.85rem !important; padding: 2px 8px !important;
-        border-radius: 6px !important;
+        font-size: 0.8rem !important; padding: 2px 8px !important;
+        border-radius: var(--radius-sm) !important;
+        background: rgba(255,255,255,0.06) !important;
     }
     [data-testid="stMultiSelect"] li {
-        font-size: 0.9rem !important;
+        font-size: 0.85rem !important;
     }
 
-    /* ── Table ─────────────────────────────────────────── */
-    div[data-testid="stDataFrame"] td { font-size: 0.8rem; }
+    /* ══════════════════════════════════════════════════════════════════════════
+       Idle state
+       ══════════════════════════════════════════════════════════════════════ */
+    .idle-container {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; min-height: 50vh; gap: 1rem;
+        text-align: center;
+    }
+    .idle-icon { font-size: 3.5rem; opacity: 0.5; }
+    .idle-title { font-size: 1.1rem; color: var(--text-secondary); }
+    .idle-hint { font-size: 0.78rem; color: var(--text-muted); }
 
-    /* ── Mobile ────────────────────────────────────────── */
+    /* ══════════════════════════════════════════════════════════════════════════
+       Mobile
+       ══════════════════════════════════════════════════════════════════════ */
     .mobile-hint { display: none; }
     @media (max-width: 768px) {
-        .metric-value { font-size: 1.5rem; }
-        div[data-testid="column"] { padding: 0.25rem !important; }
+        .nav-bar { padding: 0.5rem 0.8rem; border-radius: var(--radius-md); }
+        .nav-brand { font-size: 0.95rem; }
+        .metric-value { font-size: 1.6rem; }
+        .metric-card { padding: 0.7rem 0.5rem; }
+        div[data-testid="column"] { padding: 0.2rem !important; }
         .mobile-hint { display: block; }
         [data-testid="stSidebar"] { min-width: 280px !important; max-width: 100vw !important; }
     }
@@ -184,10 +422,12 @@ if not st.session_state.authenticated:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("""
-        <div style="text-align:center;margin-top:30vh;">
-            <div style="font-size:2.5rem;">🔐</div>
-            <div style="font-size:1.3rem;font-weight:600;margin-top:0.5rem;">Bursa Screener</div>
-            <div style="font-size:0.8rem;color:#8b949e;margin-bottom:1.5rem;">Secure access</div>
+        <div style="text-align:center;margin-top:25vh;">
+            <div style="font-size:3rem;margin-bottom:0.5rem;">🔐</div>
+            <div style="font-size:1.4rem;font-weight:700;letter-spacing:-0.02em;">Bursa Screener</div>
+            <div style="font-size:0.8rem;color:#8b949e;margin-bottom:2rem;margin-top:0.3rem;">
+                Professional Market Analytics
+            </div>
         </div>
         """, unsafe_allow_html=True)
         st.text_input(
@@ -220,9 +460,16 @@ with c2:
 
 # ── Header ─────────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;">
-    <span style="font-size:1.6rem;font-weight:700;">Bursa Malaysia Screener</span>
-    <span style="background:#21262d;color:#8b949e;font-size:0.7rem;padding:2px 8px;border-radius:12px;">v2.0</span>
+<div class="nav-bar">
+    <div class="nav-brand">
+        <div class="nav-brand-icon">📈</div>
+        Bursa Malaysia Screener
+        <span class="nav-badge">PRO</span>
+    </div>
+    <div class="nav-status">
+        <div class="nav-dot"></div>
+        Live Market Data
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -237,7 +484,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("### ⚙️ Parameters")
+    st.markdown('<div class="sidebar-section-title">Parameters</div>', unsafe_allow_html=True)
 
     with st.expander("EMA Compression", expanded=True):
         ema_periods = st.multiselect(
@@ -341,7 +588,7 @@ with st.sidebar:
         st.components.v1.html(js, height=0)
         st.info(f"⏱ Next refresh in {refresh_min} min")
 
-    st.markdown("---")
+    st.markdown('<hr class="backtest-divider">', unsafe_allow_html=True)
 
     col_run, col_reset = st.columns([3, 1])
     with col_run:
@@ -643,37 +890,37 @@ if st.session_state.run_done:
     tc1, tc2, tc3, tc4, tc5 = st.columns(5)
     with tc1:
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="metric-card metric-accent-daily">
             <div class="metric-value">{len(results1)}</div>
             <div class="metric-label"><span class="tag-daily section-tag">Daily EMA</span></div>
         </div>
         """, unsafe_allow_html=True)
     with tc2:
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="metric-card metric-accent-hourly">
             <div class="metric-value">{len(results2)}</div>
             <div class="metric-label"><span class="tag-hourly section-tag">Hourly EMA</span></div>
         </div>
         """, unsafe_allow_html=True)
     with tc3:
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="metric-card metric-accent-kdj">
             <div class="metric-value">{len(results3)}</div>
             <div class="metric-label"><span class="tag-div section-tag">KDJ Divergence</span></div>
         </div>
         """, unsafe_allow_html=True)
     with tc4:
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="metric-card metric-accent-weekly">
             <div class="metric-value">{len(results4)}</div>
             <div class="metric-label"><span class="tag-div section-tag">Weekly KDJ Cross</span></div>
         </div>
         """, unsafe_allow_html=True)
     with tc5:
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="metric-card metric-accent-score">
             <div class="metric-value">{len(results5)}</div>
-            <div class="metric-label"><span style="background:#2a1a3a;color:#bc8cff;" class="section-tag">Scoring Top</span></div>
+            <div class="metric-label"><span class="tag-score section-tag">Scoring Top</span></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -785,7 +1032,7 @@ if st.session_state.run_done:
             st.caption("No stocks scored.")
 
         # Backtest
-        st.markdown("---")
+        st.markdown('<hr class="backtest-divider">', unsafe_allow_html=True)
         st.markdown("#### 🔬 Backtest Scoring System")
         col_bt1, col_bt2, col_bt3 = st.columns(3)
         with col_bt1:
@@ -820,12 +1067,12 @@ if st.session_state.run_done:
 else:
     # Idle state
     st.markdown("""
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:50vh;gap:1rem;">
-        <div style="font-size:3rem;">📊</div>
-        <div style="font-size:1.2rem;color:#8b949e;">
+    <div class="idle-container">
+        <div class="idle-icon">📊</div>
+        <div class="idle-title">
             Tap <b>🔄 Refresh Data</b> in the sidebar to start
         </div>
-        <div style="font-size:0.8rem;color:#484f58;">
+        <div class="idle-hint">
             First run downloads market data (~1-2 min) • Then param tweaks are instant
         </div>
     </div>
