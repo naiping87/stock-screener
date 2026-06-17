@@ -312,11 +312,16 @@ st.markdown("""
     .ag-theme-alpine-dark {
         --ag-background-color: rgba(13,17,23,0.6) !important;
         --ag-header-background-color: rgba(255,255,255,0.04) !important;
+        --ag-odd-row-background-color: rgba(255,255,255,0.01) !important;
         --ag-border-color: rgba(255,255,255,0.06) !important;
-        --ag-row-hover-color: rgba(255,255,255,0.04) !important;
+        --ag-row-hover-color: rgba(88,166,255,0.06) !important;
+        --ag-selected-row-background-color: rgba(88,166,255,0.1) !important;
         --ag-header-foreground-color: var(--text-muted) !important;
         --ag-foreground-color: var(--text-primary) !important;
+        --ag-secondary-foreground-color: var(--text-secondary) !important;
+        --ag-input-focus-border-color: var(--accent) !important;
         --ag-font-size: 13px !important;
+        --ag-font-family: inherit !important;
         border: 1px solid var(--border-subtle) !important;
         border-radius: var(--radius-md) !important;
         overflow: hidden !important;
@@ -327,17 +332,99 @@ st.markdown("""
     }
     .ag-theme-alpine-dark .ag-cell {
         line-height: 32px !important; font-feature-settings: 'tnum';
+        color: var(--text-primary) !important;
+    }
+    .ag-theme-alpine-dark .ag-cell:focus {
+        border-color: var(--accent) !important;
     }
     .ag-theme-alpine-dark .ag-paging-panel {
         border-top: 1px solid var(--border-subtle);
         font-size: 12px; color: var(--text-secondary);
+        background: rgba(255,255,255,0.02);
     }
-    /* Column filter popup */
+    .ag-theme-alpine-dark .ag-paging-page-summary-panel {
+        color: var(--text-secondary) !important;
+    }
+    .ag-theme-alpine-dark .ag-paging-button {
+        color: var(--text-secondary) !important;
+        background: transparent !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 4px !important;
+    }
+    .ag-theme-alpine-dark .ag-paging-button:hover {
+        background: rgba(255,255,255,0.06) !important;
+        border-color: rgba(255,255,255,0.12) !important;
+    }
+
+    /* Floating filter inputs */
     .ag-theme-alpine-dark .ag-floating-filter-body input,
     .ag-theme-alpine-dark .ag-floating-filter-body select {
         background: rgba(255,255,255,0.06) !important;
-        border: 1px solid var(--border-subtle) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: 4px !important;
         color: var(--text-primary) !important;
+        font-size: 12px !important;
+        padding: 2px 6px !important;
+    }
+    .ag-theme-alpine-dark .ag-floating-filter-body input:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px rgba(88,166,255,0.2) !important;
+    }
+
+    /* Filter / column menu popup */
+    .ag-theme-alpine-dark .ag-tab, .ag-theme-alpine-dark .ag-tab-selected {
+        color: var(--text-secondary) !important;
+    }
+    .ag-theme-alpine-dark .ag-tab-selected { color: var(--accent) !important; }
+    .ag-theme-alpine-dark .ag-menu {
+        background: #0d1117 !important; border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: 8px !important;
+    }
+    .ag-theme-alpine-dark .ag-filter {
+        background: #0d1117 !important;
+    }
+    .ag-theme-alpine-dark .ag-filter select,
+    .ag-theme-alpine-dark .ag-filter input {
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        color: var(--text-primary) !important;
+        border-radius: 4px !important;
+    }
+    .ag-theme-alpine-dark .ag-filter-apply-panel button {
+        background: var(--accent) !important; border: none !important;
+        color: #fff !important; border-radius: 4px !important;
+        font-weight: 600 !important;
+    }
+    .ag-theme-alpine-dark .ag-filter-apply-panel button:last-child {
+        background: rgba(255,255,255,0.06) !important;
+    }
+
+    /* Scrollbar */
+    .ag-theme-alpine-dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+    .ag-theme-alpine-dark ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .ag-theme-alpine-dark ::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.1); border-radius: 3px;
+    }
+    .ag-theme-alpine-dark ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255,255,255,0.18);
+    }
+
+    /* Sort arrow */
+    .ag-theme-alpine-dark .ag-header-cell-sorted-asc .ag-sort-indicator-icon,
+    .ag-theme-alpine-dark .ag-header-cell-sorted-desc .ag-sort-indicator-icon {
+        color: var(--accent) !important;
+    }
+
+    /* Checkbox in grid */
+    .ag-theme-alpine-dark .ag-checkbox-input-wrapper {
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.15) !important;
+        border-radius: 3px !important;
+    }
+    .ag-theme-alpine-dark .ag-checkbox-input-wrapper.ag-checked {
+        background: var(--accent) !important; border-color: var(--accent) !important;
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
@@ -363,27 +450,143 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       Slider / Input overrides
+       Form controls — dark modernized
        ══════════════════════════════════════════════════════════════════════ */
-    [data-testid="stSlider"] label, [data-testid="stNumberInput"] label {
-        font-size: 0.78rem !important; color: var(--text-secondary) !important;
-    }
-    [data-testid="stSlider"] div[data-baseweb="slider"] div {
-        background: rgba(255,255,255,0.08) !important;
-    }
-    [data-testid="stSlider"] div[data-baseweb="slider"] div[role="slider"] {
-        background: var(--accent) !important;
+
+    /* Label */
+    [data-testid="stSlider"] label, [data-testid="stNumberInput"] label,
+    [data-testid="stSelectbox"] label, [data-testid="stToggle"] label {
+        font-size: 0.76rem !important; font-weight: 500 !important;
+        color: var(--text-secondary) !important; margin-bottom: 0.2rem !important;
     }
 
-    /* Multiselect tags */
-    [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-        font-size: 0.8rem !important; padding: 2px 8px !important;
-        border-radius: var(--radius-sm) !important;
+    /* ── Slider ───────────────────────────────────────── */
+    [data-testid="stSlider"] { padding-top: 0 !important; }
+    /* Track */
+    [data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stTrack"] {
         background: rgba(255,255,255,0.06) !important;
     }
-    [data-testid="stMultiSelect"] li {
-        font-size: 0.85rem !important;
+    /* Filled track */
+    [data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stTickBar"] ~ div {
+        display: none;
     }
+    /* Thumb */
+    [data-testid="stSlider"] div[role="slider"] {
+        background: var(--accent) !important; border: 2px solid var(--accent) !important;
+        box-shadow: 0 0 8px rgba(88,166,255,0.3), 0 1px 3px rgba(0,0,0,0.4) !important;
+        width: 16px !important; height: 16px !important;
+        transition: box-shadow 0.15s;
+    }
+    [data-testid="stSlider"] div[role="slider"]:hover {
+        box-shadow: 0 0 14px rgba(88,166,255,0.5), 0 1px 3px rgba(0,0,0,0.4) !important;
+    }
+    /* Slider fill bar */
+    [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child {
+        background: var(--accent) !important; height: 3px !important; border-radius: 2px;
+    }
+    /* Tick marks / scale */
+    [data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stTickBar"] {
+        color: var(--text-muted) !important; font-size: 0.65rem !important;
+    }
+
+    /* ── Number Input ──────────────────────────────────── */
+    [data-testid="stNumberInput"] input {
+        background: rgba(255,255,255,0.04) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: var(--radius-sm) !important;
+        color: var(--text-primary) !important;
+        font-family: var(--font-mono); font-size: 0.82rem !important;
+        padding: 0.4rem 0.55rem !important;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    [data-testid="stNumberInput"] input:focus,
+    [data-testid="stNumberInput"] input:focus-visible {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 2px rgba(88,166,255,0.15) !important;
+        outline: none !important;
+    }
+    [data-testid="stNumberInput"] button {
+        background: rgba(255,255,255,0.04) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        color: var(--text-secondary) !important;
+        border-radius: 4px !important;
+    }
+    [data-testid="stNumberInput"] button:hover {
+        background: rgba(255,255,255,0.08) !important;
+        color: var(--text-primary) !important;
+    }
+
+    /* ── Toggle ────────────────────────────────────────── */
+    [data-baseweb="checkbox"] {
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: 12px !important; width: 36px !important; height: 20px !important;
+    }
+    [data-baseweb="checkbox"][aria-checked="true"] {
+        background: var(--accent) !important; border-color: var(--accent) !important;
+    }
+    [data-baseweb="checkbox"] div {
+        background: #fff !important; border-radius: 50% !important;
+        width: 14px !important; height: 14px !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+    }
+
+    /* ── Select / Dropdown ─────────────────────────────── */
+    [data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        background: rgba(255,255,255,0.04) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: var(--radius-sm) !important;
+        color: var(--text-primary) !important;
+    }
+
+    /* ── Multiselect ───────────────────────────────────── */
+    [data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+        background: rgba(255,255,255,0.04) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+    [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+        font-size: 0.76rem !important; padding: 2px 7px !important;
+        border-radius: 5px !important;
+        background: rgba(88,166,255,0.12) !important; color: var(--accent) !important;
+    }
+    [data-testid="stMultiSelect"] li {
+        font-size: 0.82rem !important;
+    }
+
+    /* Dropdown popup */
+    [data-baseweb="popover"], [data-baseweb="menu"] {
+        background: #0d1117 !important; border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Native component dark overrides
+       ══════════════════════════════════════════════════════════════════════ */
+
+    /* st.metric */
+    [data-testid="stMetricValue"] {
+        color: var(--text-primary) !important; font-family: var(--font-mono);
+    }
+    [data-testid="stMetricLabel"] {
+        color: var(--text-secondary) !important;
+    }
+    [data-testid="stMetricDelta"] { font-family: var(--font-mono); }
+
+    /* st.info / st.warning / st.error / st.success */
+    [data-testid="stAlert"] {
+        background: rgba(255,255,255,0.03) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: var(--radius-sm) !important;
+        color: var(--text-secondary) !important;
+    }
+    [data-testid="stAlert"] svg { opacity: 0.7; }
+
+    /* st.spinner */
+    [data-testid="stSpinner"] { color: var(--accent) !important; }
+
+    /* st.caption */
+    [data-testid="stCaptionContainer"] { color: var(--text-muted) !important; }
 
     /* ══════════════════════════════════════════════════════════════════════════
        Idle state
@@ -1090,15 +1293,16 @@ if st.session_state.run_done:
         # Backtest
         st.markdown('<hr class="backtest-divider">', unsafe_allow_html=True)
         st.markdown("#### 🔬 Backtest Scoring System")
-        with st.container():
-            st.markdown('<div class="backtest-card">', unsafe_allow_html=True)
-            col_bt1, col_bt2, col_bt3 = st.columns(3)
+        st.markdown('<div class="backtest-card">', unsafe_allow_html=True)
+
+        col_bt1, col_bt2, col_bt3 = st.columns([1, 1, 0.8])
         with col_bt1:
             bt_top_n = st.number_input("Top N", 5, 30, 20, 5, key="bt_top_n")
         with col_bt2:
             bt_interval = st.slider("Interval (weeks)", 1, 4, 2, key="bt_interval")
         with col_bt3:
-            bt_run = st.button("Run Backtest", type="secondary", use_container_width=True)
+            st.markdown('<div style="height:1.45rem"></div>', unsafe_allow_html=True)
+            bt_run = st.button("⚡ Run Backtest", type="secondary", use_container_width=True)
 
         if bt_run:
             with st.spinner(f"Backtesting over historical dates..."):
@@ -1121,7 +1325,8 @@ if st.session_state.run_done:
                 _render_aggrid(df_bt, height=300)
             else:
                 st.warning("Not enough historical data for backtest.")
-            st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
 else:
     # Idle state
