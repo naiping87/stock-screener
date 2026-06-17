@@ -94,23 +94,24 @@ st.markdown("""
        Global — dark premium theme
        ══════════════════════════════════════════════════════════════════════ */
     :root {
-        --bg-deep: #090c10;
-        --bg-card: rgba(255,255,255,0.025);
+        --bg-deep: #0d1117;
+        --bg-card: rgba(255,255,255,0.03);
+        --bg-elevated: #131720;
         --border-subtle: rgba(255,255,255,0.06);
         --border-card: rgba(255,255,255,0.08);
         --text-primary: #e6edf3;
-        --text-secondary: #8b949e;
+        --text-secondary: #6e7681;
         --text-muted: #484f58;
         --accent: #58a6ff;
         --accent-glow: rgba(88,166,255,0.15);
         --green: #3fb950;
-        --green-bg: rgba(63,185,80,0.12);
+        --green-bg: rgba(63,185,80,0.10);
         --red: #f85149;
         --orange: #d2991d;
         --radius-sm: 8px;
         --radius-md: 12px;
         --radius-lg: 16px;
-        --font-mono: 'SF Mono', 'JetBrains Mono', 'Cascadia Code', monospace;
+        --font-mono: 'SF Mono', 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
     }
 
     /* Force dark Streamlit theme */
@@ -220,14 +221,15 @@ st.markdown("""
     }
     .stButton > button:active { transform: translateY(0); }
 
-    /* Primary button */
+    /* Primary button — glow effect, 7px radius */
     button[kind="primary"] {
         background: linear-gradient(135deg, #1a6ff5, #3b9fff) !important;
         color: #fff !important; border: none !important;
-        box-shadow: 0 2px 8px rgba(26,111,245,0.3);
+        border-radius: 7px !important;
+        box-shadow: 0 0 12px rgba(26,111,245,0.3), 0 2px 6px rgba(0,0,0,0.3) !important;
     }
     button[kind="primary"]:hover {
-        box-shadow: 0 4px 16px rgba(26,111,245,0.45) !important;
+        box-shadow: 0 0 20px rgba(26,111,245,0.5), 0 4px 12px rgba(0,0,0,0.4) !important;
     }
 
     /* Lock button */
@@ -306,41 +308,41 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       AgGrid — Bloomberg Terminal dark table
+       AgGrid — Institutional Grade dark table
        ══════════════════════════════════════════════════════════════════════ */
 
     .ag-theme-quartz-dark {
-        --ag-background-color: #090c10 !important;
+        --ag-background-color: #0d1117 !important;
         --ag-foreground-color: #e6edf3 !important;
-        --ag-secondary-foreground-color: #8b949e !important;
-        --ag-header-background-color: #141d2b !important;     /* deep blue-grey */
-        --ag-header-foreground-color: #7d8590 !important;      /* soft grey */
-        --ag-odd-row-background-color: #090c10 !important;
-        --ag-row-hover-color: rgba(88,166,255,0.08) !important; /* stronger hover */
-        --ag-selected-row-background-color: rgba(88,166,255,0.10) !important;
-        --ag-border-color: rgba(255,255,255,0.04) !important;
+        --ag-secondary-foreground-color: #6e7681 !important;
+        --ag-header-background-color: #161b22 !important;
+        --ag-header-foreground-color: #6e7681 !important;
+        --ag-odd-row-background-color: #131720 !important;
+        --ag-row-hover-color: rgba(31,111,235,0.10) !important;   /* #1F6FEB 10% */
+        --ag-selected-row-background-color: rgba(31,111,235,0.14) !important;
+        --ag-border-color: rgba(255,255,255,0.05) !important;
         --ag-secondary-border-color: rgba(255,255,255,0.03) !important;
-        --ag-input-border-color: rgba(255,255,255,0.1) !important;
+        --ag-input-border-color: #30363d !important;
         --ag-input-focus-border-color: #58a6ff !important;
         --ag-input-disabled-background-color: rgba(255,255,255,0.02) !important;
         --ag-disabled-foreground-color: #484f58 !important;
-        --ag-font-size: 12.5px !important;
+        --ag-font-size: 13px !important;
         --ag-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif !important;
         --ag-row-height: 34px !important;
         --ag-header-height: 38px !important;
-        background: #090c10 !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
+        background: #0d1117 !important;
+        border: 1px solid rgba(255,255,255,0.07) !important;
         border-radius: 10px !important;
         overflow: hidden !important;
     }
 
-    /* ── Header — Bloomberg blue-grey ────────────────── */
+    /* ── Header — #161B22 + subtle bottom border ─────── */
     .ag-theme-quartz-dark .ag-header {
-        background: #141d2b !important;
-        border-bottom: 2px solid rgba(255,255,255,0.08) !important;
+        background: #161b22 !important;
+        border-bottom: 1px solid rgba(255,255,255,0.08) !important;
     }
     .ag-theme-quartz-dark .ag-header-cell {
-        padding: 0 10px !important; color: #7d8590 !important;
+        padding: 0 10px !important; color: #6e7681 !important;
         font-weight: 600; font-size: 10.5px;
     }
     .ag-theme-quartz-dark .ag-header-cell-label {
@@ -351,14 +353,15 @@ st.markdown("""
         color: #58a6ff !important; opacity: 0.9;
     }
 
-    /* ── Rows — zebra via JS, hover via CSS var ──────── */
+    /* ── Rows — zebra via JS, hover #1F6FEB 10% ─────── */
     .ag-theme-quartz-dark .ag-row {
         border-bottom: 1px solid rgba(255,255,255,0.015) !important;
         color: #e6edf3 !important;
-        transition: background-color 0.1s ease;
+        transition: background-color 0.12s ease;
     }
     .ag-theme-quartz-dark .ag-row:hover {
-        background: rgba(88,166,255,0.08) !important;
+        background: rgba(31,111,235,0.10) !important;  /* #1F6FEB 10% */
+        cursor: pointer;
     }
     .ag-theme-quartz-dark .ag-cell {
         padding: 0 10px !important; line-height: 34px !important;
@@ -373,13 +376,13 @@ st.markdown("""
     /* ── Pagination ──────────────────────────────────── */
     .ag-theme-quartz-dark .ag-paging-panel {
         background: #0d1117 !important;
-        border-top: 1px solid rgba(255,255,255,0.05) !important;
-        color: #8b949e !important; font-size: 12px !important; height: 40px !important;
+        border-top: 1px solid rgba(255,255,255,0.06) !important;
+        color: #6e7681 !important; font-size: 12px !important; height: 40px !important;
     }
     .ag-theme-quartz-dark .ag-paging-button {
-        background: rgba(255,255,255,0.02) !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        border-radius: 5px !important; color: #8b949e !important;
+        background: rgba(255,255,255,0.03) !important;
+        border: 1px solid rgba(255,255,255,0.07) !important;
+        border-radius: 5px !important; color: #6e7681 !important;
     }
     .ag-theme-quartz-dark .ag-paging-button:hover {
         background: rgba(255,255,255,0.08) !important;
@@ -391,7 +394,7 @@ st.markdown("""
     }
     .ag-theme-quartz-dark .ag-floating-filter-body input {
         background: rgba(255,255,255,0.04) !important;
-        border: 1px solid rgba(255,255,255,0.08) !important;
+        border: 1px solid #30363d !important;
         border-radius: 5px !important; color: #e6edf3 !important;
         font-size: 11.5px !important; padding: 4px 8px !important;
     }
@@ -401,7 +404,7 @@ st.markdown("""
     }
     .ag-theme-quartz-dark .ag-menu,
     .ag-theme-quartz-dark .ag-filter {
-        background: #0d1117 !important;
+        background: #161b22 !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
         border-radius: 8px !important;
         box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
@@ -449,29 +452,29 @@ st.markdown("""
         color: var(--text-secondary) !important; margin-bottom: 0.2rem !important;
     }
 
-    /* ── Slider ───────────────────────────────────────── */
+    /* ── Slider — track #30363D, active #58A6FF, round thumb ── */
     [data-testid="stSlider"] { padding-top: 0 !important; }
     /* Track */
     [data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stTrack"] {
-        background: rgba(255,255,255,0.06) !important;
+        background: #30363d !important;
     }
     /* Filled track */
     [data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stTickBar"] ~ div {
         display: none;
     }
-    /* Thumb */
+    /* Thumb — solid round */
     [data-testid="stSlider"] div[role="slider"] {
-        background: var(--accent) !important; border: 2px solid var(--accent) !important;
-        box-shadow: 0 0 8px rgba(88,166,255,0.3), 0 1px 3px rgba(0,0,0,0.4) !important;
-        width: 16px !important; height: 16px !important;
+        background: #e6edf3 !important; border: 2px solid #58a6ff !important;
+        box-shadow: 0 0 6px rgba(88,166,255,0.3), 0 1px 3px rgba(0,0,0,0.4) !important;
+        width: 16px !important; height: 16px !important; border-radius: 50% !important;
         transition: box-shadow 0.15s;
     }
     [data-testid="stSlider"] div[role="slider"]:hover {
-        box-shadow: 0 0 14px rgba(88,166,255,0.5), 0 1px 3px rgba(0,0,0,0.4) !important;
+        box-shadow: 0 0 12px rgba(88,166,255,0.5), 0 1px 3px rgba(0,0,0,0.4) !important;
     }
     /* Slider fill bar */
     [data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child {
-        background: var(--accent) !important; height: 3px !important; border-radius: 2px;
+        background: #58a6ff !important; height: 3px !important; border-radius: 2px;
     }
     /* Tick marks / scale */
     [data-testid="stSlider"] div[data-baseweb="slider"] div[data-testid="stTickBar"] {
@@ -481,10 +484,10 @@ st.markdown("""
     /* ── Number Input ──────────────────────────────────── */
     [data-testid="stNumberInput"] input {
         background: rgba(255,255,255,0.04) !important;
-        border: 1px solid rgba(255,255,255,0.1) !important;
+        border: 1px solid #30363d !important;
         border-radius: var(--radius-sm) !important;
         color: var(--text-primary) !important;
-        font-family: var(--font-mono); font-size: 0.82rem !important;
+        font-family: 'SF Mono','JetBrains Mono','Consolas',monospace; font-size: 0.82rem !important;
         padding: 0.4rem 0.55rem !important;
         transition: border-color 0.15s, box-shadow 0.15s;
     }
@@ -505,19 +508,21 @@ st.markdown("""
         color: var(--text-primary) !important;
     }
 
-    /* ── Toggle ────────────────────────────────────────── */
+    /* ── Toggle — capsule shape, blue active, dark inactive ── */
     [data-baseweb="checkbox"] {
-        background: rgba(255,255,255,0.06) !important;
-        border: 1px solid rgba(255,255,255,0.1) !important;
-        border-radius: 12px !important; width: 36px !important; height: 20px !important;
+        background: #30363d !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: 12px !important; width: 38px !important; height: 21px !important;
+        transition: background 0.2s ease !important;
     }
     [data-baseweb="checkbox"][aria-checked="true"] {
-        background: var(--accent) !important; border-color: var(--accent) !important;
+        background: #58a6ff !important; border-color: #58a6ff !important;
     }
     [data-baseweb="checkbox"] div {
         background: #fff !important; border-radius: 50% !important;
-        width: 14px !important; height: 14px !important;
+        width: 15px !important; height: 15px !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+        transition: transform 0.2s ease !important;
     }
 
     /* ── Select / Dropdown ─────────────────────────────── */
@@ -781,10 +786,10 @@ with st.sidebar:
             )
 
     with st.expander("🔄 Auto-Refresh", expanded=False):
-        st.markdown('<div style="margin-bottom:0.4rem;font-size:0.72rem;color:#6e7681;display:flex;align-items:center;gap:0.3rem;">'
+        st.markdown('<div style="margin-bottom:0.35rem;font-size:0.72rem;color:#6e7681;display:flex;align-items:center;gap:0.3rem;">'
                      'Enable automatic data reload'
                      '<span title="Data is cached for 1 hour. Auto-refresh forces a fresh download from Yahoo Finance at the selected interval." '
-                     'style="cursor:help;opacity:0.5;font-size:0.7rem;">ⓘ</span>'
+                     'style="cursor:help;opacity:0.45;font-size:0.7rem;line-height:1;">ⓘ</span>'
                      '</div>', unsafe_allow_html=True)
         col_tog, col_int = st.columns([0.9, 1.6])
         with col_tog:
@@ -794,11 +799,10 @@ with st.sidebar:
                 "Interval", options=["5 min", "10 min", "15 min", "30 min"],
                 value="10 min", key="refresh_interval", disabled=not auto_refresh,
             )
-            # Parse the selected value back to integer
             _ref_map = {"5 min": 5, "10 min": 10, "15 min": 15, "30 min": 30}
             refresh_min_int = _ref_map.get(refresh_min, 10)
 
-    # Auto-reload JavaScript + status tag
+    # Auto-reload JavaScript + institutional status tag
     if auto_refresh and st.session_state.get("run_done"):
         js = f"""
         <script>
@@ -817,13 +821,13 @@ with st.sidebar:
         st.components.v1.html(js, height=0)
         st.markdown(f"""
         <div style="margin-top:0.55rem;display:flex;align-items:center;gap:0.5rem;
-                    background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.2);
-                    border-radius:6px;padding:0.4rem 0.7rem;">
-            <span style="font-size:0.7rem;">🔄</span>
-            <span style="font-size:0.72rem;color:#7d8590;">Next refresh in</span>
+                    background:rgba(63,185,80,0.07);border:1px solid rgba(63,185,80,0.18);
+                    border-radius:6px;padding:0.4rem 0.7rem;line-height:1.4;">
+            <span style="font-size:0.7rem;flex-shrink:0;">🔄</span>
+            <span style="font-size:0.72rem;color:#6e7681;flex-shrink:0;">Next refresh in</span>
             <span id="countdown" style="font-size:0.78rem;font-weight:700;color:#3fb950;
-                         font-family:var(--font-mono);">{refresh_min_int} min</span>
-            <span style="font-size:0.72rem;color:#7d8590;">• {refresh_min_int}min interval</span>
+                         font-family:'SF Mono','JetBrains Mono','Consolas',monospace;flex-shrink:0;">{refresh_min_int} min</span>
+            <span style="font-size:0.7rem;color:#484f58;flex-shrink:0;">• {refresh_min_int}min interval</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -956,24 +960,21 @@ def _strip_kl(tkr):
     return tkr.replace(".KL", "") if isinstance(tkr, str) else tkr
 
 
-# AgGrid conditional formatting JS — Bloomberg terminal style
+# AgGrid conditional formatting JS — Institutional grade
 _ROE_CONDITION = JsCode("""
 function(params) {
     if (params.value === null || params.value === undefined || params.value === '') return null;
     var v = parseFloat(params.value);
     if (isNaN(v)) return null;
-    if (v >= 20) return {'color': '#00e676', 'fontWeight': '700', 'backgroundColor': 'rgba(0,230,118,0.08)'};
-    if (v >= 10) return {'color': '#69f0ae', 'fontWeight': '600'};
-    if (v > 0)  return {'color': '#e6edf3'};
-    if (v <= 0) return {'color': '#ff5252', 'fontWeight': '600'};
-    return null;
+    if (v > 0)  return {'color': '#3fb950', 'fontWeight': '700'};
+    if (v < 0)  return {'color': '#f85149', 'fontWeight': '700'};
+    return {'color': '#e6edf3'};
 }
 """)
 
 _PRICE_CONDITION = JsCode("""
 function(params) {
-    // Price column has no specific conditioning; neutral display
-    return {'color': '#e6edf3', 'fontWeight': '500', 'fontFamily': 'SF Mono, JetBrains Mono, monospace'};
+    return {'color': '#e6edf3', 'fontWeight': '500', 'fontFamily': 'SF Mono, JetBrains Mono, Consolas, monospace'};
 }
 """)
 
@@ -982,7 +983,6 @@ function(params) {
     if (params.value === null || params.value === undefined) return null;
     var v = parseInt(params.value);
     if (isNaN(v)) return null;
-    // Font weight scales with score — Bloomberg-style data hierarchy
     if (v >= 10) return {'color': '#ffd740', 'fontWeight': '800', 'fontSize': '14px'};
     if (v >= 8)  return {'color': '#ffd740', 'fontWeight': '700', 'fontSize': '13px'};
     if (v >= 6)  return {'color': '#ffab40', 'fontWeight': '600'};
@@ -991,12 +991,12 @@ function(params) {
 }
 """)
 
-# Zebra striping + hover — Bloomberg dark mode
+# Zebra striping — Institutional: even #0D1117, odd #131720
 _BLOOMBERG_ROW_STYLE = JsCode("""
 function(params) {
     var isEven = params.node.rowIndex % 2 === 0;
     return {
-        'background-color': isEven ? '#090c10' : '#0c1017'
+        'background-color': isEven ? '#0d1117' : '#131720'
     };
 }
 """)
