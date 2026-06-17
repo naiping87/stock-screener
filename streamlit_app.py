@@ -1065,14 +1065,6 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     # Conditional formatting for ROE (applied above in loop)
     # Conditional formatting for Score (applied above in loop)
 
-    # Force dark row background via AgGrid callback (bypasses CSS loading issues)
-    _dark_row_style = JsCode("""
-    function(params) {
-        return { 'background-color': '#090c10' };
-    }
-    """)
-    gb.configure_grid_options(getRowStyle=_dark_row_style)
-
     grid_options = gb.build()
 
     AgGrid(
