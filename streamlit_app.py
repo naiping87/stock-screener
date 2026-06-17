@@ -306,192 +306,163 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       AgGrid — Apple / Bloomberg financial dark table
-       Uses balham-dark as base (darker than alpine-dark) + full customisation
+       AgGrid — Apple / Bloomberg dark table (alpine-dark base)
        ══════════════════════════════════════════════════════════════════════ */
 
-    /* ── Core wrapper ─────────────────────────────────── */
-    .ag-theme-balham-dark {
-        --ag-background-color: #090c10 !important;
-        --ag-header-background-color: #0d1117 !important;
-        --ag-odd-row-background-color: rgba(255,255,255,0.012) !important;
-        --ag-row-hover-color: rgba(88,166,255,0.05) !important;
-        --ag-selected-row-background-color: rgba(88,166,255,0.08) !important;
-        --ag-border-color: rgba(255,255,255,0.05) !important;
-        --ag-secondary-border-color: rgba(255,255,255,0.04) !important;
-        --ag-header-foreground-color: #6e7681 !important;
-        --ag-foreground-color: #e6edf3 !important;
-        --ag-secondary-foreground-color: #8b949e !important;
-        --ag-disabled-foreground-color: #484f58 !important;
-        --ag-font-size: 12.5px !important;
-        --ag-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif !important;
-        --ag-row-height: 34px !important;
-        --ag-header-height: 36px !important;
-        --ag-input-focus-border-color: #58a6ff !important;
-        --ag-range-selection-border-color: #58a6ff !important;
-        border: none !important;
-        border-radius: 10px !important;
-        overflow: hidden !important;
-        font-feature-settings: 'tnum' !important;
-    }
-
-    /* ── Root / wrapper overrides ─────────────────────── */
-    .ag-theme-balham-dark .ag-root-wrapper {
-        background: #090c10 !important;
-        border: none !important;
-    }
-    .ag-theme-balham-dark .ag-root {
-        background: #090c10 !important;
-    }
-    .ag-theme-balham-dark .ag-body-viewport {
-        background: #090c10 !important;
-    }
-    .ag-theme-balham-dark .ag-center-cols-viewport {
+    /* ── Nuke ALL backgrounds to #090c10 ─────────────── */
+    .ag-theme-alpine-dark,
+    .ag-theme-alpine-dark .ag-root-wrapper,
+    .ag-theme-alpine-dark .ag-root,
+    .ag-theme-alpine-dark .ag-body-viewport,
+    .ag-theme-alpine-dark .ag-center-cols-viewport,
+    .ag-theme-alpine-dark .ag-center-cols-container,
+    .ag-theme-alpine-dark .ag-full-width-viewport,
+    .ag-theme-alpine-dark .ag-row,
+    .ag-theme-alpine-dark .ag-row-even,
+    .ag-theme-alpine-dark .ag-row-odd {
         background: #090c10 !important;
     }
 
-    /* ── Header row ───────────────────────────────────── */
-    .ag-theme-balham-dark .ag-header {
+    .ag-theme-alpine-dark .ag-header,
+    .ag-theme-alpine-dark .ag-header-viewport,
+    .ag-theme-alpine-dark .ag-floating-filter,
+    .ag-theme-alpine-dark .ag-paging-panel {
         background: #0d1117 !important;
+    }
+
+    /* ── Borders ─────────────────────────────────────── */
+    .ag-theme-alpine-dark {
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 10px !important; overflow: hidden !important;
+        --ag-border-color: rgba(255,255,255,0.04) !important;
+    }
+
+    /* ── Header ──────────────────────────────────────── */
+    .ag-theme-alpine-dark .ag-header {
         border-bottom: 1px solid rgba(255,255,255,0.06) !important;
         font-weight: 600 !important; font-size: 10.5px !important;
-        text-transform: uppercase !important; letter-spacing: 0.05em !important;
+    }
+    .ag-theme-alpine-dark .ag-header-cell {
+        padding: 0 10px !important;
         color: #6e7681 !important;
     }
-    .ag-theme-balham-dark .ag-header-cell {
-        padding: 0 10px !important;
-        border-right: none !important;
+    .ag-theme-alpine-dark .ag-header-cell-label {
+        text-transform: uppercase; letter-spacing: 0.04em;
+        font-weight: 600; font-size: 10.5px;
     }
-    .ag-theme-balham-dark .ag-header-cell-resize::after {
-        background: rgba(255,255,255,0.04) !important;
-        width: 1px !important;
+    .ag-theme-alpine-dark .ag-header-cell-resize::after {
+        background: rgba(255,255,255,0.03) !important; width: 1px !important;
     }
-    /* Header sort icons */
-    .ag-theme-balham-dark .ag-sort-indicator-icon {
+    /* Header sort indicator */
+    .ag-theme-alpine-dark .ag-sort-indicator-icon,
+    .ag-theme-alpine-dark .ag-header-icon {
         color: #58a6ff !important; opacity: 0.8;
     }
-    .ag-theme-balham-dark .ag-header-icon {
-        color: #6e7681 !important;
-    }
 
-    /* ── Rows ─────────────────────────────────────────── */
-    .ag-theme-balham-dark .ag-row {
+    /* ── Rows & Cells ────────────────────────────────── */
+    .ag-theme-alpine-dark .ag-row {
         background: transparent !important;
-        border-bottom: 1px solid rgba(255,255,255,0.025) !important;
+        border-bottom: 1px solid rgba(255,255,255,0.02) !important;
         color: #e6edf3 !important;
-        transition: background 0.1s ease;
+        transition: background 0.08s ease;
     }
-    .ag-theme-balham-dark .ag-row:hover {
+    .ag-theme-alpine-dark .ag-row:hover {
         background: rgba(88,166,255,0.04) !important;
     }
-    .ag-theme-balham-dark .ag-row-selected {
-        background: rgba(88,166,255,0.07) !important;
+    .ag-theme-alpine-dark .ag-row-selected {
+        background: rgba(88,166,255,0.06) !important;
     }
-    /* Cells */
-    .ag-theme-balham-dark .ag-cell {
+    .ag-theme-alpine-dark .ag-cell {
         padding: 0 10px !important; line-height: 34px !important;
         color: #e6edf3 !important; border-right: none !important;
     }
-    .ag-theme-balham-dark .ag-cell:focus {
+    .ag-theme-alpine-dark .ag-cell:focus {
         border: 1px solid #58a6ff !important;
-        box-shadow: inset 0 0 0 1px rgba(88,166,255,0.2) !important;
+        box-shadow: inset 0 0 0 1px rgba(88,166,255,0.25) !important;
+        outline: none !important;
     }
 
-    /* ── Pagination ───────────────────────────────────── */
-    .ag-theme-balham-dark .ag-paging-panel {
-        background: #0d1117 !important;
-        border-top: 1px solid rgba(255,255,255,0.06) !important;
+    /* ── Pagination ──────────────────────────────────── */
+    .ag-theme-alpine-dark .ag-paging-panel {
+        border-top: 1px solid rgba(255,255,255,0.05) !important;
         font-size: 12px !important; color: #8b949e !important;
-        height: 40px !important;
+        height: 40px !important; background: #0d1117 !important;
     }
-    .ag-theme-balham-dark .ag-paging-page-summary-panel {
+    .ag-theme-alpine-dark .ag-paging-page-summary-panel {
         color: #8b949e !important;
     }
-    .ag-theme-balham-dark .ag-paging-button {
-        background: rgba(255,255,255,0.03) !important;
+    .ag-theme-alpine-dark .ag-paging-button {
+        background: rgba(255,255,255,0.02) !important;
         border: 1px solid rgba(255,255,255,0.06) !important;
         border-radius: 5px !important; color: #8b949e !important;
-        padding: 2px 6px !important; font-size: 11px !important;
     }
-    .ag-theme-balham-dark .ag-paging-button:hover {
+    .ag-theme-alpine-dark .ag-paging-button:hover {
         background: rgba(255,255,255,0.06) !important;
         border-color: rgba(255,255,255,0.12) !important;
     }
-    .ag-theme-balham-dark .ag-paging-button.ag-disabled {
-        opacity: 0.3 !important;
+    .ag-theme-alpine-dark .ag-paging-button.ag-disabled {
+        opacity: 0.25 !important;
     }
 
-    /* ── Floating filter ──────────────────────────────── */
-    .ag-theme-balham-dark .ag-floating-filter {
-        background: #0d1117 !important; border-top: none !important;
-    }
-    .ag-theme-balham-dark .ag-floating-filter-body input,
-    .ag-theme-balham-dark .ag-floating-filter-body select {
+    /* ── Floating filter ─────────────────────────────── */
+    .ag-theme-alpine-dark .ag-floating-filter-body input {
         background: rgba(255,255,255,0.04) !important;
         border: 1px solid rgba(255,255,255,0.08) !important;
         border-radius: 5px !important; color: #e6edf3 !important;
         font-size: 11.5px !important; padding: 4px 8px !important;
     }
-    .ag-theme-balham-dark .ag-floating-filter-body input:focus {
+    .ag-theme-alpine-dark .ag-floating-filter-body input:focus {
         border-color: #58a6ff !important;
         box-shadow: 0 0 0 2px rgba(88,166,255,0.12) !important;
     }
 
-    /* ── Popups: menu / filter / tooltip ──────────────── */
-    .ag-theme-balham-dark .ag-menu,
-    .ag-theme-balham-dark .ag-filter,
-    .ag-theme-balham-dark .ag-tooltip {
+    /* ── Popups ──────────────────────────────────────── */
+    .ag-theme-alpine-dark .ag-menu,
+    .ag-theme-alpine-dark .ag-filter,
+    .ag-theme-alpine-dark .ag-tooltip,
+    .ag-theme-alpine-dark .ag-popup-child {
         background: #0d1117 !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
         border-radius: 8px !important;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
     }
-    .ag-theme-balham-dark .ag-filter select,
-    .ag-theme-balham-dark .ag-filter input {
+    .ag-theme-alpine-dark .ag-filter input,
+    .ag-theme-alpine-dark .ag-filter select {
         background: rgba(255,255,255,0.04) !important;
         border: 1px solid rgba(255,255,255,0.08) !important;
         border-radius: 5px !important; color: #e6edf3 !important;
     }
-    .ag-theme-balham-dark .ag-filter-apply-panel button {
+    .ag-theme-alpine-dark .ag-filter-apply-panel button:first-child {
         background: #58a6ff !important; border: none !important;
         color: #fff !important; border-radius: 5px !important;
-        font-weight: 600 !important; font-size: 12px !important;
     }
-    .ag-theme-balham-dark .ag-filter-apply-panel button:last-child {
+    .ag-theme-alpine-dark .ag-filter-apply-panel button:last-child {
         background: rgba(255,255,255,0.04) !important;
         color: #8b949e !important;
     }
-    /* Tab in filter popup */
-    .ag-theme-balham-dark .ag-tab {
+    .ag-theme-alpine-dark .ag-tab {
         color: #8b949e !important;
     }
-    .ag-theme-balham-dark .ag-tab-selected {
-        color: #58a6ff !important; border-bottom-color: #58a6ff !important;
+    .ag-theme-alpine-dark .ag-tab-selected {
+        color: #58a6ff !important; border-bottom: 2px solid #58a6ff !important;
     }
 
-    /* ── Scrollbar ────────────────────────────────────── */
-    .ag-theme-balham-dark ::-webkit-scrollbar { width: 5px; height: 5px; }
-    .ag-theme-balham-dark ::-webkit-scrollbar-track { background: transparent; }
-    .ag-theme-balham-dark ::-webkit-scrollbar-thumb {
+    /* ── Scrollbar ───────────────────────────────────── */
+    .ag-theme-alpine-dark ::-webkit-scrollbar { width: 5px; height: 5px; }
+    .ag-theme-alpine-dark ::-webkit-scrollbar-track { background: transparent; }
+    .ag-theme-alpine-dark ::-webkit-scrollbar-thumb {
         background: rgba(255,255,255,0.06); border-radius: 3px;
     }
-    .ag-theme-balham-dark ::-webkit-scrollbar-thumb:hover {
+    .ag-theme-alpine-dark ::-webkit-scrollbar-thumb:hover {
         background: rgba(255,255,255,0.12);
     }
-    .ag-theme-balham-dark ::-webkit-scrollbar-corner {
-        background: transparent;
-    }
+    .ag-theme-alpine-dark ::-webkit-scrollbar-corner { background: transparent; }
 
-    /* ── Misc ──────────────────────────────────────────── */
-    .ag-theme-balham-dark .ag-ltr .ag-has-focus .ag-cell-focus:not(.ag-cell-range-selected) {
-        border-color: #58a6ff !important;
+    /* ── Overlays ────────────────────────────────────── */
+    .ag-theme-alpine-dark .ag-overlay-loading-wrapper {
+        background: rgba(9,12,16,0.85) !important;
     }
-    /* Loading overlay */
-    .ag-theme-balham-dark .ag-overlay-loading-wrapper {
-        background: rgba(9,12,16,0.8) !important;
-    }
-    /* No rows overlay */
-    .ag-theme-balham-dark .ag-overlay-no-rows-wrapper {
+    .ag-theme-alpine-dark .ag-overlay-no-rows-wrapper {
         color: #484f58 !important; font-size: 13px !important;
     }
 
@@ -1054,17 +1025,44 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     gb.configure_grid_options(
         domLayout='normal', rowHeight=32, headerHeight=34,
         enableCellTextSelection=True, suppressRowClickSelection=True,
+        tooltipShowDelay=300, tooltipHideDelay=1000,
         pagination=True, paginationPageSize=50, paginationPageSizeSelector=[25, 50, 100],
     )
 
+    # Column tooltips (mimics the old st.dataframe column_config help)
+    _tooltips = {
+        'Code': 'Stock ticker code',
+        'Name': 'Company name',
+        'Price': 'Latest close price',
+        'T': 'Trend: ↑ above EMA50, ↓ below',
+        'Div%': 'EMA divergence percentage',
+        'Vol MA': '20-day volume moving average',
+        'ROE%': 'Return on Equity (higher = more profitable)',
+        'Score': 'Total score (max 11)',
+        '>200': 'Close > EMA200 (trend up)',
+        'Align': 'EMA50 > EMA100 > EMA200 (perfect bullish alignment)',
+        'Tight': 'EMA divergence below threshold (compression)',
+        'BB': 'Bollinger Band width at 20-bar low (max squeeze)',
+        'KDJ': 'Daily J > K (bullish daily KDJ)',
+        'WKDJ': 'Weekly KDJ golden cross / near-cross (bullish weekly KDJ)',
+        'Vol%': '60-day annualized volatility > threshold',
+        'Spike': 'Today vol > 2x 20d avg (ignition)',
+        'Vol↑': 'Vol MA20 > Vol MA60 (volume expanding)',
+        'VolMA': 'Vol MA5 > threshold (liquid)',
+        'Signal': 'KDJ signal: crossed / above',
+    }
+
     # Column-specific: narrow columns, number formatting
     for col in df.columns:
+        tip = _tooltips.get(col, '')
         if col in ('Code', 'T', 'Trend', '>200', 'Align', 'Tight', 'BB', 'KDJ', 'WKDJ', 'Vol%', 'Spike', 'Vol↑', 'VolMA', 'Signal', 'Score'):
-            gb.configure_column(col, width=62)
+            gb.configure_column(col, width=62, headerTooltip=tip)
         elif col in ('Name',):
-            gb.configure_column(col, width=160)
+            gb.configure_column(col, width=160, headerTooltip=tip)
         elif col in ('Price', 'Div%', 'ROE%'):
-            gb.configure_column(col, width=78)
+            gb.configure_column(col, width=78, headerTooltip=tip)
+        else:
+            gb.configure_column(col, headerTooltip=tip)
 
     # Conditional formatting for ROE
     if roe_col and 'ROE%' in df.columns:
@@ -1079,7 +1077,7 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     AgGrid(
         df, gridOptions=grid_options,
         height=height, width='100%',
-        theme='balham-dark',
+        theme='alpine-dark',
         update_on=[],
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
