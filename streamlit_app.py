@@ -356,23 +356,22 @@ with st.sidebar:
                     del st.session_state[k]
             st.rerun()
 
-    st.caption(f"Tickers: {len(load_tickers(TICKERS_FILE))} | Data cached 1hr")
+    if "_ticker_count" not in st.session_state:
+        st.session_state._ticker_count = len(load_tickers(TICKERS_FILE))
+    st.caption(f"Tickers: {st.session_state._ticker_count} | Data cached 1hr")
 
 
 # ── ROE fetcher ────────────────────────────────────────────────────────────
-def _fetch_one_roe(tkr):
-    """Fetch ROE for a single ticker (own session + crumb, avoids thread conflicts)."""
+def _fetch_one_roe(tkr, crumb, cookies):
+    """Fetch ROE for a single ticker using shared crumb + cookies."""
     sess = requests.Session()
     sess.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     })
+    # Seed cookies from master session
+    for name, value in (cookies or {}).items():
+        sess.cookies.set(name, value)
     try:
-        sess.get("https://fc.yahoo.com/", timeout=10)
-        r = sess.get("https://query2.finance.yahoo.com/v1/test/getcrumb", timeout=10)
-        if r.status_code != 200:
-            return None
-        crumb = r.text.strip()
-
         r = sess.get(
             f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{tkr}",
             params={"modules": "financialData", "crumb": crumb},
@@ -390,10 +389,43 @@ def _fetch_one_roe(tkr):
 
 
 def fetch_roe_batch(tickers, workers=4):
-    """Fetch ROE for a list of tickers (concurrent, each gets its own session)."""
+    """Fetch ROE for a list of tickers (concurrent, shared crumb to reduce requests)."""
+    # Get crumb + cookies once from a master session
+    master = requests.Session()
+    master.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    })
+    crumb = None
+    cookies = None
+    try:
+        master.get("https://fc.yahoo.com/", timeout=10)
+        crumb_resp = master.get("https://query2.finance.yahoo.com/v1/test/getcrumb", timeout=10)
+        if crumb_resp.status_code == 200:
+            crumb = crumb_resp.text.strip()
+            cookies = master.cookies.get_dict()
+    except Exception:
+        pass
+
+    if crumb is None:
+        # Fallback: each worker gets its own crumb (original behavior)
+        results = {}
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = {}
+            for tkr in tickers:
+                futs[pool.submit(_fetch_one_roe_fallback, tkr)] = tkr
+            for f in as_completed(futs):
+                tkr = futs[f]
+                try:
+                    roe = f.result()
+                    if roe is not None:
+                        results[tkr] = round(roe * 100, 2)
+                except Exception:
+                    pass
+        return results
+
     results = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = {pool.submit(_fetch_one_roe, tkr): tkr for tkr in tickers}
+        futs = {pool.submit(_fetch_one_roe, tkr, crumb, cookies): tkr for tkr in tickers}
         for f in as_completed(futs):
             tkr = futs[f]
             try:
@@ -403,6 +435,34 @@ def fetch_roe_batch(tickers, workers=4):
             except Exception:
                 pass
     return results
+
+
+def _fetch_one_roe_fallback(tkr):
+    """Fallback: fetch ROE with own session + crumb (used when shared crumb fails)."""
+    sess = requests.Session()
+    sess.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    })
+    try:
+        sess.get("https://fc.yahoo.com/", timeout=10)
+        r = sess.get("https://query2.finance.yahoo.com/v1/test/getcrumb", timeout=10)
+        if r.status_code != 200:
+            return None
+        crumb = r.text.strip()
+        r = sess.get(
+            f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{tkr}",
+            params={"modules": "financialData", "crumb": crumb},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            j = r.json()
+            fd = j.get("quoteSummary", {}).get("result", [{}])[0].get("financialData", {})
+            roe = fd.get("returnOnEquity", {})
+            if isinstance(roe, dict) and roe.get("raw") is not None:
+                return roe["raw"]
+    except Exception:
+        pass
+    return None
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -708,7 +768,7 @@ if st.session_state.run_done:
             st.dataframe(df, hide_index=True, use_container_width=True, height=420,
                          column_config={
                              "Price": st.column_config.NumberColumn(format="%.2f", width="small", help="Latest close price"),
-                             "Score": st.column_config.NumberColumn(format="%d", width="small", help="Total score (max 10)"),
+                             "Score": st.column_config.NumberColumn(format="%d", width="small", help="Total score (max 11)"),
                              ">200": st.column_config.TextColumn(width="small", help="Close > EMA200 (trend up)"),
                              "Align": st.column_config.TextColumn(width="small", help="EMA50 > EMA100 > EMA200 (perfect bullish alignment)"),
                              "Tight": st.column_config.TextColumn(width="small", help="EMA divergence below threshold (compression)"),

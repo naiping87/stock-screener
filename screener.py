@@ -1,15 +1,19 @@
 """
-Bursa Malaysia Stock Screener — 3 scripts → 1 combined CSV:
+Bursa Malaysia Stock Screener — 5 screeners:
   1. ema_daily      — daily EMA 10/20/50/100/200 compressed <3% for 20+ days
-  2. kdj_divergence — price falling, KDJ rising over 30 days
-  3. ema_hourly     — hourly EMA 10/20/50/100/200 compressed <3% for 20+ hours
+  2. ema_hourly     — hourly EMA 10/20/50/100/200 compressed <3% for 20+ hours
+  3. kdj_divergence — price falling, KDJ rising over 30 days
+  4. weekly_kdj     — weekly KDJ golden cross / near-cross
+  5. scoring        — weighted 11-factor scoring system
 """
 import csv
 import os
 import sys
 import time
+from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -31,7 +35,7 @@ DAILY_DAYS = 400                    # days of daily data (max EMA period 200 + 2
 HOURLY_DAYS = 50                    # days of hourly data (needs 200+20=220 bars, ~6h/day on Bursa)
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
-KDJ_OVERSOLD = 50                   # K must be below this for valid signal
+KDJ_OVERSOLD = 50                   # K must be below this for valid signal (legacy, not enforced)
 SCORE_TREND_PERIODS = [10, 20, 50, 100, 200]  # EMA periods for trend divergence
 SCORE_TREND_THRESHOLD = 1.0         # max divergence % for trend score
 SCORE_EMA200_SLOPE_BARS = 20         # bars for EMA200 slope check
@@ -46,7 +50,7 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def load_tickers(path):
+def load_tickers(path: str) -> dict[str, str]:
     """Read tickers.csv -> dict {ticker_symbol: company_name}."""
     if not os.path.exists(path):
         print(f"[ERROR] {path} not found.")
@@ -65,7 +69,7 @@ def load_tickers(path):
     return tickers
 
 
-def _build_session():
+def _build_session() -> requests.Session:
     """Create a requests Session with browser-like headers for Yahoo Finance."""
     sess = requests.Session()
     sess.headers.update({
@@ -84,6 +88,7 @@ def _build_session():
 
 
 def _fetch_chart(sess, tkr, period1, period2, interval, min_bars):
+    # type: (requests.Session, str, int, int, str, int) -> tuple[dict[str, pd.Series] | None, str]
     """Download chart data for one ticker. Returns (data_dict | None, meta_name)."""
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{tkr}"
     params = {
@@ -196,7 +201,7 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
     return tkr, result
 
 
-def download_data(tickers, progress_cb=None):
+def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None) -> dict[str, dict[str, Any]]:
     """Download daily + hourly + weekly data concurrently via Yahoo chart API."""
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
@@ -238,9 +243,10 @@ def download_data(tickers, progress_cb=None):
     return all_data
 
 
-def _calc_divergence(close_series, periods):
+def _calc_divergence(close_series: pd.Series, periods: list[int]) -> tuple[float | None, dict[int, float] | None]:
     """Return (divergence_pct, ema_dict) or (None, None).
-    Automatically skips periods that are too large for the available data."""
+    Automatically skips periods that are too large for the available data.
+    ema_dict maps period -> last EMA value (scalar)."""
     # Filter to periods that fit within available data
     valid_periods = [p for p in periods if len(close_series) >= p]
     if len(valid_periods) < 2:
@@ -256,16 +262,29 @@ def _calc_divergence(close_series, periods):
     return (max(vals) - min(vals)) / close * 100.0, ema
 
 
-def _check_compression_duration(close_series, periods, threshold, min_bars):
+def _compute_ema_series(close_series: pd.Series, periods: list[int]) -> dict[int, pd.Series]:
+    """Compute full EMA series for a list of periods (used for compression check)."""
+    valid_periods = [p for p in periods if p <= len(close_series)]
+    return {p: close_series.ewm(span=p, adjust=False).mean() for p in valid_periods}
+
+
+def _check_compression_duration(close_series: pd.Series, periods: list[int], threshold: float, min_bars: int, emas: dict[int, pd.Series] | None = None) -> bool:
     """Return True if EMA divergence stayed <= threshold for the last min_bars bars.
-    Automatically skips periods that are too large for the available data."""
+    Automatically skips periods that are too large for the available data.
+    Optionally accepts pre-computed emas dict to avoid redundant computation."""
     valid_periods = [p for p in periods if p + min_bars <= len(close_series)]
     if len(valid_periods) < 2:
         return False
 
-    emas = {p: close_series.ewm(span=p, adjust=False).mean() for p in valid_periods}
+    if emas is None:
+        emas = {p: close_series.ewm(span=p, adjust=False).mean() for p in valid_periods}
+    else:
+        emas = {p: emas[p] for p in valid_periods if p in emas}
+        if len(emas) < 2:
+            return False
+
     for i in range(-min_bars, 0):
-        vals = [emas[p].iloc[i] for p in valid_periods]
+        vals = [emas[p].iloc[i] for p in emas]
         if any(pd.isna(v) for v in vals):
             return False
         div = (max(vals) - min(vals)) / close_series.iloc[i] * 100.0
@@ -274,7 +293,7 @@ def _check_compression_duration(close_series, periods, threshold, min_bars):
     return True
 
 
-def _calc_kdj(daily_high, daily_low, daily_close, period=KDJ_PERIOD, signal=KDJ_SIGNAL):
+def _calc_kdj(daily_high: pd.Series, daily_low: pd.Series, daily_close: pd.Series, period: int = KDJ_PERIOD, signal: int = KDJ_SIGNAL) -> tuple[pd.Series | None, pd.Series | None, pd.Series | None]:
     """Calculate KDJ (K, D, J) series from daily OHLC. Returns (k, d, j) or (None, None, None)."""
     needed = period + signal
     if daily_high is None or len(daily_close) < needed:
@@ -293,9 +312,10 @@ def _calc_kdj(daily_high, daily_low, daily_close, period=KDJ_PERIOD, signal=KDJ_
     return k, d, j
 
 
-def _detect_divergence(daily_high, daily_low, daily_close,
-                       lookback=DIVERGENCE_LOOKBACK, kdj_period=KDJ_PERIOD,
-                       kdj_signal=KDJ_SIGNAL):
+def _detect_divergence(daily_high: pd.Series, daily_low: pd.Series, daily_close: pd.Series,
+                       lookback: int = DIVERGENCE_LOOKBACK, kdj_period: int = KDJ_PERIOD,
+                       kdj_signal: int = KDJ_SIGNAL):
+    # type: (...) -> tuple[str | None, float | None, float | None, float | None, float | None, float | None]
     """Detect bullish divergence: price downtrend + KDJ uptrend (daily, >= lookback bars).
 
     Returns (sig, k_val, d_val, j_val, price_slope, k_slope) or (None,)*6.
@@ -325,7 +345,7 @@ def _detect_divergence(daily_high, daily_low, daily_close,
     return None, None, None, None, None, None
 
 
-def _check_volume(vol_series, min_vol=None, roll=20):
+def _check_volume(vol_series: pd.Series | None, min_vol: int | None = None, roll: int = 20) -> bool:
     """Return True if volume MA > min_vol (reads VOL_MIN if not given)."""
     if min_vol is None:
         min_vol = VOL_MIN  # read module variable at call time
@@ -334,14 +354,9 @@ def _check_volume(vol_series, min_vol=None, roll=20):
     return vol_series.rolling(roll).mean().iloc[-1] > min_vol
 
 
-def run_ema_screener(data, ticker_names=None, periods=None,
-                     threshold=DIVERGENCE_THRESHOLD,
-                     min_compression=MIN_COMPRESSION_BARS):
-    """
-    EMA Compression Screener (daily):
-      Stage 1 — EMA divergence <= threshold% for >= min_compression bars
-      Stage 2 — daily volume MA > min_vol
-    """
+def _run_ema_screener_impl(data, ticker_names, periods, threshold, min_compression,
+                          close_key, vol_key, vol_min, label):
+    """Shared EMA compression screener logic (daily or hourly)."""
     if periods is None:
         periods = EMA_PERIODS
     ticker_names = ticker_names or {}
@@ -349,75 +364,37 @@ def run_ema_screener(data, ticker_names=None, periods=None,
     s2 = 0
 
     for tkr, d in data.items():
-        close = d["close"]
-        div, ema = _calc_divergence(close, periods)
-        if div is None or div > threshold:
-            continue
-
-        if not _check_compression_duration(close, periods, threshold, min_compression):
-            continue
-        s1 += 1
-
-        if not _check_volume(d.get("volume")):
-            continue
-        s2 += 1
-
-        vol = d.get("volume")
-        vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
-        trend_ema = 50 if 50 in ema else min(ema.keys(), key=lambda x: abs(x - 50))
-        trend = "↑" if close.iloc[-1] > ema[trend_ema] else "↓"
-
-        name = d.get("name", "") or ticker_names.get(tkr, "")
-        result = {
-            "ticker": tkr,
-            "name": name,
-            "close": round(close.iloc[-1], 2),
-            "divergence_pct": round(div, 2),
-            "vol_ma": vol_ma_val,
-            "trend": trend,
-        }
-        for p in periods:
-            if p in ema:
-                result[f"EMA{p}"] = round(ema[p], 2)
-        yield result
-
-    print(f"  Stage 1 (compression):    {s1} passed")
-    print(f"  Stage 2 (vol > {VOL_MIN//1000}k):  {s2} passed")
-
-
-def run_ema_hourly_screener(data, ticker_names=None, periods=None,
-                            threshold=DIVERGENCE_THRESHOLD,
-                            min_compression=MIN_COMPRESSION_BARS):
-    """
-    EMA Compression Screener (hourly):
-      Stage 1 — EMA divergence <= threshold% for >= min_compression bars
-      Stage 2 — hourly volume MA > min_vol
-    """
-    if periods is None:
-        periods = EMA_PERIODS
-    ticker_names = ticker_names or {}
-    s1 = 0
-    s2 = 0
-
-    for tkr, d in data.items():
-        close = d.get("close_hourly")
+        close = d.get(close_key) if close_key != "close" else d["close"]
         if close is None:
             continue
 
-        div, ema = _calc_divergence(close, periods)
-        if div is None or div > threshold:
+        # Compute EMA series once, derive both divergence + compression check
+        ema_series = _compute_ema_series(close, periods)
+        if len(ema_series) < 2:
             continue
 
-        if not _check_compression_duration(close, periods, threshold, min_compression):
+        # Divergence from last values
+        vals = [ema_series[p].iloc[-1] for p in ema_series if not pd.isna(ema_series[p].iloc[-1])]
+        if len(vals) < 2:
+            continue
+        div = (max(vals) - min(vals)) / close.iloc[-1] * 100.0
+        if div > threshold:
+            continue
+
+        # Build scalar ema dict for output
+        ema = {p: round(ema_series[p].iloc[-1], 2) for p in ema_series}
+
+        if not _check_compression_duration(close, list(ema_series.keys()), threshold,
+                                           min_compression, emas=ema_series):
             continue
         s1 += 1
 
-        if not _check_volume(d.get("volume_hourly"), min_vol=VOL_MIN_HOURLY):
+        vol = d.get(vol_key)
+        if vol is None or not _check_volume(vol, min_vol=vol_min):
             continue
         s2 += 1
 
-        vol = d.get("volume_hourly")
-        vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
+        vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if len(vol) >= 20 else 0
         trend_ema = 50 if 50 in ema else min(ema.keys(), key=lambda x: abs(x - 50))
         trend = "↑" if close.iloc[-1] > ema[trend_ema] else "↓"
 
@@ -432,15 +409,46 @@ def run_ema_hourly_screener(data, ticker_names=None, periods=None,
         }
         for p in periods:
             if p in ema:
-                result[f"EMA{p}"] = round(ema[p], 2)
+                result[f"EMA{p}"] = ema[p]
         yield result
 
-    print(f"  Stage 1 (compression):      {s1} passed")
-    print(f"  Stage 2 (vol > {VOL_MIN_HOURLY//1000}k):     {s2} passed")
+    print(f"  Stage 1 ({label} compression):     {s1} passed")
+    print(f"  Stage 2 ({label} vol > {vol_min//1000}k): {s2} passed")
 
 
-def run_divergence_screener(data, ticker_names=None,
-                            lookback=DIVERGENCE_LOOKBACK):
+def run_ema_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
+                     periods: list[int] | None = None,
+                     threshold: float = DIVERGENCE_THRESHOLD,
+                     min_compression: int = MIN_COMPRESSION_BARS) -> Generator[dict[str, Any], None, None]:
+    """
+    EMA Compression Screener (daily):
+      Stage 1 — EMA divergence <= threshold% for >= min_compression bars
+      Stage 2 — daily volume MA > VOL_MIN
+    """
+    yield from _run_ema_screener_impl(
+        data, ticker_names, periods, threshold, min_compression,
+        close_key="close", vol_key="volume", vol_min=VOL_MIN, label="daily",
+    )
+
+
+def run_ema_hourly_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
+                            periods: list[int] | None = None,
+                            threshold: float = DIVERGENCE_THRESHOLD,
+                            min_compression: int = MIN_COMPRESSION_BARS) -> Generator[dict[str, Any], None, None]:
+    """
+    EMA Compression Screener (hourly):
+      Stage 1 — EMA divergence <= threshold% for >= min_compression bars
+      Stage 2 — hourly volume MA > VOL_MIN_HOURLY
+    """
+    yield from _run_ema_screener_impl(
+        data, ticker_names, periods, threshold, min_compression,
+        close_key="close_hourly", vol_key="volume_hourly",
+        vol_min=VOL_MIN_HOURLY, label="hourly",
+    )
+
+
+def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
+                            lookback: int = DIVERGENCE_LOOKBACK) -> Generator[dict[str, Any], None, None]:
     """
     KDJ Divergence Screener:
       Stage 1 — Bullish divergence (price falling, KDJ rising, daily lookback bars)
@@ -485,7 +493,8 @@ def run_divergence_screener(data, ticker_names=None,
     print(f"  Stage 2 (vol > {VOL_MIN//1000}k): {s2} passed")
 
 
-def _detect_kdj_signal(k, d, j, lookback=KDJ_LOOKBACK, oversold=KDJ_OVERSOLD):
+def _detect_kdj_signal(k, d, j, lookback: int = KDJ_LOOKBACK, oversold: int = KDJ_OVERSOLD):
+    # type: (pd.Series | None, pd.Series | None, pd.Series | None, int, int) -> tuple[str | None, float | None, float | None, float | None]
     """Detect KDJ golden cross via J line (J=3K-2D, crosses K when K crosses D).
 
     Returns (signal, k_val, d_val, j_val):
@@ -516,8 +525,8 @@ def _detect_kdj_signal(k, d, j, lookback=KDJ_LOOKBACK, oversold=KDJ_OVERSOLD):
     return None, None, None, None
 
 
-def run_weekly_kdj_screener(data, ticker_names=None,
-                            vol_min=WEEKLY_VOL_MIN):
+def run_weekly_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
+                            vol_min: int = WEEKLY_VOL_MIN) -> Generator[dict[str, Any], None, None]:
     """
     Weekly KDJ Golden Cross Screener:
       Stage 1 — Weekly KDJ golden cross / near-cross in oversold zone
@@ -565,15 +574,15 @@ def run_weekly_kdj_screener(data, ticker_names=None,
     print(f"  Stage 2 (weekly vol > {vol_min//1000}k):   {s2} passed")
 
 
-def run_scoring_screener(data, ticker_names=None,
-                         trend_periods=SCORE_TREND_PERIODS,
-                         trend_threshold=SCORE_TREND_THRESHOLD,
-                         ema200_slope_bars=SCORE_EMA200_SLOPE_BARS,
-                         vol_period=SCORE_VOL_PERIOD,
-                         vol_threshold=SCORE_VOL_THRESHOLD,
-                         vol_ma_bars=SCORE_VOL_MA_BARS,
-                         vol_ma_threshold=SCORE_VOL_MA_THRESHOLD,
-                         top_n=SCORE_TOP_N):
+def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
+                         trend_periods: list[int] = SCORE_TREND_PERIODS,
+                         trend_threshold: float = SCORE_TREND_THRESHOLD,
+                         ema200_slope_bars: int = SCORE_EMA200_SLOPE_BARS,
+                         vol_period: int = SCORE_VOL_PERIOD,
+                         vol_threshold: float = SCORE_VOL_THRESHOLD,
+                         vol_ma_bars: int = SCORE_VOL_MA_BARS,
+                         vol_ma_threshold: int = SCORE_VOL_MA_THRESHOLD,
+                         top_n: int = SCORE_TOP_N) -> list[dict[str, Any]]:
     """
     Weighted Scoring Screener — scores every stock on 11 factors.
     Returns top_n stocks sorted by total score descending.
@@ -583,23 +592,32 @@ def run_scoring_screener(data, ticker_names=None,
 
     for tkr, d in data.items():
         close = d["close"]
+        if len(close) < 20:  # minimum bars needed for any factor
+            continue
+
         high = d["high"]
         low = d["low"]
         vol = d.get("volume")
         score = 0
         details = {}
 
+        # ── Pre-compute all EMAs once ──────────────────────────────────────
+        needed_spans = set(trend_periods) | {200, 50, 100, 20}
+        ema = {}
+        for span in needed_spans:
+            if len(close) >= span:
+                ema[span] = close.ewm(span=span, adjust=False).mean()
+
         # 1. Close > EMA200 (+1)
-        ema200 = close.ewm(span=200, adjust=False).mean()
-        above_200 = len(ema200.dropna()) > 0 and close.iloc[-1] > ema200.iloc[-1]
+        above_200 = 200 in ema and close.iloc[-1] > ema[200].iloc[-1]
         if above_200:
             score += 1
         details["above_200"] = above_200
 
         # 2. EMA200 slope > 0 (+1)
         slope_up = False
-        if len(ema200.dropna()) >= ema200_slope_bars:
-            y = ema200.iloc[-ema200_slope_bars:].values.astype(float)
+        if 200 in ema and len(ema[200].dropna()) >= ema200_slope_bars:
+            y = ema[200].iloc[-ema200_slope_bars:].values.astype(float)
             if not np.isnan(y).any():
                 slope = np.polyfit(np.arange(ema200_slope_bars, dtype=float), y, 1)[0]
                 slope_up = slope > 0
@@ -609,13 +627,11 @@ def run_scoring_screener(data, ticker_names=None,
 
         # 3. EMA divergence < threshold (+1)
         trend_tight = False
-        ema_vals = {}
-        for p in trend_periods:
-            ema_vals[p] = close.ewm(span=p, adjust=False).mean()
-        vals = [ema_vals[p].iloc[-1] for p in trend_periods]
-        if not any(pd.isna(v) for v in vals):
-            div = (max(vals) - min(vals)) / close.iloc[-1] * 100.0
-            trend_tight = div < trend_threshold
+        if all(p in ema for p in trend_periods):
+            vals = [ema[p].iloc[-1] for p in trend_periods]
+            if not any(pd.isna(v) for v in vals):
+                div = (max(vals) - min(vals)) / close.iloc[-1] * 100.0
+                trend_tight = div < trend_threshold
         if trend_tight:
             score += 1
         details["trend_tight"] = trend_tight
@@ -677,23 +693,24 @@ def run_scoring_screener(data, ticker_names=None,
 
         # 9. EMA Alignment: 50 > 100 > 200 (+1) — perfect bullish alignment
         aligned = False
-        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
-        ema100 = close.ewm(span=100, adjust=False).mean().iloc[-1]
-        if not pd.isna(ema200.iloc[-1]) and not pd.isna(ema100) and not pd.isna(ema50):
-            aligned = ema50 > ema100 > ema200.iloc[-1]
+        if all(sp in ema for sp in (50, 100, 200)):
+            e50, e100, e200 = ema[50].iloc[-1], ema[100].iloc[-1], ema[200].iloc[-1]
+            if not any(pd.isna(v) for v in (e50, e100, e200)):
+                aligned = e50 > e100 > e200
         if aligned:
             score += 1
         details["aligned"] = aligned
 
-        # 10. Bollinger Band squeeze (EMA-based): BB width at 20-bar low (+1)
+        # 10. Bollinger Band squeeze: BB width at 20-bar low (+1)
         bb_squeeze = False
-        bb_mid = close.ewm(span=20, adjust=False).mean()
-        bb_std = close.rolling(20).std()
-        bb_width = (4 * bb_std) / bb_mid
-        if len(bb_width.dropna()) >= 20:
-            bb_now = bb_width.iloc[-1]
-            bb_min_20 = bb_width.iloc[-20:].min()
-            bb_squeeze = bb_now <= bb_min_20 * 1.01  # within 1% of 20-bar low
+        if 20 in ema:
+            bb_mid = ema[20]
+            bb_std = close.rolling(20).std()
+            bb_width = (4 * bb_std) / bb_mid
+            if len(bb_width.dropna()) >= 20:
+                bb_now = bb_width.iloc[-1]
+                bb_min_20 = bb_width.iloc[-20:].min()
+                bb_squeeze = bb_now <= bb_min_20 * 1.01  # within 1% of 20-bar low
         if bb_squeeze:
             score += 1
         details["bb_squeeze"] = bb_squeeze
@@ -732,7 +749,7 @@ def run_scoring_screener(data, ticker_names=None,
     return results[:top_n]
 
 
-def backtest_scoring(data, ticker_names=None,
+def backtest_scoring(data: dict[str, dict[str, Any]], ticker_names=None,
                      trend_periods=SCORE_TREND_PERIODS,
                      trend_threshold=SCORE_TREND_THRESHOLD,
                      ema200_slope_bars=SCORE_EMA200_SLOPE_BARS,
@@ -833,6 +850,7 @@ def backtest_scoring(data, ticker_names=None,
 
 
 def _write_csv(results, prefix, cols, sort_key, output_dir=OUTPUT_DIR):
+    # type: (list[dict[str, Any]], str, list[str], Callable[[dict[str, Any]], Any], str) -> str
     """Sort results and write {prefix}_{date}.csv."""
     results.sort(key=sort_key)
     os.makedirs(output_dir, exist_ok=True)
