@@ -306,66 +306,59 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       AgGrid — Apple dark table (quartz-dark + full CSS variable reset)
+       AgGrid — Bloomberg Terminal dark table
        ══════════════════════════════════════════════════════════════════════ */
 
     .ag-theme-quartz-dark {
-        /* ── 核心颜色变量（必须设满，否则 AgGrid 内部用默认灰白）── */
         --ag-background-color: #090c10 !important;
         --ag-foreground-color: #e6edf3 !important;
         --ag-secondary-foreground-color: #8b949e !important;
-        --ag-header-background-color: #0d1117 !important;
-        --ag-header-foreground-color: #6e7681 !important;
+        --ag-header-background-color: #141d2b !important;     /* deep blue-grey */
+        --ag-header-foreground-color: #7d8590 !important;      /* soft grey */
         --ag-odd-row-background-color: #090c10 !important;
-        --ag-row-hover-color: rgba(88,166,255,0.05) !important;
-        --ag-selected-row-background-color: rgba(88,166,255,0.08) !important;
+        --ag-row-hover-color: rgba(88,166,255,0.08) !important; /* stronger hover */
+        --ag-selected-row-background-color: rgba(88,166,255,0.10) !important;
         --ag-border-color: rgba(255,255,255,0.04) !important;
         --ag-secondary-border-color: rgba(255,255,255,0.03) !important;
         --ag-input-border-color: rgba(255,255,255,0.1) !important;
         --ag-input-focus-border-color: #58a6ff !important;
         --ag-input-disabled-background-color: rgba(255,255,255,0.02) !important;
         --ag-disabled-foreground-color: #484f58 !important;
-        --ag-chip-background-color: rgba(255,255,255,0.06) !important;
-        --ag-range-selection-border-color: #58a6ff !important;
         --ag-font-size: 12.5px !important;
         --ag-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif !important;
         --ag-row-height: 34px !important;
-        --ag-header-height: 36px !important;
-        /* ── 容器 ── */
+        --ag-header-height: 38px !important;
         background: #090c10 !important;
         border: 1px solid rgba(255,255,255,0.06) !important;
         border-radius: 10px !important;
         overflow: hidden !important;
     }
 
-    /* ── 表头 ────────────────────────────────────────── */
+    /* ── Header — Bloomberg blue-grey ────────────────── */
     .ag-theme-quartz-dark .ag-header {
-        background: #0d1117 !important;
-        border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+        background: #141d2b !important;
+        border-bottom: 2px solid rgba(255,255,255,0.08) !important;
     }
     .ag-theme-quartz-dark .ag-header-cell {
-        padding: 0 10px !important; color: #6e7681 !important;
+        padding: 0 10px !important; color: #7d8590 !important;
+        font-weight: 600; font-size: 10.5px;
     }
     .ag-theme-quartz-dark .ag-header-cell-label {
         font-weight: 600; font-size: 10.5px;
-        text-transform: uppercase; letter-spacing: 0.04em;
+        text-transform: uppercase; letter-spacing: 0.05em;
     }
-    .ag-theme-quartz-dark .ag-header-cell-resize::after {
-        background: rgba(255,255,255,0.03) !important; width: 1px !important;
-    }
-    .ag-theme-quartz-dark .ag-sort-indicator-icon,
-    .ag-theme-quartz-dark .ag-header-icon {
-        color: #58a6ff !important; opacity: 0.8;
+    .ag-theme-quartz-dark .ag-sort-indicator-icon {
+        color: #58a6ff !important; opacity: 0.9;
     }
 
-    /* ── 行与单元格 ──────────────────────────────────── */
+    /* ── Rows — zebra via JS, hover via CSS var ──────── */
     .ag-theme-quartz-dark .ag-row {
-        background: #090c10 !important;
-        border-bottom: 1px solid rgba(255,255,255,0.02) !important;
+        border-bottom: 1px solid rgba(255,255,255,0.015) !important;
         color: #e6edf3 !important;
+        transition: background-color 0.1s ease;
     }
     .ag-theme-quartz-dark .ag-row:hover {
-        background: rgba(88,166,255,0.04) !important;
+        background: rgba(88,166,255,0.08) !important;
     }
     .ag-theme-quartz-dark .ag-cell {
         padding: 0 10px !important; line-height: 34px !important;
@@ -373,11 +366,11 @@ st.markdown("""
     }
     .ag-theme-quartz-dark .ag-cell:focus {
         border-color: #58a6ff !important;
-        box-shadow: inset 0 0 0 1px rgba(88,166,255,0.25) !important;
+        box-shadow: inset 0 0 0 1px rgba(88,166,255,0.3) !important;
         outline: none !important;
     }
 
-    /* ── 分页栏 ──────────────────────────────────────── */
+    /* ── Pagination ──────────────────────────────────── */
     .ag-theme-quartz-dark .ag-paging-panel {
         background: #0d1117 !important;
         border-top: 1px solid rgba(255,255,255,0.05) !important;
@@ -389,10 +382,10 @@ st.markdown("""
         border-radius: 5px !important; color: #8b949e !important;
     }
     .ag-theme-quartz-dark .ag-paging-button:hover {
-        background: rgba(255,255,255,0.06) !important;
+        background: rgba(255,255,255,0.08) !important;
     }
 
-    /* ── 浮动筛选 ────────────────────────────────────── */
+    /* ── Filters / Popups ────────────────────────────── */
     .ag-theme-quartz-dark .ag-floating-filter {
         background: #0d1117 !important;
     }
@@ -406,8 +399,6 @@ st.markdown("""
         border-color: #58a6ff !important;
         box-shadow: 0 0 0 2px rgba(88,166,255,0.12) !important;
     }
-
-    /* ── 弹窗 ────────────────────────────────────────── */
     .ag-theme-quartz-dark .ag-menu,
     .ag-theme-quartz-dark .ag-filter {
         background: #0d1117 !important;
@@ -415,29 +406,14 @@ st.markdown("""
         border-radius: 8px !important;
         box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
     }
-    .ag-theme-quartz-dark .ag-filter input,
-    .ag-theme-quartz-dark .ag-filter select {
-        background: rgba(255,255,255,0.04) !important;
-        border: 1px solid rgba(255,255,255,0.08) !important;
-        border-radius: 5px !important; color: #e6edf3 !important;
-    }
-    .ag-theme-quartz-dark .ag-filter-apply-panel button:first-child {
-        background: #58a6ff !important; border: none !important;
-        color: #fff !important; border-radius: 5px !important;
-    }
 
-    /* ── 滚动条 ──────────────────────────────────────── */
+    /* ── Scrollbar ───────────────────────────────────── */
     .ag-theme-quartz-dark ::-webkit-scrollbar { width: 5px; height: 5px; }
     .ag-theme-quartz-dark ::-webkit-scrollbar-thumb {
         background: rgba(255,255,255,0.06); border-radius: 3px;
     }
     .ag-theme-quartz-dark ::-webkit-scrollbar-thumb:hover {
-        background: rgba(255,255,255,0.12);
-    }
-
-    /* ── 空状态 ──────────────────────────────────────── */
-    .ag-theme-quartz-dark .ag-overlay-no-rows-wrapper {
-        color: #484f58 !important; font-size: 13px !important;
+        background: rgba(255,255,255,0.14);
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
@@ -804,32 +780,52 @@ with st.sidebar:
                 key="cfg_score_top_n",
             )
 
-    with st.expander("Auto-Refresh", expanded=False):
-        auto_refresh = st.toggle("Auto-reload data", value=False, key="auto_refresh",
-                                 help="Auto-reload data every N minutes")
-        refresh_min = st.select_slider(
-            "Reload interval (minutes)", options=[5, 10, 15, 30], value=10,
-            key="refresh_interval", disabled=not auto_refresh,
-        )
+    with st.expander("🔄 Auto-Refresh", expanded=False):
+        st.markdown('<div style="margin-bottom:0.4rem;font-size:0.72rem;color:#6e7681;display:flex;align-items:center;gap:0.3rem;">'
+                     'Enable automatic data reload'
+                     '<span title="Data is cached for 1 hour. Auto-refresh forces a fresh download from Yahoo Finance at the selected interval." '
+                     'style="cursor:help;opacity:0.5;font-size:0.7rem;">ⓘ</span>'
+                     '</div>', unsafe_allow_html=True)
+        col_tog, col_int = st.columns([0.9, 1.6])
+        with col_tog:
+            auto_refresh = st.toggle("Active", value=False, key="auto_refresh")
+        with col_int:
+            refresh_min = st.select_slider(
+                "Interval", options=["5 min", "10 min", "15 min", "30 min"],
+                value="10 min", key="refresh_interval", disabled=not auto_refresh,
+            )
+            # Parse the selected value back to integer
+            _ref_map = {"5 min": 5, "10 min": 10, "15 min": 15, "30 min": 30}
+            refresh_min_int = _ref_map.get(refresh_min, 10)
 
-    # Auto-reload JavaScript
+    # Auto-reload JavaScript + status tag
     if auto_refresh and st.session_state.get("run_done"):
         js = f"""
         <script>
         (function(){{
-            var sec = {refresh_min * 60};
+            var sec = {refresh_min_int * 60};
             var el = document.getElementById('countdown');
             if (el) el.textContent = Math.floor(sec/60) + 'm ' + (sec%60) + 's';
             var t = setInterval(function(){{
                 sec--;
                 if (el) el.textContent = Math.floor(sec/60) + 'm ' + (sec%60) + 's';
                 if (sec <= 0) window.location.reload();
-            }}, 200);
+            }}, 1000);
         }})();
         </script>
         """
         st.components.v1.html(js, height=0)
-        st.info(f"⏱ 下次自动刷新：{refresh_min} 分钟后")
+        st.markdown(f"""
+        <div style="margin-top:0.55rem;display:flex;align-items:center;gap:0.5rem;
+                    background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.2);
+                    border-radius:6px;padding:0.4rem 0.7rem;">
+            <span style="font-size:0.7rem;">🔄</span>
+            <span style="font-size:0.72rem;color:#7d8590;">Next refresh in</span>
+            <span id="countdown" style="font-size:0.78rem;font-weight:700;color:#3fb950;
+                         font-family:var(--font-mono);">{refresh_min_int} min</span>
+            <span style="font-size:0.72rem;color:#7d8590;">• {refresh_min_int}min interval</span>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown('<hr class="backtest-divider">', unsafe_allow_html=True)
 
@@ -960,17 +956,24 @@ def _strip_kl(tkr):
     return tkr.replace(".KL", "") if isinstance(tkr, str) else tkr
 
 
-# AgGrid conditional formatting JS for ROE column
+# AgGrid conditional formatting JS — Bloomberg terminal style
 _ROE_CONDITION = JsCode("""
 function(params) {
     if (params.value === null || params.value === undefined || params.value === '') return null;
     var v = parseFloat(params.value);
     if (isNaN(v)) return null;
-    if (v >= 20) return {'color': '#00c853', 'fontWeight': '700'};
-    if (v >= 10) return {'color': '#3fb950', 'fontWeight': '600'};
-    if (v > 0)  return {'color': '#d2991d'};
-    if (v <= 0) return {'color': '#f85149'};
+    if (v >= 20) return {'color': '#00e676', 'fontWeight': '700', 'backgroundColor': 'rgba(0,230,118,0.08)'};
+    if (v >= 10) return {'color': '#69f0ae', 'fontWeight': '600'};
+    if (v > 0)  return {'color': '#e6edf3'};
+    if (v <= 0) return {'color': '#ff5252', 'fontWeight': '600'};
     return null;
+}
+""")
+
+_PRICE_CONDITION = JsCode("""
+function(params) {
+    // Price column has no specific conditioning; neutral display
+    return {'color': '#e6edf3', 'fontWeight': '500', 'fontFamily': 'SF Mono, JetBrains Mono, monospace'};
 }
 """)
 
@@ -979,9 +982,22 @@ function(params) {
     if (params.value === null || params.value === undefined) return null;
     var v = parseInt(params.value);
     if (isNaN(v)) return null;
-    if (v >= 8) return {'color': '#ffd740', 'fontWeight': '700'};
-    if (v >= 5) return {'color': '#d2991d', 'fontWeight': '600'};
-    return {'color': '#8b949e'};
+    // Font weight scales with score — Bloomberg-style data hierarchy
+    if (v >= 10) return {'color': '#ffd740', 'fontWeight': '800', 'fontSize': '14px'};
+    if (v >= 8)  return {'color': '#ffd740', 'fontWeight': '700', 'fontSize': '13px'};
+    if (v >= 6)  return {'color': '#ffab40', 'fontWeight': '600'};
+    if (v >= 4)  return {'color': '#d2991d', 'fontWeight': '500'};
+    return {'color': '#6e7681'};
+}
+""")
+
+# Zebra striping + hover — Bloomberg dark mode
+_BLOOMBERG_ROW_STYLE = JsCode("""
+function(params) {
+    var isEven = params.node.rowIndex % 2 === 0;
+    return {
+        'background-color': isEven ? '#090c10' : '#0c1017'
+    };
 }
 """)
 
@@ -997,11 +1013,13 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
         filterParams={"buttons": ["apply", "reset"], "closeOnApply": True},
     )
     gb.configure_grid_options(
-        domLayout='normal', rowHeight=32, headerHeight=34,
+        domLayout='normal', rowHeight=34, headerHeight=38,
         enableCellTextSelection=True, suppressRowClickSelection=True,
-        tooltipShowDelay=300, tooltipHideDelay=1000,
+        tooltipShowDelay=200, tooltipHideDelay=800,
         pagination=True, paginationPageSize=50, paginationPageSizeSelector=[25, 50, 100],
     )
+    # Bloomberg-style zebra striping + hover
+    gb.configure_grid_options(getRowStyle=_BLOOMBERG_ROW_STYLE)
 
     # Column tooltips (mimics the old st.dataframe column_config help)
     _tooltips = {
@@ -1026,25 +1044,26 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
         'Signal': 'KDJ signal: crossed / above',
     }
 
-    # Column-specific: narrow columns, number formatting
+    # Column-specific: narrow columns, conditional formatting
     for col in df.columns:
         tip = _tooltips.get(col, '')
-        if col in ('Code', 'T', 'Trend', '>200', 'Align', 'Tight', 'BB', 'KDJ', 'WKDJ', 'Vol%', 'Spike', 'Vol↑', 'VolMA', 'Signal', 'Score'):
-            gb.configure_column(col, width=62, headerTooltip=tip)
+        if col in ('Code', 'T', 'Trend', '>200', 'Align', 'Tight', 'BB', 'KDJ', 'WKDJ', 'Vol%', 'Spike', 'Vol↑', 'VolMA', 'Signal'):
+            gb.configure_column(col, width=60, headerTooltip=tip)
+        elif col in ('Score',):
+            gb.configure_column(col, width=58, headerTooltip=tip, cellStyle=_SCORE_CONDITION)
         elif col in ('Name',):
-            gb.configure_column(col, width=160, headerTooltip=tip)
-        elif col in ('Price', 'Div%', 'ROE%'):
-            gb.configure_column(col, width=78, headerTooltip=tip)
+            gb.configure_column(col, width=170, headerTooltip=tip)
+        elif col in ('Price',):
+            gb.configure_column(col, width=72, headerTooltip=tip, cellStyle=_PRICE_CONDITION)
+        elif col in ('Div%',):
+            gb.configure_column(col, width=68, headerTooltip=tip)
+        elif col in ('ROE%',):
+            gb.configure_column(col, width=72, headerTooltip=tip, cellStyle=_ROE_CONDITION)
         else:
             gb.configure_column(col, headerTooltip=tip)
 
-    # Conditional formatting for ROE
-    if roe_col and 'ROE%' in df.columns:
-        gb.configure_column('ROE%', cellStyle=_ROE_CONDITION)
-
-    # Conditional formatting for Score
-    if score_col and 'Score' in df.columns:
-        gb.configure_column('Score', cellStyle=_SCORE_CONDITION)
+    # Conditional formatting for ROE (applied above in loop)
+    # Conditional formatting for Score (applied above in loop)
 
     # Force dark row background via AgGrid callback (bypasses CSS loading issues)
     _dark_row_style = JsCode("""
