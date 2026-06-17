@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, ColumnsAutoSizeMode
+from st_aggrid.shared import JsCode
 
 # Ensure the project root is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -304,28 +306,49 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       Data tables — clean & dense
+       AgGrid — dark theme overrides
        ══════════════════════════════════════════════════════════════════════ */
-    div[data-testid="stDataFrame"] {
+    /* AgGrid container */
+    .ag-theme-alpine-dark {
+        --ag-background-color: rgba(13,17,23,0.6) !important;
+        --ag-header-background-color: rgba(255,255,255,0.04) !important;
+        --ag-border-color: rgba(255,255,255,0.06) !important;
+        --ag-row-hover-color: rgba(255,255,255,0.04) !important;
+        --ag-header-foreground-color: var(--text-muted) !important;
+        --ag-foreground-color: var(--text-primary) !important;
+        --ag-font-size: 13px !important;
         border: 1px solid var(--border-subtle) !important;
         border-radius: var(--radius-md) !important;
-        overflow: hidden;
+        overflow: hidden !important;
     }
-    div[data-testid="stDataFrame"] table {
-        font-size: 0.8rem;
+    .ag-theme-alpine-dark .ag-header-cell-label {
+        font-weight: 600; font-size: 11px; text-transform: uppercase;
+        letter-spacing: 0.04em;
     }
-    div[data-testid="stDataFrame"] th {
-        font-weight: 600 !important; font-size: 0.72rem !important;
-        text-transform: uppercase; letter-spacing: 0.04em;
-        color: var(--text-muted) !important;
+    .ag-theme-alpine-dark .ag-cell {
+        line-height: 32px !important; font-feature-settings: 'tnum';
     }
-    div[data-testid="stDataFrame"] td {
-        font-size: 0.8rem; color: var(--text-primary);
-        border-bottom: 1px solid rgba(255,255,255,0.03) !important;
+    .ag-theme-alpine-dark .ag-paging-panel {
+        border-top: 1px solid var(--border-subtle);
+        font-size: 12px; color: var(--text-secondary);
     }
-    div[data-testid="stDataFrame"] tr:hover td {
-        background: rgba(255,255,255,0.02) !important;
+    /* Column filter popup */
+    .ag-theme-alpine-dark .ag-floating-filter-body input,
+    .ag-theme-alpine-dark .ag-floating-filter-body select {
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid var(--border-subtle) !important;
+        color: var(--text-primary) !important;
     }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Empty state
+       ══════════════════════════════════════════════════════════════════════ */
+    .empty-state {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 2rem 1rem; gap: 0.5rem; text-align: center;
+    }
+    .empty-state-icon { font-size: 2rem; opacity: 0.3; }
+    .empty-state-text { font-size: 0.85rem; color: var(--text-muted); }
 
     /* ══════════════════════════════════════════════════════════════════════════
        Backtest section
@@ -333,6 +356,10 @@ st.markdown("""
     .backtest-divider {
         margin: 1.5rem 0 1rem 0; border: none;
         border-top: 1px solid var(--border-subtle);
+    }
+    .backtest-card {
+        background: var(--bg-card); border: 1px solid var(--border-card);
+        border-radius: var(--radius-md); padding: 1rem 1.2rem;
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
@@ -717,16 +744,77 @@ def _strip_kl(tkr):
     return tkr.replace(".KL", "") if isinstance(tkr, str) else tkr
 
 
-def _make_df(results, cols_show, col_map, col_fmt=None):
-    """Build display dataframe with .KL stripped and ROE scored."""
-    if not results:
-        return None
-    df = pd.DataFrame(results)
-    if "ticker" in df.columns:
-        df["ticker"] = df["ticker"].apply(_strip_kl)
-    cols = [c for c in cols_show if c in df.columns]
-    df = df[cols].rename(columns=col_map)
-    return df
+# AgGrid conditional formatting JS for ROE column
+_ROE_CONDITION = JsCode("""
+function(params) {
+    if (params.value === null || params.value === undefined || params.value === '') return null;
+    var v = parseFloat(params.value);
+    if (isNaN(v)) return null;
+    if (v >= 20) return {'color': '#00c853', 'fontWeight': '700'};
+    if (v >= 10) return {'color': '#3fb950', 'fontWeight': '600'};
+    if (v > 0)  return {'color': '#d2991d'};
+    if (v <= 0) return {'color': '#f85149'};
+    return null;
+}
+""")
+
+_SCORE_CONDITION = JsCode("""
+function(params) {
+    if (params.value === null || params.value === undefined) return null;
+    var v = parseInt(params.value);
+    if (isNaN(v)) return null;
+    if (v >= 8) return {'color': '#ffd740', 'fontWeight': '700'};
+    if (v >= 5) return {'color': '#d2991d', 'fontWeight': '600'};
+    return {'color': '#8b949e'};
+}
+""")
+
+
+def _render_aggrid(df, height=420, roe_col=False, score_col=False):
+    """Render an AgGrid table with dark theme, sorting, filtering, and conditional formatting."""
+    if df is None or df.empty:
+        return
+
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_default_column(
+        resizable=True, sortable=True, filterable=True,
+        filterParams={"buttons": ["apply", "reset"], "closeOnApply": True},
+    )
+    gb.configure_grid_options(
+        domLayout='normal', rowHeight=32, headerHeight=34,
+        enableCellTextSelection=True, suppressRowClickSelection=True,
+        pagination=True, paginationPageSize=50, paginationPageSizeSelector=[25, 50, 100],
+    )
+
+    # Column-specific: narrow columns, number formatting
+    for col in df.columns:
+        if col in ('Code', 'T', 'Trend', '>200', 'Align', 'Tight', 'BB', 'KDJ', 'WKDJ', 'Vol%', 'Spike', 'Vol↑', 'VolMA', 'Signal', 'Score'):
+            gb.configure_column(col, width=62)
+        elif col in ('Name',):
+            gb.configure_column(col, width=160)
+        elif col in ('Price', 'Div%', 'ROE%'):
+            gb.configure_column(col, width=78)
+
+    # Conditional formatting for ROE
+    if roe_col and 'ROE%' in df.columns:
+        gb.configure_column('ROE%', cellStyle=_ROE_CONDITION)
+
+    # Conditional formatting for Score
+    if score_col and 'Score' in df.columns:
+        gb.configure_column('Score', cellStyle=_SCORE_CONDITION)
+
+    grid_options = gb.build()
+
+    AgGrid(
+        df, gridOptions=grid_options,
+        height=height, width='100%',
+        theme='alpine-dark',
+        update_mode=GridUpdateMode.NO_UPDATE,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=True,
+    )
 
 
 # ── Data loader (@st.cache_data persists across refreshes, 1hr TTL) ────────
@@ -935,106 +1023,78 @@ if st.session_state.run_done:
 
     with tab1:
         if results1:
-            df = _make_df(results1,
-                          ["ticker", "name", "close", "trend", "EMA50", "divergence_pct", "vol_ma", "ROE"],
-                          {"ticker": "Code", "name": "Name", "close": "Price",
-                           "trend": "T", "divergence_pct": "Div%",
-                           "vol_ma": "Vol MA", "ROE": "ROE%"})
-            st.dataframe(df, hide_index=True, use_container_width=True, height=420,
-                         column_config={
-                             "T": st.column_config.TextColumn(width="small"),
-                             "Div%": st.column_config.NumberColumn(format="%.2f%%", width="small"),
-                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
-                             "Vol MA": st.column_config.NumberColumn(format="%d", width="small"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
-                         })
+            df = pd.DataFrame(results1)
+            df["ticker"] = df["ticker"].apply(_strip_kl)
+            df = df.rename(columns={
+                "ticker": "Code", "name": "Name", "close": "Price",
+                "trend": "T", "divergence_pct": "Div%",
+                "vol_ma": "Vol MA", "ROE": "ROE%",
+            })[["Code", "Name", "Price", "T", "EMA50", "Div%", "Vol MA", "ROE%"]]
+            _render_aggrid(df, roe_col=True)
         else:
-            st.caption("No stocks passed the filter.")
+            st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the EMA daily filter</div></div>', unsafe_allow_html=True)
 
     with tab2:
         if results2:
-            df = _make_df(results2,
-                          ["ticker", "name", "close", "trend", "EMA50", "divergence_pct", "vol_ma", "ROE"],
-                          {"ticker": "Code", "name": "Name", "close": "Price",
-                           "trend": "T", "divergence_pct": "Div%",
-                           "vol_ma": "Vol MA", "ROE": "ROE%"})
-            st.dataframe(df, hide_index=True, use_container_width=True, height=420,
-                         column_config={
-                             "T": st.column_config.TextColumn(width="small"),
-                             "Div%": st.column_config.NumberColumn(format="%.2f%%", width="small"),
-                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
-                             "Vol MA": st.column_config.NumberColumn(format="%d", width="small"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
-                         })
+            df = pd.DataFrame(results2)
+            df["ticker"] = df["ticker"].apply(_strip_kl)
+            df = df.rename(columns={
+                "ticker": "Code", "name": "Name", "close": "Price",
+                "trend": "T", "divergence_pct": "Div%",
+                "vol_ma": "Vol MA", "ROE": "ROE%",
+            })[["Code", "Name", "Price", "T", "EMA50", "Div%", "Vol MA", "ROE%"]]
+            _render_aggrid(df, roe_col=True)
         else:
-            st.caption("No stocks passed the filter.")
+            st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the EMA hourly filter</div></div>', unsafe_allow_html=True)
 
     with tab3:
         if results3:
-            df = _make_df(results3,
-                          ["ticker", "name", "close", "kdj_k", "kdj_d", "vol_ma", "ROE"],
-                          {"ticker": "Code", "name": "Name", "close": "Price",
-                           "vol_ma": "Vol MA", "ROE": "ROE%"})
-            st.dataframe(df, hide_index=True, use_container_width=True, height=420,
-                         column_config={
-                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
-                             "Vol MA": st.column_config.NumberColumn(format="%d", width="small"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
-                         })
+            df = pd.DataFrame(results3)
+            df["ticker"] = df["ticker"].apply(_strip_kl)
+            df = df.rename(columns={
+                "ticker": "Code", "name": "Name", "close": "Price",
+                "vol_ma": "Vol MA", "ROE": "ROE%",
+            })[["Code", "Name", "Price", "kdj_k", "kdj_d", "Vol MA", "ROE%"]]
+            _render_aggrid(df, roe_col=True)
         else:
-            st.caption("No stocks passed the filter.")
+            st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the KDJ divergence filter</div></div>', unsafe_allow_html=True)
 
     with tab4:
         if results4:
-            df = _make_df(results4,
-                          ["ticker", "name", "close", "kdj_k", "kdj_d", "kdj_j", "kdj_signal", "vol_ma", "ROE"],
-                          {"ticker": "Code", "name": "Name", "close": "Price",
-                           "kdj_signal": "Signal", "vol_ma": "Vol MA", "ROE": "ROE%"})
-            st.dataframe(df, hide_index=True, use_container_width=True, height=420,
-                         column_config={
-                             "Price": st.column_config.NumberColumn(format="%.2f", width="small"),
-                             "Signal": st.column_config.TextColumn(width="small"),
-                             "Vol MA": st.column_config.NumberColumn(format="%d", width="small"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small"),
-                         })
+            df = pd.DataFrame(results4)
+            df["ticker"] = df["ticker"].apply(_strip_kl)
+            df = df.rename(columns={
+                "ticker": "Code", "name": "Name", "close": "Price",
+                "kdj_signal": "Signal", "vol_ma": "Vol MA", "ROE": "ROE%",
+            })[["Code", "Name", "Price", "kdj_k", "kdj_d", "kdj_j", "Signal", "Vol MA", "ROE%"]]
+            _render_aggrid(df, roe_col=True)
         else:
-            st.caption("No stocks passed the filter.")
+            st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the weekly KDJ filter</div></div>', unsafe_allow_html=True)
 
     with tab5:
         if results5:
-            df = _make_df(results5,
-                          ["ticker", "name", "close", "score",
-                           "above_200", "aligned", "trend_tight", "bb_squeeze",
-                           "kdj_sig", "wkdj_sig", "vol_ok", "vol_spike", "vol_expand", "vol_ma_ok", "ROE"],
-                          {"ticker": "Code", "name": "Name", "close": "Price",
-                           "score": "Score",
-                           "above_200": ">200", "aligned": "Align", "trend_tight": "Tight",
-                           "bb_squeeze": "BB", "kdj_sig": "KDJ", "wkdj_sig": "WKDJ", "vol_ok": "Vol%",
-                           "vol_spike": "Spike", "vol_expand": "Vol↑", "vol_ma_ok": "VolMA",
-                           "ROE": "ROE%"})
-            st.dataframe(df, hide_index=True, use_container_width=True, height=420,
-                         column_config={
-                             "Price": st.column_config.NumberColumn(format="%.2f", width="small", help="Latest close price"),
-                             "Score": st.column_config.NumberColumn(format="%d", width="small", help="Total score (max 11)"),
-                             ">200": st.column_config.TextColumn(width="small", help="Close > EMA200 (trend up)"),
-                             "Align": st.column_config.TextColumn(width="small", help="EMA50 > EMA100 > EMA200 (perfect bullish alignment)"),
-                             "Tight": st.column_config.TextColumn(width="small", help="EMA divergence below threshold (compression)"),
-                             "BB": st.column_config.TextColumn(width="small", help="Bollinger Band width at 20-bar low (max squeeze)"),
-                             "KDJ": st.column_config.TextColumn(width="small", help="Daily J > K (bullish daily KDJ)"),
-                             "WKDJ": st.column_config.TextColumn(width="small", help="Weekly KDJ golden cross / near-cross (bullish weekly KDJ)"),
-                             "Vol%": st.column_config.TextColumn(width="small", help="60-day annualized volatility > threshold"),
-                             "Spike": st.column_config.TextColumn(width="small", help="Today vol > 2x 20d avg (ignition)"),
-                             "Vol↑": st.column_config.TextColumn(width="small", help="Vol MA20 > Vol MA60 (volume expanding)"),
-                             "VolMA": st.column_config.TextColumn(width="small", help="Vol MA5 > threshold (liquid)"),
-                             "ROE%": st.column_config.NumberColumn(format="%.1f%%", width="small", help="Return on Equity"),
-                         })
+            df = pd.DataFrame(results5)
+            df["ticker"] = df["ticker"].apply(_strip_kl)
+            df = df.rename(columns={
+                "ticker": "Code", "name": "Name", "close": "Price",
+                "score": "Score",
+                "above_200": ">200", "aligned": "Align", "trend_tight": "Tight",
+                "bb_squeeze": "BB", "kdj_sig": "KDJ", "wkdj_sig": "WKDJ", "vol_ok": "Vol%",
+                "vol_spike": "Spike", "vol_expand": "Vol↑", "vol_ma_ok": "VolMA",
+                "ROE": "ROE%",
+            })[["Code", "Name", "Price", "Score",
+                ">200", "Align", "Tight", "BB",
+                "KDJ", "WKDJ", "Vol%", "Spike", "Vol↑", "VolMA", "ROE%"]]
+            _render_aggrid(df, height=440, roe_col=True, score_col=True)
         else:
-            st.caption("No stocks scored.")
+            st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks scored yet</div></div>', unsafe_allow_html=True)
 
         # Backtest
         st.markdown('<hr class="backtest-divider">', unsafe_allow_html=True)
         st.markdown("#### 🔬 Backtest Scoring System")
-        col_bt1, col_bt2, col_bt3 = st.columns(3)
+        with st.container():
+            st.markdown('<div class="backtest-card">', unsafe_allow_html=True)
+            col_bt1, col_bt2, col_bt3 = st.columns(3)
         with col_bt1:
             bt_top_n = st.number_input("Top N", 5, 30, 20, 5, key="bt_top_n")
         with col_bt2:
@@ -1060,9 +1120,10 @@ if st.session_state.run_done:
                 c1, c2 = st.columns(2)
                 c1.metric("Avg 4-Week Return", f"{avg_4w:.2f}%")
                 c2.metric("Avg 4-Week Win Rate", f"{win_4w:.1f}%")
-                st.dataframe(df_bt, hide_index=True, use_container_width=True, height=300)
+                _render_aggrid(df_bt, height=300)
             else:
                 st.warning("Not enough historical data for backtest.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
 else:
     # Idle state
