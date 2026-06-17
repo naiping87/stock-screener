@@ -306,90 +306,82 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       AgGrid — Apple / Bloomberg dark table (alpine-dark base)
+       AgGrid — Apple dark table (alpine-dark + full CSS variable reset)
        ══════════════════════════════════════════════════════════════════════ */
 
-    /* ── Nuke ALL backgrounds to #090c10 ─────────────── */
-    .ag-theme-alpine-dark,
-    .ag-theme-alpine-dark .ag-root-wrapper,
-    .ag-theme-alpine-dark .ag-root,
-    .ag-theme-alpine-dark .ag-body-viewport,
-    .ag-theme-alpine-dark .ag-center-cols-viewport,
-    .ag-theme-alpine-dark .ag-center-cols-container,
-    .ag-theme-alpine-dark .ag-full-width-viewport,
-    .ag-theme-alpine-dark .ag-row,
-    .ag-theme-alpine-dark .ag-row-even,
-    .ag-theme-alpine-dark .ag-row-odd {
-        background: #090c10 !important;
-    }
-
-    .ag-theme-alpine-dark .ag-header,
-    .ag-theme-alpine-dark .ag-header-viewport,
-    .ag-theme-alpine-dark .ag-floating-filter,
-    .ag-theme-alpine-dark .ag-paging-panel {
-        background: #0d1117 !important;
-    }
-
-    /* ── Borders ─────────────────────────────────────── */
     .ag-theme-alpine-dark {
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        border-radius: 10px !important; overflow: hidden !important;
+        /* ── 核心颜色变量（必须设满，否则 AgGrid 内部用默认灰白）── */
+        --ag-background-color: #090c10 !important;
+        --ag-foreground-color: #e6edf3 !important;
+        --ag-secondary-foreground-color: #8b949e !important;
+        --ag-header-background-color: #0d1117 !important;
+        --ag-header-foreground-color: #6e7681 !important;
+        --ag-odd-row-background-color: #090c10 !important;
+        --ag-row-hover-color: rgba(88,166,255,0.05) !important;
+        --ag-selected-row-background-color: rgba(88,166,255,0.08) !important;
         --ag-border-color: rgba(255,255,255,0.04) !important;
+        --ag-secondary-border-color: rgba(255,255,255,0.03) !important;
+        --ag-input-border-color: rgba(255,255,255,0.1) !important;
+        --ag-input-focus-border-color: #58a6ff !important;
+        --ag-input-disabled-background-color: rgba(255,255,255,0.02) !important;
+        --ag-disabled-foreground-color: #484f58 !important;
+        --ag-chip-background-color: rgba(255,255,255,0.06) !important;
+        --ag-range-selection-border-color: #58a6ff !important;
+        --ag-font-size: 12.5px !important;
+        --ag-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif !important;
+        --ag-row-height: 34px !important;
+        --ag-header-height: 36px !important;
+        /* ── 容器 ── */
+        background: #090c10 !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 10px !important;
+        overflow: hidden !important;
     }
 
-    /* ── Header ──────────────────────────────────────── */
+    /* ── 表头 ────────────────────────────────────────── */
     .ag-theme-alpine-dark .ag-header {
+        background: #0d1117 !important;
         border-bottom: 1px solid rgba(255,255,255,0.06) !important;
-        font-weight: 600 !important; font-size: 10.5px !important;
     }
     .ag-theme-alpine-dark .ag-header-cell {
-        padding: 0 10px !important;
-        color: #6e7681 !important;
+        padding: 0 10px !important; color: #6e7681 !important;
     }
     .ag-theme-alpine-dark .ag-header-cell-label {
-        text-transform: uppercase; letter-spacing: 0.04em;
         font-weight: 600; font-size: 10.5px;
+        text-transform: uppercase; letter-spacing: 0.04em;
     }
     .ag-theme-alpine-dark .ag-header-cell-resize::after {
         background: rgba(255,255,255,0.03) !important; width: 1px !important;
     }
-    /* Header sort indicator */
     .ag-theme-alpine-dark .ag-sort-indicator-icon,
     .ag-theme-alpine-dark .ag-header-icon {
         color: #58a6ff !important; opacity: 0.8;
     }
 
-    /* ── Rows & Cells ────────────────────────────────── */
+    /* ── 行与单元格 ──────────────────────────────────── */
     .ag-theme-alpine-dark .ag-row {
-        background: transparent !important;
+        background: #090c10 !important;
         border-bottom: 1px solid rgba(255,255,255,0.02) !important;
         color: #e6edf3 !important;
-        transition: background 0.08s ease;
     }
     .ag-theme-alpine-dark .ag-row:hover {
         background: rgba(88,166,255,0.04) !important;
-    }
-    .ag-theme-alpine-dark .ag-row-selected {
-        background: rgba(88,166,255,0.06) !important;
     }
     .ag-theme-alpine-dark .ag-cell {
         padding: 0 10px !important; line-height: 34px !important;
         color: #e6edf3 !important; border-right: none !important;
     }
     .ag-theme-alpine-dark .ag-cell:focus {
-        border: 1px solid #58a6ff !important;
+        border-color: #58a6ff !important;
         box-shadow: inset 0 0 0 1px rgba(88,166,255,0.25) !important;
         outline: none !important;
     }
 
-    /* ── Pagination ──────────────────────────────────── */
+    /* ── 分页栏 ──────────────────────────────────────── */
     .ag-theme-alpine-dark .ag-paging-panel {
+        background: #0d1117 !important;
         border-top: 1px solid rgba(255,255,255,0.05) !important;
-        font-size: 12px !important; color: #8b949e !important;
-        height: 40px !important; background: #0d1117 !important;
-    }
-    .ag-theme-alpine-dark .ag-paging-page-summary-panel {
-        color: #8b949e !important;
+        color: #8b949e !important; font-size: 12px !important; height: 40px !important;
     }
     .ag-theme-alpine-dark .ag-paging-button {
         background: rgba(255,255,255,0.02) !important;
@@ -398,13 +390,12 @@ st.markdown("""
     }
     .ag-theme-alpine-dark .ag-paging-button:hover {
         background: rgba(255,255,255,0.06) !important;
-        border-color: rgba(255,255,255,0.12) !important;
-    }
-    .ag-theme-alpine-dark .ag-paging-button.ag-disabled {
-        opacity: 0.25 !important;
     }
 
-    /* ── Floating filter ─────────────────────────────── */
+    /* ── 浮动筛选 ────────────────────────────────────── */
+    .ag-theme-alpine-dark .ag-floating-filter {
+        background: #0d1117 !important;
+    }
     .ag-theme-alpine-dark .ag-floating-filter-body input {
         background: rgba(255,255,255,0.04) !important;
         border: 1px solid rgba(255,255,255,0.08) !important;
@@ -416,11 +407,9 @@ st.markdown("""
         box-shadow: 0 0 0 2px rgba(88,166,255,0.12) !important;
     }
 
-    /* ── Popups ──────────────────────────────────────── */
+    /* ── 弹窗 ────────────────────────────────────────── */
     .ag-theme-alpine-dark .ag-menu,
-    .ag-theme-alpine-dark .ag-filter,
-    .ag-theme-alpine-dark .ag-tooltip,
-    .ag-theme-alpine-dark .ag-popup-child {
+    .ag-theme-alpine-dark .ag-filter {
         background: #0d1117 !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
         border-radius: 8px !important;
@@ -436,32 +425,17 @@ st.markdown("""
         background: #58a6ff !important; border: none !important;
         color: #fff !important; border-radius: 5px !important;
     }
-    .ag-theme-alpine-dark .ag-filter-apply-panel button:last-child {
-        background: rgba(255,255,255,0.04) !important;
-        color: #8b949e !important;
-    }
-    .ag-theme-alpine-dark .ag-tab {
-        color: #8b949e !important;
-    }
-    .ag-theme-alpine-dark .ag-tab-selected {
-        color: #58a6ff !important; border-bottom: 2px solid #58a6ff !important;
-    }
 
-    /* ── Scrollbar ───────────────────────────────────── */
+    /* ── 滚动条 ──────────────────────────────────────── */
     .ag-theme-alpine-dark ::-webkit-scrollbar { width: 5px; height: 5px; }
-    .ag-theme-alpine-dark ::-webkit-scrollbar-track { background: transparent; }
     .ag-theme-alpine-dark ::-webkit-scrollbar-thumb {
         background: rgba(255,255,255,0.06); border-radius: 3px;
     }
     .ag-theme-alpine-dark ::-webkit-scrollbar-thumb:hover {
         background: rgba(255,255,255,0.12);
     }
-    .ag-theme-alpine-dark ::-webkit-scrollbar-corner { background: transparent; }
 
-    /* ── Overlays ────────────────────────────────────── */
-    .ag-theme-alpine-dark .ag-overlay-loading-wrapper {
-        background: rgba(9,12,16,0.85) !important;
-    }
+    /* ── 空状态 ──────────────────────────────────────── */
     .ag-theme-alpine-dark .ag-overlay-no-rows-wrapper {
         color: #484f58 !important; font-size: 13px !important;
     }
