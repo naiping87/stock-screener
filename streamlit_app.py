@@ -308,10 +308,10 @@ st.markdown("""
     }
 
     /* ══════════════════════════════════════════════════════════════════════════
-       AgGrid — Institutional Grade dark table (balham base)
+       AgGrid — Institutional Grade dark table (streamlit base)
        ══════════════════════════════════════════════════════════════════════ */
 
-    .ag-theme-balham {
+    .ag-theme-streamlit {
         --ag-background-color: #0d1117 !important;
         --ag-foreground-color: #e6edf3 !important;
         --ag-secondary-foreground-color: #6e7681 !important;
@@ -336,24 +336,24 @@ st.markdown("""
         overflow: hidden !important;
     }
 
-    .ag-theme-balham .ag-header { background: #161b22 !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; }
-    .ag-theme-balham .ag-header-cell { padding: 0 10px !important; color: #6e7681 !important; font-weight: 600; font-size: 10.5px; }
-    .ag-theme-balham .ag-header-cell-label { font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
-    .ag-theme-balham .ag-sort-indicator-icon { color: #58a6ff !important; opacity: 0.9; }
-    .ag-theme-balham .ag-row { border-bottom: 1px solid rgba(255,255,255,0.015) !important; color: #e6edf3 !important; }
-    .ag-theme-balham .ag-row:hover { background: rgba(31,111,235,0.10) !important; cursor: pointer; }
-    .ag-theme-balham .ag-cell { padding: 0 10px !important; line-height: 34px !important; color: #e6edf3 !important; border-right: none !important; }
-    .ag-theme-balham .ag-cell:focus { border-color: #58a6ff !important; box-shadow: inset 0 0 0 1px rgba(88,166,255,0.3) !important; outline: none !important; }
-    .ag-theme-balham .ag-paging-panel { background: #0d1117 !important; border-top: 1px solid rgba(255,255,255,0.06) !important; color: #6e7681 !important; font-size: 12px !important; height: 40px !important; }
-    .ag-theme-balham .ag-paging-button { background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.07) !important; border-radius: 5px !important; color: #6e7681 !important; }
-    .ag-theme-balham .ag-paging-button:hover { background: rgba(255,255,255,0.08) !important; }
-    .ag-theme-balham .ag-floating-filter { background: #0d1117 !important; }
-    .ag-theme-balham .ag-floating-filter-body input { background: rgba(255,255,255,0.04) !important; border: 1px solid #30363d !important; border-radius: 5px !important; color: #e6edf3 !important; font-size: 11.5px !important; padding: 4px 8px !important; }
-    .ag-theme-balham .ag-floating-filter-body input:focus { border-color: #58a6ff !important; box-shadow: 0 0 0 2px rgba(88,166,255,0.12) !important; }
-    .ag-theme-balham .ag-menu, .ag-theme-balham .ag-filter { background: #161b22 !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important; box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important; }
-    .ag-theme-balham ::-webkit-scrollbar { width: 5px; height: 5px; }
-    .ag-theme-balham ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
-    .ag-theme-balham ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+    .ag-theme-streamlit .ag-header { background: #161b22 !important; border-bottom: 1px solid rgba(255,255,255,0.08) !important; }
+    .ag-theme-streamlit .ag-header-cell { padding: 0 10px !important; color: #6e7681 !important; font-weight: 600; font-size: 10.5px; }
+    .ag-theme-streamlit .ag-header-cell-label { font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .ag-theme-streamlit .ag-sort-indicator-icon { color: #58a6ff !important; opacity: 0.9; }
+    .ag-theme-streamlit .ag-row { border-bottom: 1px solid rgba(255,255,255,0.015) !important; color: #e6edf3 !important; }
+    .ag-theme-streamlit .ag-row:hover { background: rgba(31,111,235,0.10) !important; cursor: pointer; }
+    .ag-theme-streamlit .ag-cell { padding: 0 10px !important; line-height: 34px !important; color: #e6edf3 !important; border-right: none !important; }
+    .ag-theme-streamlit .ag-cell:focus { border-color: #58a6ff !important; box-shadow: inset 0 0 0 1px rgba(88,166,255,0.3) !important; outline: none !important; }
+    .ag-theme-streamlit .ag-paging-panel { background: #0d1117 !important; border-top: 1px solid rgba(255,255,255,0.06) !important; color: #6e7681 !important; font-size: 12px !important; height: 40px !important; }
+    .ag-theme-streamlit .ag-paging-button { background: rgba(255,255,255,0.03) !important; border: 1px solid rgba(255,255,255,0.07) !important; border-radius: 5px !important; color: #6e7681 !important; }
+    .ag-theme-streamlit .ag-paging-button:hover { background: rgba(255,255,255,0.08) !important; }
+    .ag-theme-streamlit .ag-floating-filter { background: #0d1117 !important; }
+    .ag-theme-streamlit .ag-floating-filter-body input { background: rgba(255,255,255,0.04) !important; border: 1px solid #30363d !important; border-radius: 5px !important; color: #e6edf3 !important; font-size: 11.5px !important; padding: 4px 8px !important; }
+    .ag-theme-streamlit .ag-floating-filter-body input:focus { border-color: #58a6ff !important; box-shadow: 0 0 0 2px rgba(88,166,255,0.12) !important; }
+    .ag-theme-streamlit .ag-menu, .ag-theme-streamlit .ag-filter { background: #161b22 !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important; box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important; }
+    .ag-theme-streamlit ::-webkit-scrollbar { width: 5px; height: 5px; }
+    .ag-theme-streamlit ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
+    .ag-theme-streamlit ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
 
     /* ══════════════════════════════════════════════════════════════════════════
        Empty state
@@ -728,6 +728,7 @@ with st.sidebar:
                      'style="cursor:help;opacity:0.4;font-size:0.65rem;line-height:1;">ⓘ</span>'
                      '</div>', unsafe_allow_html=True)
         auto_refresh = st.toggle("Active", value=False, key="auto_refresh")
+        st.write("")
         refresh_min = st.select_slider(
             "Interval", options=["5 min", "10 min", "15 min", "30 min"],
             value="10 min", key="refresh_interval", disabled=not auto_refresh,
@@ -1003,7 +1004,7 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     AgGrid(
         df, gridOptions=grid_options,
         height=height, width='100%',
-        theme='balham',
+        theme='streamlit',
         update_on=[],
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
@@ -1013,7 +1014,7 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     st.components.v1.html("""
     <script>
     setTimeout(function() {
-        var grids = document.querySelectorAll('.ag-theme-balham');
+        var grids = document.querySelectorAll('.ag-theme-streamlit');
         grids.forEach(function(g) {
             g.style.setProperty('background', '#0d1117', 'important');
             g.querySelectorAll('.ag-root-wrapper, .ag-root, .ag-body-viewport, .ag-center-cols-viewport').forEach(function(el) {
