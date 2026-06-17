@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, ColumnsAutoSizeMode
+from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import JsCode
 
 # Ensure the project root is on the path
@@ -809,9 +809,7 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
         df, gridOptions=grid_options,
         height=height, width='100%',
         theme='alpine-dark',
-        update_mode=GridUpdateMode.NO_UPDATE,
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+        update_on=[],
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
     )
