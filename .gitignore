@@ -2,3 +2,4 @@ cache/
 alert_state.json
 setup_hidden.ps1
 run_alert.vbs
+__pycache__/
