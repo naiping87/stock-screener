@@ -1,16 +1,4 @@
-# Generated output
-output/
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-Thumbs.db
-Desktop.ini
-.streamlit/secrets.toml
+cache/
+alert_state.json
+setup_hidden.ps1
+run_alert.vbs

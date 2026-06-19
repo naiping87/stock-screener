@@ -656,12 +656,6 @@ def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[s
         name = d.get("name", "") or ticker_names.get(tkr, "")
         price = round(close.iloc[-1], 2)
         vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
-        # Calculate vol ratio safely
-        try:
-            _vma20 = vol.rolling(20).mean().iloc[-1]
-            vol_ratio_val = round(vol.iloc[-1] / _vma20 if _vma20 > 0 else 0, 1)
-        except Exception:
-            vol_ratio_val = 0
 
         yield {
             "ticker": tkr,
