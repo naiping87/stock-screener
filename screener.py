@@ -7,7 +7,9 @@ Bursa Malaysia Stock Screener — 5 screeners:
   5. scoring        — weighted 11-factor scoring system
 """
 import csv
+import json
 import os
+import pickle
 import sys
 import time
 from collections.abc import Callable, Generator
@@ -32,10 +34,12 @@ KDJ_PERIOD = 9                      # KDJ lookback (same as Pine Script 'Period'
 KDJ_SIGNAL = 3                      # KDJ smooth (same as Pine Script 'Signal Period')
 DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
 DAILY_DAYS = 400                    # days of daily data (max EMA period 200 + 20 compression bars)
-HOURLY_DAYS = 50                    # days of hourly data (needs 200+20=220 bars, ~6h/day on Bursa)
+HOURLY_DAYS = 50                    # days of hourly data
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
 KDJ_OVERSOLD = 50                   # K must be below this for valid signal (legacy, not enforced)
+CACHE_DIR = "cache"                 # disk cache for downloaded data
+CACHE_TTL_SEC = 600                 # reuse cached data if fresher than 10 minutes
 SCORE_TREND_PERIODS = [10, 20, 50, 100, 200]  # EMA periods for trend divergence
 SCORE_TREND_THRESHOLD = 1.0         # max divergence % for trend score
 SCORE_EMA200_SLOPE_BARS = 20         # bars for EMA200 slope check
@@ -202,7 +206,23 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
 
 
 def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None) -> dict[str, dict[str, Any]]:
-    """Download daily + hourly + weekly data concurrently via Yahoo chart API."""
+    """Download daily + hourly + weekly data concurrently via Yahoo chart API.
+    Uses disk cache (pickle) to avoid re-downloading within CACHE_TTL_SEC."""
+    
+    # Check disk cache
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    cache_file = os.path.join(CACHE_DIR, "data_cache.pkl")
+    if os.path.exists(cache_file):
+        try:
+            cache_age = time.time() - os.path.getmtime(cache_file)
+            if cache_age < CACHE_TTL_SEC:
+                with open(cache_file, "rb") as f:
+                    cached = pickle.load(f)
+                if len(cached) >= len(tickers) * 0.9:
+                    print(f"[CACHE] Using cached data ({int(cache_age)}s old, {len(cached)} tickers)")
+                    return cached
+        except Exception:
+            pass
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
@@ -240,6 +260,14 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
             time.sleep(REQUEST_DELAY)
 
     print(f"[DATA] Got price history for {len(all_data)} / {len(tickers)} tickers")
+    
+    # Save to disk cache
+    try:
+        with open(cache_file, "wb") as f:
+            pickle.dump(all_data, f, pickle.HIGHEST_PROTOCOL)
+    except Exception:
+        pass
+    
     return all_data
 
 
@@ -509,8 +537,8 @@ def _detect_kdj_signal(k, d, j, lookback: int = KDJ_LOOKBACK, oversold: int = KD
     # Check if J is currently above both K and D (bullish J position)
     j_above = j_now > k_now and j_now > d_now
 
-    # Recent J-cross-K (equivalent to K-cross-D) — any zone, no oversold restriction
-    for i in range(-lookback, 0):
+    # Recent J-cross-K (equivalent to K-cross-D) — only THIS current bar
+    for i in range(-1, 0):   # -1 = current bar only
         j_i = j.iloc[i]
         k_i = k.iloc[i]
         j_prev = j.iloc[i - 1]
@@ -518,7 +546,7 @@ def _detect_kdj_signal(k, d, j, lookback: int = KDJ_LOOKBACK, oversold: int = KD
         if j_i > k_i and j_prev <= k_prev:
             return "crossed", round(k_now, 1), round(d_now, 1), round(j_now, 1)
 
-    # J above K and D (already bullish) — any zone, no overbought restriction
+    # J above K and D (bullish position, cross already established)
     if j_above:
         return "above", round(k_now, 1), round(d_now, 1), round(j_now, 1)
 
