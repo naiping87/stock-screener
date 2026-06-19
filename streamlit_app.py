@@ -663,9 +663,9 @@ with st.sidebar:
         )
         vol_daily = st.number_input(
             "Daily KDJ Vol MA >", 0, 10_000_000, DEFAULTS["vol_d"], 100_000,
-            format="%d", key="cfg_vol_d",
+            format="%d", key="cfg_kdj_vol_d",
         )
-        daily_vol_ratio = st.slider("Daily KDJ Vol Ratio", 1.0, 3.0, DEFAULTS["daily_vol_r"], 0.1, key="cfg_daily_vol_r")
+        daily_vol_ratio = st.slider("Daily KDJ Vol Ratio", 1.0, 3.0, DEFAULTS["daily_vol_r"], 0.1, key="cfg_kdj_vol_r")
 
     with st.expander("KDJ Divergence", expanded=True):
         kdj_period = st.slider("KDJ Period", 3, 30, DEFAULTS["kdj_p"], 1, key="cfg_kdj_p")
