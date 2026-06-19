@@ -38,7 +38,7 @@ DEFAULTS = {
     "vol_d": VOL_MIN,
     "vol_h": VOL_MIN_HOURLY,
     "vol_w": WEEKLY_VOL_MIN,
-    "vol_d": DAILY_VOL_MIN,
+    "vol_d_kdj": DAILY_VOL_MIN,
     "daily_vol_r": DAILY_VOL_RATIO,
     "kdj_p": KDJ_PERIOD,
     "kdj_s": KDJ_SIGNAL,
@@ -662,7 +662,7 @@ with st.sidebar:
             format="%d", key="cfg_vol_w",
         )
         vol_daily = st.number_input(
-            "Daily KDJ Vol MA >", 0, 10_000_000, DEFAULTS["vol_d"], 100_000,
+            "Daily KDJ Vol MA >", 0, 10_000_000, DEFAULTS["vol_d_kdj"], 100_000,
             format="%d", key="cfg_kdj_vol_d",
         )
         daily_vol_ratio = st.slider("Daily KDJ Vol Ratio", 1.0, 3.0, DEFAULTS["daily_vol_r"], 0.1, key="cfg_kdj_vol_r")
@@ -1185,8 +1185,8 @@ if st.session_state.run_done:
     results_daily = st.session_state.results_daily_kdj or []
     results5 = st.session_state.results_scoring or []
 
-    # Summary bar — 6 columns
-    tc1, tc2, tc3, tc4, tcd, tc5 = st.columns(6)
+    # Summary bar — 5 columns
+    tc1, tc2, tc3, tc4, tc5 = st.columns(5)
     with tc1:
         st.markdown(f"""
         <div class="metric-card metric-accent-daily">
@@ -1220,6 +1220,16 @@ if st.session_state.run_done:
         <div class="metric-card metric-accent-score">
             <div class="metric-value">{len(results5)}</div>
             <div class="metric-label"><span class="tag-score section-tag">Scoring Top</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Second row — Daily KDJ
+    td1, td2, td3, td4, td5 = st.columns(5)
+    with td3:
+        st.markdown(f"""
+        <div class="metric-card metric-accent-weekly">
+            <div class="metric-value">{len(results_daily)}</div>
+            <div class="metric-label"><span class="tag-div section-tag">Daily KDJ Cross</span></div>
         </div>
         """, unsafe_allow_html=True)
 
