@@ -36,6 +36,8 @@ DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
 DAILY_DAYS = 400                    # days of daily data (max EMA period 200 + 20 compression bars)
 HOURLY_DAYS = 50                    # days of hourly data
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
+DAILY_VOL_MIN = 500000              # min daily volume MA for KDJ screener
+DAILY_VOL_RATIO = 1.2               # cross bar vol must be > 1.2x 20-day MA vol
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
 KDJ_OVERSOLD = 50                   # K must be below this for valid signal (legacy, not enforced)
 CACHE_DIR = "cache"                 # disk cache for downloaded data
@@ -612,6 +614,68 @@ def run_weekly_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
 
     print(f"  Stage 1 (weekly KDJ cross): {s1} passed")
     print(f"  Stage 2 (weekly vol > {vol_min//1000}k):   {s2} passed")
+
+
+def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
+                           vol_min: int = DAILY_VOL_MIN, vol_ratio: float = DAILY_VOL_RATIO) -> Generator[dict[str, Any], None, None]:
+    """
+    Daily KDJ Golden Cross Screener:
+      Stage 1 — Daily KDJ golden cross (fresh, >=2 bars below before cross)
+      Stage 2 — Daily volume MA > vol_min
+      (Vol Ratio shown for reference, not used as filter)
+    """
+    ticker_names = ticker_names or {}
+    s1 = s2 = 0
+
+    for tkr, d in data.items():
+        close = d.get("close")
+        high = d.get("high")
+        low = d.get("low")
+        vol = d.get("volume")
+        if close is None or len(close) < KDJ_PERIOD + KDJ_SIGNAL + 5:
+            continue
+
+        k, d_kdj, j = _calc_kdj(high, low, close, period=KDJ_PERIOD, signal=KDJ_SIGNAL)
+        kdj_sig, k_val, d_val, j_val = detectKDJSignal(k, d_kdj, j)
+        if kdj_sig != "crossed":
+            continue
+        s1 += 1
+
+        # Volume check: daily vol MA
+        if not _check_volume(vol, min_vol=vol_min):
+            continue
+        s2 += 1
+
+        # Volume ratio (informational, not a filter)
+        vol_ratio_val = 0
+        if vol is not None and len(vol) >= 21:
+            vol_ma20 = vol.rolling(20).mean().iloc[-1]
+            cross_vol = vol.iloc[-1]
+            vol_ratio_val = round(cross_vol / vol_ma20 if vol_ma20 > 0 else 0, 1)
+
+        name = d.get("name", "") or ticker_names.get(tkr, "")
+        price = round(close.iloc[-1], 2)
+        vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
+        # Calculate vol ratio safely
+        try:
+            _vma20 = vol.rolling(20).mean().iloc[-1]
+            vol_ratio_val = round(vol.iloc[-1] / _vma20 if _vma20 > 0 else 0, 1)
+        except Exception:
+            vol_ratio_val = 0
+
+        yield {
+            "ticker": tkr,
+            "name": name,
+            "close": price,
+            "kdj_k": k_val,
+            "kdj_d": d_val,
+            "kdj_j": j_val,
+            "vol_ratio": vol_ratio_val,
+            "vol_ma": vol_ma_val,
+        }
+
+    print(f"  Stage 1 (daily KDJ cross):  {s1} passed")
+    print(f"  Stage 2 (vol MA > {vol_min//1000}k): {s2} passed")
 
 
 def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,

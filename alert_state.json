@@ -239,6 +239,11 @@
       "signal": "crossed",
       "name": "ETA Group Berhad",
       "time": "2026-06-19T12:49:17.377398"
+    },
+    "9059.KL": {
+      "signal": "crossed",
+      "name": "TSH Resources Berhad",
+      "time": "2026-06-19T14:58:41.137815"
     }
   }
 }

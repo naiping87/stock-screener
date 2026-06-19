@@ -20,10 +20,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from screener import (
     load_tickers, download_data,
     run_ema_screener, run_ema_hourly_screener, run_divergence_screener,
-    run_weekly_kdj_screener, run_scoring_screener, backtest_scoring,
+    run_weekly_kdj_screener, run_daily_kdj_screener, run_scoring_screener, backtest_scoring,
     EMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
     KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
-    VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN,
+    VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN, DAILY_VOL_MIN, DAILY_VOL_RATIO,
     SCORE_TREND_PERIODS, SCORE_TREND_THRESHOLD, SCORE_EMA200_SLOPE_BARS,
     SCORE_VOL_PERIOD, SCORE_VOL_THRESHOLD, SCORE_VOL_MA_BARS, SCORE_VOL_MA_THRESHOLD,
     SCORE_TOP_N,
@@ -38,6 +38,8 @@ DEFAULTS = {
     "vol_d": VOL_MIN,
     "vol_h": VOL_MIN_HOURLY,
     "vol_w": WEEKLY_VOL_MIN,
+    "vol_d": DAILY_VOL_MIN,
+    "daily_vol_r": DAILY_VOL_RATIO,
     "kdj_p": KDJ_PERIOD,
     "kdj_s": KDJ_SIGNAL,
     "div_lb": DIVERGENCE_LOOKBACK,
@@ -659,6 +661,11 @@ with st.sidebar:
             "Weekly Vol MA >", 0, 10_000_000, DEFAULTS["vol_w"], 100_000,
             format="%d", key="cfg_vol_w",
         )
+        vol_daily = st.number_input(
+            "Daily KDJ Vol MA >", 0, 10_000_000, DEFAULTS["vol_d"], 100_000,
+            format="%d", key="cfg_vol_d",
+        )
+        daily_vol_ratio = st.slider("Daily KDJ Vol Ratio", 1.0, 3.0, DEFAULTS["daily_vol_r"], 0.1, key="cfg_daily_vol_r")
 
     with st.expander("KDJ Divergence", expanded=True):
         kdj_period = st.slider("KDJ Period", 3, 30, DEFAULTS["kdj_p"], 1, key="cfg_kdj_p")
@@ -1092,7 +1099,17 @@ if st.session_state.get("_fp4") != fp4:
 else:
     results4 = st.session_state.results_weekly
 
-# Screener 5: Scoring — only re-run if data refreshed or scoring params changed
+# Screener 5: Daily KDJ — params: kdj_period, kdj_signal, vol_daily, daily_vol_ratio
+fp_daily = (kdj_period, kdj_signal, vol_daily, daily_vol_ratio)
+if st.session_state.get("_fp_daily") != fp_daily:
+    screener_progress.progress(86, text="Daily KDJ Cross...")
+    results_daily = list(run_daily_kdj_screener(data, ticker_names, vol_min=vol_daily, vol_ratio=daily_vol_ratio))
+    st.session_state.results_daily_kdj = results_daily
+    st.session_state._fp_daily = fp_daily
+else:
+    results_daily = st.session_state.results_daily_kdj
+
+# Screener 6: Scoring — only re-run if data refreshed or scoring params changed
 stp = sorted(score_trend_periods_sel) or [10, 20, 50, 100, 200]
 score_fingerprint = (tuple(stp), score_trend_div, score_slope_bars, score_vol_p,
                      score_vol_t, score_vol_ma_b, score_vol_ma_t, score_top_n)
@@ -1151,6 +1168,7 @@ _attach_roe(results1, roe_map)
 _attach_roe(results2, roe_map)
 _attach_roe(results3, roe_map)
 _attach_roe(results4, roe_map)
+_attach_roe(results_daily, roe_map)
 _attach_roe(results5, roe_map)
 
 screener_progress.progress(100, text="Done")
@@ -1164,10 +1182,11 @@ if st.session_state.run_done:
     results2 = st.session_state.results_ema_hourly or []
     results3 = st.session_state.results_div or []
     results4 = st.session_state.results_weekly or []
+    results_daily = st.session_state.results_daily_kdj or []
     results5 = st.session_state.results_scoring or []
 
-    # Summary bar — 5 columns
-    tc1, tc2, tc3, tc4, tc5 = st.columns(5)
+    # Summary bar — 6 columns
+    tc1, tc2, tc3, tc4, tcd, tc5 = st.columns(6)
     with tc1:
         st.markdown(f"""
         <div class="metric-card metric-accent-daily">
@@ -1205,11 +1224,12 @@ if st.session_state.run_done:
         """, unsafe_allow_html=True)
 
     # Detail tables
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab_daily, tab5 = st.tabs([
         f"📅 Daily EMA ({len(results1)})",
         f"⏱ Hourly EMA ({len(results2)})",
         f"📉 KDJ Divergence ({len(results3)})",
         f"📆 Weekly KDJ ({len(results4)})",
+        f"📊 Daily KDJ ({len(results_daily)})",
         f"⭐ Scoring ({len(results5)})",
     ])
 
@@ -1262,6 +1282,19 @@ if st.session_state.run_done:
             _render_aggrid(df, roe_col=True)
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the weekly KDJ filter</div></div>', unsafe_allow_html=True)
+
+    with tab_daily:
+        if results_daily:
+            df = pd.DataFrame(results_daily)
+            df["ticker"] = df["ticker"].apply(_strip_kl)
+            df["Vol Ratio"] = df["vol_ratio"].apply(lambda x: f"{x:.1f}x" if x else "—")
+            df = df.rename(columns={
+                "ticker": "Code", "name": "Name", "close": "Price",
+                "vol_ma": "Vol MA", "ROE": "ROE%",
+            })[["Code", "Name", "Price", "kdj_k", "kdj_d", "kdj_j", "Vol Ratio", "Vol MA", "ROE%"]]
+            _render_aggrid(df, roe_col=True)
+        else:
+            st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the daily KDJ filter</div></div>', unsafe_allow_html=True)
 
     with tab5:
         if results5:
