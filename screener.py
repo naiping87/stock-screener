@@ -7,7 +7,6 @@ Bursa Malaysia Stock Screener — 5 screeners:
   5. scoring        — weighted 11-factor scoring system
 """
 import csv
-import json
 import os
 import pickle
 import sys
@@ -212,10 +211,9 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
     Uses disk cache (pickle) to avoid re-downloading within CACHE_TTL_SEC."""
     
     # Check disk cache
-    os.makedirs(CACHE_DIR, exist_ok=True)
     cache_file = os.path.join(CACHE_DIR, "data_cache.pkl")
-    if os.path.exists(cache_file):
-        try:
+    try:
+        if os.path.exists(cache_file):
             cache_age = time.time() - os.path.getmtime(cache_file)
             if cache_age < CACHE_TTL_SEC:
                 with open(cache_file, "rb") as f:
@@ -223,8 +221,8 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
                 if len(cached) >= len(tickers) * 0.9:
                     print(f"[CACHE] Using cached data ({int(cache_age)}s old, {len(cached)} tickers)")
                     return cached
-        except Exception:
-            pass
+    except Exception:
+        pass
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
@@ -263,8 +261,9 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
 
     print(f"[DATA] Got price history for {len(all_data)} / {len(tickers)} tickers")
     
-    # Save to disk cache
+    # Save to disk cache (ignore errors on read-only filesystems)
     try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
         with open(cache_file, "wb") as f:
             pickle.dump(all_data, f, pickle.HIGHEST_PROTOCOL)
     except Exception:
