@@ -1,0 +1,244 @@
+{
+  "alerted": {
+    "0020.KL": {
+      "signal": "crossed",
+      "name": "NetX Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "0105.KL": {
+      "signal": "crossed",
+      "name": "Asia Poly Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "0185.KL": {
+      "signal": "crossed",
+      "name": "HSS Engineers Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "0188.KL": {
+      "signal": "crossed",
+      "name": "HLT Global Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "0189.KL": {
+      "signal": "crossed",
+      "name": "Matang Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "0215.KL": {
+      "signal": "crossed",
+      "name": "Solarvest Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "0219.KL": {
+      "signal": "crossed",
+      "name": "Reservoir Link Energy Bhd",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "0283.KL": {
+      "signal": "crossed",
+      "name": "DC Healthcare Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "1961.KL": {
+      "signal": "crossed",
+      "name": "IOI Corporation Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "2089.KL": {
+      "signal": "crossed",
+      "name": "United Plantations Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "2445.KL": {
+      "signal": "crossed",
+      "name": "Kuala Lumpur Kepong Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "2488.KL": {
+      "signal": "crossed",
+      "name": "Alliance Bank Malaysia Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "2739.KL": {
+      "signal": "crossed",
+      "name": "Techna-X Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "3395.KL": {
+      "signal": "crossed",
+      "name": "Berjaya Corporation Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "3689.KL": {
+      "signal": "crossed",
+      "name": "Fraser & Neave Holdings Bhd",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "4197.KL": {
+      "signal": "crossed",
+      "name": "Sime Darby Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "4847.KL": {
+      "signal": "crossed",
+      "name": "Epicon Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5000.KL": {
+      "signal": "crossed",
+      "name": "Hume Cement Industries Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5025.KL": {
+      "signal": "crossed",
+      "name": "Auro Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5080.KL": {
+      "signal": "crossed",
+      "name": "Poh Kong Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5133.KL": {
+      "signal": "crossed",
+      "name": "Petra Energy Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5156.KL": {
+      "signal": "crossed",
+      "name": "XiDeLang Holdings Ltd",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5172.KL": {
+      "signal": "crossed",
+      "name": "Sinaran Advance Group Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5200.KL": {
+      "signal": "crossed",
+      "name": "UOA Development Bhd",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5218.KL": {
+      "signal": "crossed",
+      "name": "Vantris Energy Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5238.KL": {
+      "signal": "crossed",
+      "name": "AirAsia X Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5248.KL": {
+      "signal": "crossed",
+      "name": "Bermaz Auto Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5252.KL": {
+      "signal": "crossed",
+      "name": "Sasbadi Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5259.KL": {
+      "signal": "crossed",
+      "name": "Avangaad Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5271.KL": {
+      "signal": "crossed",
+      "name": "Pecca Group Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5306.KL": {
+      "signal": "crossed",
+      "name": "Farm Fresh Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "5819.KL": {
+      "signal": "crossed",
+      "name": "Hong Leong Bank Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "6378.KL": {
+      "signal": "crossed",
+      "name": "BEDI Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "6483.KL": {
+      "signal": "crossed",
+      "name": "Kenanga Investment Bank Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "6633.KL": {
+      "signal": "crossed",
+      "name": "Leong Hup International Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7004.KL": {
+      "signal": "crossed",
+      "name": "MCE Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7103.KL": {
+      "signal": "crossed",
+      "name": "Spritzer Bhd",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7105.KL": {
+      "signal": "crossed",
+      "name": "HCK Capital Group Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7163.KL": {
+      "signal": "crossed",
+      "name": "PJBumi Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7170.KL": {
+      "signal": "crossed",
+      "name": "LFE Corporation Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7188.KL": {
+      "signal": "crossed",
+      "name": "BTM Resources Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7209.KL": {
+      "signal": "crossed",
+      "name": "Cheetah Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7231.KL": {
+      "signal": "crossed",
+      "name": "Wellcall Holdings Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7237.KL": {
+      "signal": "crossed",
+      "name": "Power Root Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "7889.KL": {
+      "signal": "crossed",
+      "name": "Thriven Global Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "8206.KL": {
+      "signal": "crossed",
+      "name": "Eco World Development Group Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "9822.KL": {
+      "signal": "crossed",
+      "name": "SAM Engineering & Equipment (M) Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    },
+    "9946.KL": {
+      "signal": "crossed",
+      "name": "ETA Group Berhad",
+      "time": "2026-06-19T12:49:17.377398"
+    }
+  }
+}

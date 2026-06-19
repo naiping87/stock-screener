@@ -521,35 +521,47 @@ def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
     print(f"  Stage 2 (vol > {VOL_MIN//1000}k): {s2} passed")
 
 
-def _detect_kdj_signal(k, d, j, lookback: int = KDJ_LOOKBACK, oversold: int = KDJ_OVERSOLD):
-    # type: (pd.Series | None, pd.Series | None, pd.Series | None, int, int) -> tuple[str | None, float | None, float | None, float | None]
+def detectKDJSignal(k, d, j, lookback = KDJ_LOOKBACK, oversold = KDJ_OVERSOLD):
     """Detect KDJ golden cross via J line (J=3K-2D, crosses K when K crosses D).
-
+    
     Returns (signal, k_val, d_val, j_val):
-      signal: 'crossed' (J just crossed K) | 'above' (J>K and J>D) | None
+      signal: 'crossed' (fresh cross, was below for >=2 bars) | 'above' (bullish, established) | None
     """
-    if k is None or len(k) < lookback + 2:
+    if k is None or len(k) < 5:
         return None, None, None, None
-
+    
     k_now, d_now = k.iloc[-1], d.iloc[-1]
     j_now = j.iloc[-1] if j is not None else float("nan")
-
-    # Check if J is currently above both K and D (bullish J position)
+    
+    # Current position: J above both K and D
     j_above = j_now > k_now and j_now > d_now
-
-    # Recent J-cross-K (equivalent to K-cross-D) — only THIS current bar
-    for i in range(-1, 0):   # -1 = current bar only
-        j_i = j.iloc[i]
-        k_i = k.iloc[i]
-        j_prev = j.iloc[i - 1]
-        k_prev = k.iloc[i - 1]
-        if j_i > k_i and j_prev <= k_prev:
+    
+    # ---- Fresh golden cross? ----
+    # Must: J[-1] > K[-1] and J[-2] <= K[-2]
+    j1, k1 = j.iloc[-1], k.iloc[-1]
+    j2, k2 = j.iloc[-2], k.iloc[-2]
+    j3, k3 = j.iloc[-3], k.iloc[-3]
+    
+    cross_trigger = j1 > k1 and j2 <= k2
+    
+    if cross_trigger:
+        # Was J below K for at least 2 consecutive bars before the cross?
+        # Check bars -2 and -3 (both should be below or equal)
+        bars_below = 0
+        for i in range(-2, -6, -1):  # check bars -2 through -5
+            if abs(i) >= len(k):
+                break
+            if j.iloc[i] <= k.iloc[i]:
+                bars_below += 1
+            else:
+                break
+        if bars_below >= 2:
             return "crossed", round(k_now, 1), round(d_now, 1), round(j_now, 1)
-
-    # J above K and D (bullish position, cross already established)
+    
+    # ---- Bullish but established (above) ----
     if j_above:
         return "above", round(k_now, 1), round(d_now, 1), round(j_now, 1)
-
+    
     return None, None, None, None
 
 
@@ -573,7 +585,7 @@ def run_weekly_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
 
         k, d_kdj, j = _calc_kdj(w_high, w_low, w_close,
                                 period=KDJ_PERIOD, signal=KDJ_SIGNAL)
-        kdj_sig, k_val, d_val, j_val = _detect_kdj_signal(k, d_kdj, j)
+        kdj_sig, k_val, d_val, j_val = detectKDJSignal(k, d_kdj, j)
         if kdj_sig is None:
             continue
         s1 += 1
@@ -666,7 +678,7 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
 
         # 4. KDJ golden cross / near-cross (+1)
         k, d_kdj, j = _calc_kdj(high, low, close)
-        kdj_sig = _detect_kdj_signal(k, d_kdj, j)[0]
+        kdj_sig = detectKDJSignal(k, d_kdj, j)[0]
         kdj_ok = kdj_sig is not None
         if kdj_ok:
             score += 1
@@ -680,7 +692,7 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
         w_vol = d.get("volume_weekly")
         if w_close is not None and w_high is not None and w_low is not None:
             wk, wd, wj = _calc_kdj(w_high, w_low, w_close)
-            wkdj_sig = _detect_kdj_signal(wk, wd, wj)[0]
+            wkdj_sig = detectKDJSignal(wk, wd, wj)[0]
         # Weekly volume > 60-week MA for confirmation
         wkdj_vol_ok = False
         if w_vol is not None and len(w_vol) >= 60:
