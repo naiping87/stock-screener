@@ -543,6 +543,20 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
+# Load alert_paused from alert_state.json (only on first run, before widget init)
+if "_alert_pause_loaded" not in st.session_state:
+    st.session_state._alert_pause_loaded = True
+    _default_paused = False
+    try:
+        import json
+        if os.path.exists(ALERT_STATE_FILE):
+            with open(ALERT_STATE_FILE) as f:
+                _default_paused = json.load(f).get("paused", False)
+    except Exception:
+        pass
+    st.session_state.alert_paused = _default_paused
+    st.session_state._prev_alert_paused = _default_paused
+
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", "demo123")
 
 # Auto-login via URL query param (persists across refreshes)
@@ -593,6 +607,34 @@ if not st.query_params.get("auth"):
     st.query_params["auth"] = "1"
     st.rerun()
 
+# ── Heartbeat: touch a file so alert_monitor knows the page is open ────────
+HEARTBEAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alert_heartbeat.txt")
+try:
+    with open(HEARTBEAT_FILE, "w") as _hf:
+        _hf.write(str(time.time()))
+except Exception:
+    pass  # never let heartbeat failure break the app
+
+# ── Alert pause helper ─────────────────────────────────────────────────────
+ALERT_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alert_state.json")
+
+def _update_alert_pause(paused):
+    """Write the paused flag to alert_state.json so alert_monitor respects it."""
+    import json
+    state = {}
+    if os.path.exists(ALERT_STATE_FILE):
+        try:
+            with open(ALERT_STATE_FILE) as f:
+                state = json.load(f)
+        except Exception:
+            pass
+    state["paused"] = paused
+    try:
+        with open(ALERT_STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2)
+    except Exception:
+        pass
+
 # ── Logout button (top-right) ──────────────────────────────────────────────
 c1, c2 = st.columns([6, 1])
 with c2:
@@ -630,6 +672,16 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="sidebar-section-title">Parameters</div>', unsafe_allow_html=True)
+
+    with st.expander("🔔 Alerts", expanded=True):
+        alert_paused = st.toggle(
+            "Pause desktop alerts", value=False, key="alert_paused",
+            help="When checked, alert_monitor will not send Windows notifications",
+        )
+        # Write pause flag to alert_state.json so alert_monitor can read it
+        if alert_paused != st.session_state.get("_prev_alert_paused", None):
+            _update_alert_pause(alert_paused)
+            st.session_state._prev_alert_paused = alert_paused
 
     with st.expander("EMA Compression", expanded=True):
         ema_periods = st.multiselect(

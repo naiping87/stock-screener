@@ -8,6 +8,7 @@ Detects new Weekly KDJ golden crosses and shows Windows desktop notifications.
 import json
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +24,33 @@ from screener import (
 
 STATE_FILE = SCRIPT_DIR / "alert_state.json"
 TICKERS_FILE = SCRIPT_DIR / "tickers.csv"
+HEARTBEAT_FILE = SCRIPT_DIR / "alert_heartbeat.txt"
+
+# ── Heartbeat check: skip alerts when the Streamlit page is closed ──────────
+
+HEARTBEAT_TIMEOUT = 15 * 60  # 15 minutes — page must be open within this window
+
+
+def is_page_open(heartbeat_file, timeout=HEARTBEAT_TIMEOUT):
+    """
+    Return True if the Streamlit page was active within `timeout` seconds.
+    If the heartbeat file doesn't exist or is stale, the app is considered closed.
+    """
+    if not heartbeat_file.exists():
+        return False
+    try:
+        last_beat = float(heartbeat_file.read_text().strip())
+        return (time.time() - last_beat) < timeout
+    except (ValueError, OSError):
+        return False
+
+
+# ── Pause flag: stored in alert_state.json ──────────────────────────────────
+
+def is_paused(state):
+    """Return True if alerts are paused by the user."""
+    return state.get("paused", False)
+
 
 # ===== Windows Toast Notification =====
 
@@ -101,6 +129,17 @@ def main():
     print(f"  Stock Screener Alert Monitor")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*50}")
+
+    # ── Pre-flight checks ────────────────────────────────────────────────
+    state = load_state()
+
+    if is_paused(state):
+        print("[SKIP] Alerts are paused — exiting silently.")
+        return
+
+    if not is_page_open(HEARTBEAT_FILE):
+        print("[SKIP] Streamlit page is not open (heartbeat stale) — exiting silently.")
+        return
 
     # 1. Load tickers
     tickers = load_tickers(str(TICKERS_FILE))
