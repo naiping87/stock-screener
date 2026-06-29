@@ -1,6 +1,6 @@
 Unregister-ScheduledTask -TaskName "StockScreenerAlert" -Confirm:$false -ErrorAction SilentlyContinue
 
-# Run pythonw.exe directly (no console window) — avoids VBS middleman that can cause CMD flashes
+# Run pythonw.exe directly (no console window) -- avoids VBS middleman that can cause CMD flashes
 $action = New-ScheduledTaskAction `
     -Execute "C:\Users\ediso\AppData\Local\Programs\Python\Python312\pythonw.exe" `
     -Argument "`"C:\Users\ediso\OneDrive\cctest\stock-screener\alert_monitor.py`"" `
@@ -11,4 +11,4 @@ $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interac
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -Compatibility Win8
 
 Register-ScheduledTask -TaskName "StockScreenerAlert" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
-Write-Host "Done — pythonw.exe runs directly, no console flash"
+Write-Host "Done -- pythonw.exe runs directly, no console flash"
