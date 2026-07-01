@@ -1153,6 +1153,11 @@ else:
 
 # Screener 5: Daily KDJ — params: kdj_period, kdj_signal, vol_daily, daily_vol_ratio
 fp_daily = (kdj_period, kdj_signal, vol_daily, daily_vol_ratio)
+_cached_daily = st.session_state.get("results_daily_kdj")
+# Invalidate stale cache that lacks kdj_signal field (from older code version)
+if _cached_daily and len(_cached_daily) > 0 and "kdj_signal" not in _cached_daily[0]:
+    st.session_state._fp_daily = None   # force re-run
+
 if st.session_state.get("_fp_daily") != fp_daily:
     screener_progress.progress(86, text="Daily KDJ Cross...")
     results_daily = list(run_daily_kdj_screener(data, ticker_names, vol_min=vol_daily, vol_ratio=daily_vol_ratio))
@@ -1351,16 +1356,15 @@ if st.session_state.run_done:
         if results_daily:
             df = pd.DataFrame(results_daily)
             df["ticker"] = df["ticker"].apply(_strip_kl)
-            # Ensure all expected columns exist (defensive — old cached data may lack them)
-            if "kdj_signal" not in df.columns:
-                df["kdj_signal"] = ""
             if "vol_ratio" not in df.columns:
                 df["vol_ratio"] = 0
             df["Vol Ratio"] = df["vol_ratio"].apply(lambda x: f"{x:.1f}x" if x else "—")
             df = df.rename(columns={
                 "ticker": "Code", "name": "Name", "close": "Price",
                 "kdj_signal": "Signal", "vol_ma": "Vol MA", "ROE": "ROE%",
-            })[["Code", "Name", "Price", "kdj_k", "kdj_d", "kdj_j", "Signal", "Vol Ratio", "Vol MA", "ROE%"]]
+            })
+            show_cols = [c for c in ["Code", "Name", "Price", "kdj_k", "kdj_d", "kdj_j", "Signal", "Vol Ratio", "Vol MA", "ROE%"] if c in df.columns]
+            df = df[show_cols]
             _render_aggrid(df, roe_col=True)
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the daily KDJ filter</div></div>', unsafe_allow_html=True)
