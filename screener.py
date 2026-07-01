@@ -636,7 +636,7 @@ def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[s
 
         k, d_kdj, j = _calc_kdj(high, low, close, period=KDJ_PERIOD, signal=KDJ_SIGNAL)
         kdj_sig, k_val, d_val, j_val = detectKDJSignal(k, d_kdj, j)
-        if kdj_sig != "crossed":
+        if kdj_sig is None:
             continue
         s1 += 1
 
@@ -663,6 +663,7 @@ def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[s
             "kdj_k": k_val,
             "kdj_d": d_val,
             "kdj_j": j_val,
+            "kdj_signal": kdj_sig,
             "vol_ratio": vol_ratio_val,
             "vol_ma": vol_ma_val,
         }

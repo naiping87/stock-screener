@@ -1352,8 +1352,8 @@ if st.session_state.run_done:
             df["Vol Ratio"] = df["vol_ratio"].apply(lambda x: f"{x:.1f}x" if x else "—")
             df = df.rename(columns={
                 "ticker": "Code", "name": "Name", "close": "Price",
-                "vol_ma": "Vol MA", "ROE": "ROE%",
-            })[["Code", "Name", "Price", "kdj_k", "kdj_d", "kdj_j", "Vol Ratio", "Vol MA", "ROE%"]]
+                "kdj_signal": "Signal", "vol_ma": "Vol MA", "ROE": "ROE%",
+            })[["Code", "Name", "Price", "kdj_k", "kdj_d", "kdj_j", "Signal", "Vol Ratio", "Vol MA", "ROE%"]]
             _render_aggrid(df, roe_col=True)
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the daily KDJ filter</div></div>', unsafe_allow_html=True)
