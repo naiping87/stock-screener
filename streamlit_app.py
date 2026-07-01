@@ -1337,6 +1337,8 @@ if st.session_state.run_done:
         if results4:
             df = pd.DataFrame(results4)
             df["ticker"] = df["ticker"].apply(_strip_kl)
+            if "kdj_signal" not in df.columns:
+                df["kdj_signal"] = ""
             df = df.rename(columns={
                 "ticker": "Code", "name": "Name", "close": "Price",
                 "kdj_signal": "Signal", "vol_ma": "Vol MA", "ROE": "ROE%",
@@ -1349,6 +1351,11 @@ if st.session_state.run_done:
         if results_daily:
             df = pd.DataFrame(results_daily)
             df["ticker"] = df["ticker"].apply(_strip_kl)
+            # Ensure all expected columns exist (defensive — old cached data may lack them)
+            if "kdj_signal" not in df.columns:
+                df["kdj_signal"] = ""
+            if "vol_ratio" not in df.columns:
+                df["vol_ratio"] = 0
             df["Vol Ratio"] = df["vol_ratio"].apply(lambda x: f"{x:.1f}x" if x else "—")
             df = df.rename(columns={
                 "ticker": "Code", "name": "Name", "close": "Price",
