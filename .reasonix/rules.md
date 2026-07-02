@@ -29,6 +29,15 @@
 - 如果一个修改 2 次推送后用户反馈仍无效 → 停手，查源码诊断根因
 - CSS 选择器不确定时 → 删除自定义，用库默认样式
 
+## 重构检查清单
+
+删除或修改任何 `st.session_state` / 全局变量 / 缓存的**写入**逻辑时：
+1. `grep` 搜索该 key 名在全部文件中的所有出现
+2. 确认每个**读取**点都已同步更新或删除
+3. 不要抱有"反正不会被执行到"的侥幸心理
+
+**案例：** 删了 `st.session_state.results_scoring = results5` 但漏了 `results5 = st.session_state.get("results_scoring", [])`，导致 scoring 结果被空列表覆盖。
+
 ## Known Issues
 
 - streamlit-aggrid `AgGrid.py:305-308` 存在验证漏洞：`theme` 字符串不校验枚举值
