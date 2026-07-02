@@ -854,7 +854,7 @@ with st.sidebar:
             st.rerun()
 
     if "_ticker_count" not in st.session_state or st.session_state.get("_ticker_market") != selected_code:
-        st.session_state._ticker_count = len(load_tickers(tickers_path, suffix=market.yahoo_suffix))
+        st.session_state._ticker_count = len(load_tickers(os.path.join(os.path.dirname(os.path.abspath(__file__)), market.tickers_csv), suffix=market.yahoo_suffix))
         st.session_state._ticker_market = selected_code
     st.caption(f"Tickers: {st.session_state._ticker_count} | Data cached 1hr")
 
