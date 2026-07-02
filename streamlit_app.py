@@ -1124,6 +1124,7 @@ def get_data():
     suffix = m.yahoo_suffix
     tickers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), m.tickers_csv)
     tickers = load_tickers(tickers_path, suffix=suffix)
+    st.toast(f"📡 Loading {code.upper()} market...", icon="🔄")
     # load_tickers already returns keys with the correct suffix — use as-is
     ticker_names = dict(tickers)
     import json
