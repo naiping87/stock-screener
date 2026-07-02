@@ -30,6 +30,8 @@ from screener import (
     TICKERS_FILE,
 )
 
+from markets import get as get_market, list_all as list_markets
+
 # ── Defaults for reset ─────────────────────────────────────────────────────
 DEFAULTS = {
     "periods": [10, 20, 50, 100, 200],
@@ -662,6 +664,32 @@ st.markdown("""
 
 # ── Sidebar: Parameters ────────────────────────────────────────────────────
 with st.sidebar:
+    # ── Market selector ─────────────────────────────────────────────────
+    st.markdown('<div class="sidebar-section-title">🌍 Market</div>', unsafe_allow_html=True)
+    all_markets = list_markets()
+    market_codes = [m.code for m in all_markets]
+    market_labels = [m.label for m in all_markets]
+
+    if "_market_code" not in st.session_state:
+        st.session_state._market_code = market_codes[0] if market_codes else "my"
+
+    cur_idx = market_codes.index(st.session_state._market_code) if st.session_state._market_code in market_codes else 0
+    selected_label = st.selectbox(
+        "Select Market", market_labels, index=cur_idx,
+        key="market_selector", label_visibility="collapsed",
+    )
+    selected_code = market_codes[market_labels.index(selected_label)]
+
+    if st.session_state._market_code != selected_code:
+        st.session_state._market_code = selected_code
+        for k in list(st.session_state.keys()):
+            if k.startswith("_fp") or k.startswith("results_"):
+                st.session_state.pop(k, None)
+        st.rerun()
+
+    market = get_market(selected_code)
+    st.session_state._market = market  # cached for use outside sidebar
+
     # Mobile hint
     st.markdown("""
     <div class="mobile-hint" style="background:#161b22;border:1px solid #30363d;
@@ -933,6 +961,10 @@ def _fetch_one_roe_fallback(tkr):
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 def _strip_kl(tkr):
+    """Strip market suffix for display (uses current market from session)."""
+    m = st.session_state.get("_market")
+    if m and isinstance(tkr, str):
+        return m.display_ticker(tkr)
     return tkr.replace(".KL", "") if isinstance(tkr, str) else tkr
 
 
@@ -1070,20 +1102,25 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
 
 # ── Data loader (@st.cache_data persists across refreshes, 1hr TTL) ────────
 @st.cache_data(ttl=3600, show_spinner="Downloading market data from Yahoo Finance... (1-2 min)")
-def _cached_download(_tickers_json):
+def _cached_download(_tickers_json, _timezone="Asia/Kuala_Lumpur"):
     """Download data (cached on server, survives page refresh).
     _tickers_json is a JSON string used as cache key — change it to invalidate."""
     import json
     tickers = json.loads(_tickers_json)
-    return download_data(tickers, progress_cb=None)
+    return download_data(tickers, progress_cb=None, timezone=_timezone)
 
 def get_data():
     """Return data (from cache if fresh, otherwise download)."""
-    tickers = load_tickers(TICKERS_FILE)
-    ticker_names = {f"{c}.KL": n for c, n in tickers.items()}
+    m = st.session_state.get("_market")
+    tz = m.timezone if m else "Asia/Kuala_Lumpur"
+    suffix = m.yahoo_suffix if m else ".KL"
+    tickers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                m.tickers_csv if m else "tickers.csv")
+    tickers = load_tickers(tickers_path, suffix=suffix)
+    ticker_names = {f"{c}{suffix}": n for c, n in tickers.items()} if suffix else tickers
     import json
     tickers_json = json.dumps(dict(sorted(tickers.items())))
-    data = _cached_download(tickers_json)
+    data = _cached_download(tickers_json, tz)
     return data, ticker_names
 
 

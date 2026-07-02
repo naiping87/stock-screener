@@ -55,8 +55,13 @@ OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def load_tickers(path: str) -> dict[str, str]:
-    """Read tickers.csv -> dict {ticker_symbol: company_name}."""
+def load_tickers(path: str, suffix: str = ".KL") -> dict[str, str]:
+    """Read tickers.csv -> dict {full_ticker: company_name}.
+    
+    Args:
+        path: path to tickers CSV
+        suffix: Yahoo Finance suffix to append (".KL" for Bursa, "" for US, etc.)
+    """
     if not os.path.exists(path):
         print(f"[ERROR] {path} not found.")
         sys.exit(1)
@@ -68,8 +73,16 @@ def load_tickers(path: str) -> dict[str, str]:
                 continue
             code = row[0].strip().upper()
             name = row[1].strip() if len(row) > 1 else code
-            if code.isdigit() or code == "5235SS":
-                tickers[f"{code}.KL"] = name
+            if suffix == ".KL":
+                # Bursa: only numeric codes (and known special cases)
+                if code.isdigit() or code == "5235SS":
+                    tickers[f"{code}{suffix}"] = name
+            elif suffix:
+                # Other markets with suffix: accept all codes
+                tickers[f"{code}{suffix}"] = name
+            else:
+                # US: no suffix, accept all non-numeric-looking codes
+                tickers[code] = name
     print(f"[INFO] Loaded {len(tickers)} tickers")
     return tickers
 
@@ -92,8 +105,8 @@ def _build_session() -> requests.Session:
     return sess
 
 
-def _fetch_chart(sess, tkr, period1, period2, interval, min_bars):
-    # type: (requests.Session, str, int, int, str, int) -> tuple[dict[str, pd.Series] | None, str]
+def _fetch_chart(sess, tkr, period1, period2, interval, min_bars, timezone="Asia/Kuala_Lumpur"):
+    # type: (requests.Session, str, int, int, str, int, str) -> tuple[dict[str, pd.Series] | None, str]
     """Download chart data for one ticker. Returns (data_dict | None, meta_name)."""
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{tkr}"
     params = {
@@ -133,7 +146,7 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars):
             if sum(1 for v in closes if v is not None) < min_bars:
                 return None, name
 
-            idx = pd.to_datetime(ts, unit="s", utc=True).tz_convert("Asia/Kuala_Lumpur")
+            idx = pd.to_datetime(ts, unit="s", utc=True).tz_convert(timezone)
 
             def _to_series(values, idx):
                 return pd.Series(
@@ -157,9 +170,9 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars):
     return None, ""
 
 
-def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
+def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezone="Asia/Kuala_Lumpur"):
     """Download daily + hourly data for one ticker (weekly resampled from daily)."""
-    d_data, name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d)
+    d_data, name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d, timezone)
     if d_data is None:
         return tkr, None
 
@@ -178,7 +191,7 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
     }
 
     # Hourly data
-    h_data, _ = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h)
+    h_data, _ = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h, timezone)
     if h_data is not None:
         h_close = h_data["close"].dropna()
         h_vol = h_data["volume"].fillna(0)
@@ -206,7 +219,7 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h):
     return tkr, result
 
 
-def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None) -> dict[str, dict[str, Any]]:
+def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur") -> dict[str, dict[str, Any]]:
     """Download daily + hourly + weekly data concurrently via Yahoo chart API.
     Uses disk cache (pickle) to avoid re-downloading within CACHE_TTL_SEC."""
     
@@ -243,7 +256,7 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
         futures = {
             pool.submit(
                 _fetch_ticker, session, tkr,
-                dp1, dp2, hp1, hp2, min_bars_d, min_bars_h,
+                dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezone,
             ): tkr
             for tkr in ticker_list
         }
