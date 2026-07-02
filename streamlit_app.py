@@ -683,7 +683,7 @@ with st.sidebar:
     if st.session_state._market_code != selected_code:
         st.session_state._market_code = selected_code
         for k in list(st.session_state.keys()):
-            if k.startswith("_fp") or k.startswith("results_"):
+            if k.startswith("_fp") or k.startswith("results_") or k == "run_done":
                 st.session_state.pop(k, None)
         st.rerun()
 
@@ -1301,7 +1301,7 @@ if st.session_state.run_done:
     results3 = st.session_state.results_div or []
     results4 = st.session_state.results_weekly or []
     results_daily = st.session_state.results_daily_kdj or []
-    results5 = st.session_state.results_scoring or []
+    results5 = st.session_state.get("results_scoring", []) or []
 
     # Summary bar — 5 columns
     tc1, tc2, tc3, tc4, tc5 = st.columns(5)
