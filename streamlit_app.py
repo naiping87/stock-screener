@@ -1304,7 +1304,7 @@ if st.session_state.run_done:
     results3 = st.session_state.results_div or []
     results4 = st.session_state.results_weekly or []
     results_daily = st.session_state.results_daily_kdj or []
-    results5 = st.session_state.get("results_scoring", []) or []
+    # results5 already set by scoring above — do NOT overwrite from session_state
 
     # Summary bar — 5 columns
     tc1, tc2, tc3, tc4, tc5 = st.columns(5)
