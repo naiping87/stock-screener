@@ -1234,6 +1234,8 @@ results5 = run_scoring_screener(
     top_n=score_top_n,
 )
 st.info(f"📊 Scoring: {len(results5)} ranked / {len(data)} total")
+sample = list(data.keys())[:5]
+st.caption('Sample tickers: ' + ', '.join(t.replace('.KL','') for t in sample))
 
 # Fallback: ensure all result variables exist even if screeners didn't run
 if "results1" not in dir() or results1 is None:
