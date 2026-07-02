@@ -853,8 +853,9 @@ with st.sidebar:
                     del st.session_state[k]
             st.rerun()
 
-    if "_ticker_count" not in st.session_state:
-        st.session_state._ticker_count = len(load_tickers(TICKERS_FILE))
+    if "_ticker_count" not in st.session_state or st.session_state.get("_ticker_market") != selected_code:
+        st.session_state._ticker_count = len(load_tickers(tickers_path, suffix=market.yahoo_suffix))
+        st.session_state._ticker_market = selected_code
     st.caption(f"Tickers: {st.session_state._ticker_count} | Data cached 1hr")
 
 
