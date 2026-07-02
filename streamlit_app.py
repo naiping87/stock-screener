@@ -1061,19 +1061,19 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     for col in df.columns:
         tip = _tooltips.get(col, '')
         if col in ('T', 'Trend', '>200', 'Align', 'Tight', 'BB', 'KDJ', 'WKDJ', 'Vol%', 'Spike', 'Vol↑', 'VolMA', 'Signal'):
-            gb.configure_column(col, width=50, headerTooltip=tip)
+            gb.configure_column(col, minWidth=44, headerTooltip=tip)
         elif col in ('Code',):
-            gb.configure_column(col, width=62, headerTooltip=tip)
+            gb.configure_column(col, minWidth=58, headerTooltip=tip)
         elif col in ('Score',):
-            gb.configure_column(col, width=52, headerTooltip=tip, cellStyle=_SCORE_CONDITION)
+            gb.configure_column(col, minWidth=48, headerTooltip=tip, cellStyle=_SCORE_CONDITION)
         elif col in ('Name',):
-            gb.configure_column(col, minWidth=130, headerTooltip=tip)
+            gb.configure_column(col, minWidth=120, headerTooltip=tip)
         elif col in ('Price',):
-            gb.configure_column(col, width=62, headerTooltip=tip, cellStyle=_PRICE_CONDITION)
+            gb.configure_column(col, minWidth=58, headerTooltip=tip, cellStyle=_PRICE_CONDITION)
         elif col in ('Div%',):
-            gb.configure_column(col, width=52, headerTooltip=tip)
+            gb.configure_column(col, minWidth=48, headerTooltip=tip)
         elif col in ('ROE%',):
-            gb.configure_column(col, width=58, headerTooltip=tip, cellStyle=_ROE_CONDITION)
+            gb.configure_column(col, minWidth=52, headerTooltip=tip, cellStyle=_ROE_CONDITION)
         else:
             gb.configure_column(col, headerTooltip=tip)
 
@@ -1240,7 +1240,7 @@ if last_fp != score_fingerprint:
     )
     st.session_state.results_scoring = results5
     st.session_state._score_fp = score_fingerprint
-    st.caption(f'Scoring: {len(results5)} ranked / {len(data)} total')
+    st.info(f'📊 Scoring: {len(results5)} ranked / {len(data)} total')
 else:
     results5 = st.session_state.get("results_scoring", [])
 
