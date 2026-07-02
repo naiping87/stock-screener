@@ -682,6 +682,7 @@ with st.sidebar:
 
     if st.session_state._market_code != selected_code:
         st.session_state._market_code = selected_code
+        st.session_state._clear_download_cache = True
 
         for k in list(st.session_state.keys()):
             if k.startswith("_fp") or k.startswith("results_") or k == "run_done":
@@ -1114,6 +1115,8 @@ def _cached_download(_tickers_json, _timezone="Asia/Kuala_Lumpur", _market="my",
     return download_data(tickers, progress_cb=None, timezone=_timezone, market_code=_market)
 
 def get_data():
+    if st.session_state.pop("_clear_download_cache", False):
+        _cached_download.clear()
     """Return data (from cache if fresh, otherwise download)."""
     code = st.session_state.get("_market_code", "my")
     m = get_market(code)
