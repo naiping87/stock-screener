@@ -267,51 +267,56 @@ def _fetch_akshare_ticker(tkr, name, days, timezone):
     """Download daily data for one A-share ticker via AkShare. Returns dict or None."""
     end_str = datetime.now().strftime("%Y%m%d")
     start_str = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
-    try:
-        df = ak.stock_zh_a_hist(symbol=tkr, period="daily", start_date=start_str,
-                                end_date=end_str, adjust="qfq")
-        if df is None or len(df) < 20:
-            return None
-        df = df.rename(columns={"日期": "date", "开盘": "open", "收盘": "close",
-                                "最高": "high", "最低": "low", "成交量": "volume"})
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.set_index("date")
-        tz_idx = df.index.tz_localize(timezone) if df.index.tz is None else df.index.tz_convert(timezone)
-
-        def _s(col):
-            return pd.Series(df[col].values, index=tz_idx, dtype=float)
-
-        result = {"close": _s("close"), "high": _s("high"), "low": _s("low"),
-                  "volume": _s("volume"), "name": name}
-        if len(tz_idx) >= 5:
-            w_close = result["close"].resample("W").last()
-            w_high = result["high"].resample("W").max()
-            w_low = result["low"].resample("W").min()
-            w_vol = result["volume"].resample("W").sum()
-            wk_idx = w_close.index.intersection(w_high.index).intersection(w_low.index).intersection(w_vol.index)
-            result["close_weekly"] = w_close.loc[wk_idx]
-            result["high_weekly"] = w_high.loc[wk_idx]
-            result["low_weekly"] = w_low.loc[wk_idx]
-            result["volume_weekly"] = w_vol.loc[wk_idx]
-        return result
-    except Exception:
-        return None
+    for attempt in range(3):
+        try:
+            df = ak.stock_zh_a_hist(symbol=tkr, period="daily", start_date=start_str,
+                                    end_date=end_str, adjust="qfq")
+            if df is None or len(df) < 20:
+                return None
+            df = df.rename(columns={"日期": "date", "开盘": "open", "收盘": "close",
+                                    "最高": "high", "最低": "low", "成交量": "volume"})
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date")
+            tz_idx = df.index.tz_localize(timezone) if df.index.tz is None else df.index.tz_convert(timezone)
+            def _s(col):
+                return pd.Series(df[col].values, index=tz_idx, dtype=float)
+            result = {"close": _s("close"), "high": _s("high"), "low": _s("low"),
+                      "volume": _s("volume"), "name": name}
+            if len(tz_idx) >= 5:
+                w_close = result["close"].resample("W").last()
+                w_high = result["high"].resample("W").max()
+                w_low = result["low"].resample("W").min()
+                w_vol = result["volume"].resample("W").sum()
+                wk_idx = w_close.index.intersection(w_high.index).intersection(w_low.index).intersection(w_vol.index)
+                result["close_weekly"] = w_close.loc[wk_idx]
+                result["high_weekly"] = w_high.loc[wk_idx]
+                result["low_weekly"] = w_low.loc[wk_idx]
+                result["volume_weekly"] = w_vol.loc[wk_idx]
+            return result
+        except Exception:
+            if attempt < 2:
+                time.sleep(1)
+    return None
 
 
 def _download_akshare(tickers, timezone):
     all_data = {}
     ticker_list = sorted(tickers.keys())
-    print(f'[AKSHARE] Fetching {DAILY_DAYS}d daily for {len(ticker_list)} tickers ...')
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+    ak_workers = min(MAX_WORKERS, 5)
+    print(f'[AKSHARE] Fetching {DAILY_DAYS}d daily for {len(ticker_list)} tickers (workers={ak_workers}) ...')
+    with ThreadPoolExecutor(max_workers=ak_workers) as pool:
         futures = {pool.submit(_fetch_akshare_ticker, tkr, tickers[tkr], DAILY_DAYS, timezone): tkr for tkr in ticker_list}
         done = 0
         for f in as_completed(futures):
             tkr = futures[f]
             data = f.result()
-            if data: all_data[tkr] = data
+            if data is not None:
+                all_data[tkr] = data
             done += 1
-            if done % 100 == 0: print(f'  {done}/{len(ticker_list)} ...')
-    print(f'[AKSHARE] Got data for {len(all_data)}/{len(tickers)} tickers')
+            if done % 100 == 0:
+                print(f'  {done}/{len(ticker_list)} ...')
+            time.sleep(0.05)
+    print(f'[AKSHARE] Got data for {len(all_data)} / {len(tickers)} tickers')
     return all_data
 
 
