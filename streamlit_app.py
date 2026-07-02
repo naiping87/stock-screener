@@ -1060,25 +1060,17 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     # Column-specific: narrow columns, conditional formatting
     for col in df.columns:
         tip = _tooltips.get(col, '')
-        if col in ('T', 'Trend', '>200', 'Align', 'Tight', 'BB', 'KDJ', 'WKDJ', 'Vol%', 'Spike', 'Vol↑', 'VolMA', 'Signal'):
-            gb.configure_column(col, minWidth=44, headerTooltip=tip)
-        elif col in ('Code',):
-            gb.configure_column(col, minWidth=58, headerTooltip=tip)
-        elif col in ('Score',):
-            gb.configure_column(col, minWidth=48, headerTooltip=tip, cellStyle=_SCORE_CONDITION)
-        elif col in ('Name',):
-            gb.configure_column(col, minWidth=120, headerTooltip=tip)
+        if col in ('Score',):
+            gb.configure_column(col, headerTooltip=tip, cellStyle=_SCORE_CONDITION)
         elif col in ('Price',):
-            gb.configure_column(col, minWidth=58, headerTooltip=tip, cellStyle=_PRICE_CONDITION)
-        elif col in ('Div%',):
-            gb.configure_column(col, minWidth=48, headerTooltip=tip)
+            gb.configure_column(col, headerTooltip=tip, cellStyle=_PRICE_CONDITION)
         elif col in ('ROE%',):
-            gb.configure_column(col, minWidth=52, headerTooltip=tip, cellStyle=_ROE_CONDITION)
+            gb.configure_column(col, headerTooltip=tip, cellStyle=_ROE_CONDITION)
         else:
             gb.configure_column(col, headerTooltip=tip)
 
-    # Conditional formatting for ROE (applied above in loop)
-    # Conditional formatting for Score (applied above in loop)
+    # Auto-size columns to content, then fit to grid width
+    gb.configure_grid_options(suppressColumnVirtualisation=False)
 
     grid_options = gb.build()
 
