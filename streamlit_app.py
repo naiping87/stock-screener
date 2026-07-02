@@ -1138,7 +1138,15 @@ scr.WEEKLY_VOL_MIN = vol_weekly
 if refresh_clicked:
     _cached_download.clear()
 
-data, ticker_names = get_data()
+try:
+    data, ticker_names = get_data()
+except Exception as e:
+    st.error(f"Data download failed: {e}")
+    data, ticker_names = {}, {}
+
+if not data:
+    st.warning("No data loaded. Market may be rate-limited. Try again or switch market.")
+    st.stop()
 
 # Stage 2: Run screeners — cached by param fingerprint, skip on unrelated changes
 screener_progress = st.empty()
