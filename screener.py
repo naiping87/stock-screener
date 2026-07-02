@@ -8,7 +8,6 @@ Bursa Malaysia Stock Screener — 5 screeners:
 """
 import csv
 import os
-import pickle
 import sys
 import time
 from collections.abc import Callable, Generator
@@ -39,7 +38,6 @@ DAILY_VOL_MIN = 500000              # min daily volume MA for KDJ screener
 DAILY_VOL_RATIO = 1.2               # cross bar vol must be > 1.2x 20-day MA vol
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
 KDJ_OVERSOLD = 50                   # K must be below this for valid signal (legacy, not enforced)
-CACHE_TTL_SEC = 600                 # reuse cached data if fresher than 10 minutes
 SCORE_TREND_PERIODS = [10, 20, 50, 100, 200]  # EMA periods for trend divergence
 SCORE_TREND_THRESHOLD = 1.0         # max divergence % for trend score
 SCORE_EMA200_SLOPE_BARS = 20         # bars for EMA200 slope check
@@ -50,7 +48,6 @@ SCORE_VOL_MA_THRESHOLD = 1_000_000  # min volume MA
 SCORE_TOP_N = 50                    # top N results to show
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TICKERS_FILE = os.path.join(SCRIPT_DIR, "tickers.csv")
-CACHE_DIR = os.path.join(SCRIPT_DIR, "cache")                 # disk cache for downloaded data
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -224,22 +221,7 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezon
 
 
 def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur", market_code: str = "my") -> dict[str, dict[str, Any]]:
-    """Download daily + hourly + weekly data concurrently via Yahoo chart API.
-    Uses disk cache (pickle) to avoid re-downloading within CACHE_TTL_SEC."""
-    
-    # Check disk cache
-    cache_file = os.path.join(CACHE_DIR, f"data_cache_{market_code}.pkl")
-    try:
-        if os.path.exists(cache_file):
-            cache_age = time.time() - os.path.getmtime(cache_file)
-            if cache_age < CACHE_TTL_SEC:
-                with open(cache_file, "rb") as f:
-                    cached = pickle.load(f)
-                if len(cached) >= len(tickers) * 0.9:
-                    print(f"[CACHE] Using cached data ({int(cache_age)}s old, {len(cached)} tickers)")
-                    return cached
-    except Exception:
-        pass
+    """Download daily + hourly + weekly data concurrently via Yahoo chart API."""
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
@@ -277,15 +259,6 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
             time.sleep(REQUEST_DELAY)
 
     print(f"[DATA] Got price history for {len(all_data)} / {len(tickers)} tickers")
-    
-    # Save to disk cache (ignore errors on read-only filesystems)
-    try:
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        with open(cache_file, "wb") as f:
-            pickle.dump(all_data, f, pickle.HIGHEST_PROTOCOL)
-    except Exception:
-        pass
-    
     return all_data
 
 
