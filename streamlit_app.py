@@ -1058,14 +1058,21 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     }
 
     # Column-specific: narrow columns, conditional formatting
+    _flag_cols = {'T', 'Trend', '>200', 'Align', 'Tight', 'BB', 'KDJ', 'WKDJ', 'Vol%', 'Spike', 'Vol↑', 'VolMA', 'Signal'}
     for col in df.columns:
         tip = _tooltips.get(col, '')
         if col in ('Score',):
-            gb.configure_column(col, headerTooltip=tip, cellStyle=_SCORE_CONDITION)
+            gb.configure_column(col, headerTooltip=tip, cellStyle=_SCORE_CONDITION, maxWidth=55)
         elif col in ('Price',):
-            gb.configure_column(col, headerTooltip=tip, cellStyle=_PRICE_CONDITION)
+            gb.configure_column(col, headerTooltip=tip, cellStyle=_PRICE_CONDITION, maxWidth=70)
         elif col in ('ROE%',):
-            gb.configure_column(col, headerTooltip=tip, cellStyle=_ROE_CONDITION)
+            gb.configure_column(col, headerTooltip=tip, cellStyle=_ROE_CONDITION, maxWidth=65)
+        elif col in _flag_cols:
+            gb.configure_column(col, headerTooltip=tip, maxWidth=50)
+        elif col in ('Div%',):
+            gb.configure_column(col, headerTooltip=tip, maxWidth=55)
+        elif col in ('Code',):
+            gb.configure_column(col, headerTooltip=tip, maxWidth=70)
         else:
             gb.configure_column(col, headerTooltip=tip)
 
