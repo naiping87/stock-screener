@@ -267,7 +267,7 @@ def _fetch_akshare_ticker(tkr, name, days, timezone):
     """Download daily data for one A-share ticker via AkShare. Returns dict or None."""
     end_str = datetime.now().strftime("%Y%m%d")
     start_str = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             df = ak.stock_zh_a_hist(symbol=tkr, period="daily", start_date=start_str,
                                     end_date=end_str, adjust="qfq")
@@ -294,15 +294,15 @@ def _fetch_akshare_ticker(tkr, name, days, timezone):
                 result["volume_weekly"] = w_vol.loc[wk_idx]
             return result
         except Exception:
-            if attempt < 2:
-                time.sleep(1)
+            if attempt < 1:
+                time.sleep(0.5)
     return None
 
 
 def _download_akshare(tickers, timezone):
     all_data = {}
     ticker_list = sorted(tickers.keys())
-    ak_workers = min(MAX_WORKERS, 5)
+    ak_workers = min(MAX_WORKERS, 10)
     print(f'[AKSHARE] Fetching {DAILY_DAYS}d daily for {len(ticker_list)} tickers (workers={ak_workers}) ...')
     with ThreadPoolExecutor(max_workers=ak_workers) as pool:
         futures = {pool.submit(_fetch_akshare_ticker, tkr, tickers[tkr], DAILY_DAYS, timezone): tkr for tkr in ticker_list}
@@ -313,9 +313,8 @@ def _download_akshare(tickers, timezone):
             if data is not None:
                 all_data[tkr] = data
             done += 1
-            if done % 100 == 0:
+            if done % 200 == 0:
                 print(f'  {done}/{len(ticker_list)} ...')
-            time.sleep(0.05)
     print(f'[AKSHARE] Got data for {len(all_data)} / {len(tickers)} tickers')
     return all_data
 
