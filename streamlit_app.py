@@ -1224,7 +1224,21 @@ if last_fp != score_fingerprint:
     st.session_state.results_scoring = results5
     st.session_state._score_fp = score_fingerprint
 else:
-    results5 = st.session_state.results_scoring
+    results5 = st.session_state.get("results_scoring", [])
+
+# Fallback: ensure all result variables exist even if screeners didn't run
+if "results1" not in dir() or results1 is None:
+    results1 = st.session_state.get("results_ema_daily", [])
+if "results2" not in dir() or results2 is None:
+    results2 = st.session_state.get("results_ema_hourly", [])
+if "results3" not in dir() or results3 is None:
+    results3 = st.session_state.get("results_div", [])
+if "results4" not in dir() or results4 is None:
+    results4 = st.session_state.get("results_weekly", [])
+if "results_daily" not in dir() or results_daily is None:
+    results_daily = st.session_state.get("results_daily_kdj", [])
+if not isinstance(results5, list):
+    results5 = st.session_state.get("results_scoring", [])
 
 # Stage 3: ROE scoring (cache ROE results in session)
 all_tickers = set()
