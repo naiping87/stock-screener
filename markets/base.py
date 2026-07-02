@@ -17,6 +17,9 @@ class MarketConfig:
     # ── Tickers ─────────────────────────────────────────────────────────
     tickers_csv: str = ""    # path to tickers CSV (relative to project root)
 
+    # ── Data provider ────────────────────────────────────────────────────
+    data_provider: str = "yahoo"   # "yahoo" or "akshare"
+
     # ── Volume thresholds (daily/weekly MA) ─────────────────────────────
     vol_daily_min: int = 500_000
     vol_weekly_min: int = 500_000
