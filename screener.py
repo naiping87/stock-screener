@@ -219,12 +219,12 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezon
     return tkr, result
 
 
-def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur") -> dict[str, dict[str, Any]]:
+def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur", market_code: str = "my") -> dict[str, dict[str, Any]]:
     """Download daily + hourly + weekly data concurrently via Yahoo chart API.
     Uses disk cache (pickle) to avoid re-downloading within CACHE_TTL_SEC."""
     
     # Check disk cache
-    cache_file = os.path.join(CACHE_DIR, "data_cache.pkl")
+    cache_file = os.path.join(CACHE_DIR, f"data_cache_{market_code}.pkl")
     try:
         if os.path.exists(cache_file):
             cache_age = time.time() - os.path.getmtime(cache_file)

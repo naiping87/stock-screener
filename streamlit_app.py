@@ -1103,12 +1103,12 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
 
 # ── Data loader (@st.cache_data persists across refreshes, 1hr TTL) ────────
 @st.cache_data(ttl=3600, show_spinner="Downloading market data from Yahoo Finance... (1-2 min)")
-def _cached_download(_tickers_json, _timezone="Asia/Kuala_Lumpur"):
+def _cached_download(_tickers_json, _timezone="Asia/Kuala_Lumpur", _market="my"):
     """Download data (cached on server, survives page refresh).
     _tickers_json is a JSON string used as cache key — change it to invalidate."""
     import json
     tickers = json.loads(_tickers_json)
-    return download_data(tickers, progress_cb=None, timezone=_timezone)
+    return download_data(tickers, progress_cb=None, timezone=_timezone, market_code=_market)
 
 def get_data():
     """Return data (from cache if fresh, otherwise download)."""
@@ -1122,7 +1122,7 @@ def get_data():
     ticker_names = dict(tickers)
     import json
     tickers_json = json.dumps(dict(sorted(tickers.items())))
-    data = _cached_download(tickers_json, tz)
+    data = _cached_download(tickers_json, tz, code)
     return data, ticker_names
 
 
