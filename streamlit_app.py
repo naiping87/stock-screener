@@ -688,6 +688,7 @@ with st.sidebar:
         st.rerun()
 
     market = get_market(selected_code)
+    st.session_state._market_code = selected_code  # store code, not object
     st.session_state._market = market  # cached for use outside sidebar
 
     # Mobile hint
@@ -1111,13 +1112,14 @@ def _cached_download(_tickers_json, _timezone="Asia/Kuala_Lumpur"):
 
 def get_data():
     """Return data (from cache if fresh, otherwise download)."""
-    m = st.session_state.get("_market")
-    tz = m.timezone if m else "Asia/Kuala_Lumpur"
-    suffix = m.yahoo_suffix if m else ".KL"
-    tickers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                m.tickers_csv if m else "tickers.csv")
+    code = st.session_state.get("_market_code", "my")
+    m = get_market(code)
+    tz = m.timezone
+    suffix = m.yahoo_suffix
+    tickers_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), m.tickers_csv)
     tickers = load_tickers(tickers_path, suffix=suffix)
-    ticker_names = {f"{c}{suffix}": n for c, n in tickers.items()} if suffix else tickers
+    # load_tickers already returns keys with the correct suffix — use as-is
+    ticker_names = dict(tickers)
     import json
     tickers_json = json.dumps(dict(sorted(tickers.items())))
     data = _cached_download(tickers_json, tz)
