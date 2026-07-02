@@ -224,7 +224,7 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezon
 def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur", market_code: str = "my", data_provider: str = "yahoo") -> dict[str, dict[str, Any]]:
     """Download daily + hourly + weekly data concurrently via Yahoo chart API."""
     if data_provider == "akshare":
-        return _download_akshare(tickers, timezone)
+        return _download_akshare(tickers, timezone, progress_cb)
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
@@ -299,10 +299,10 @@ def _fetch_akshare_ticker(tkr, name, days, timezone):
     return None
 
 
-def _download_akshare(tickers, timezone):
+def _download_akshare(tickers, timezone, progress_cb=None):
     all_data = {}
     ticker_list = sorted(tickers.keys())
-    ak_workers = min(MAX_WORKERS, 10)
+    ak_workers = min(MAX_WORKERS, 15)
     print(f'[AKSHARE] Fetching {DAILY_DAYS}d daily for {len(ticker_list)} tickers (workers={ak_workers}) ...')
     with ThreadPoolExecutor(max_workers=ak_workers) as pool:
         futures = {pool.submit(_fetch_akshare_ticker, tkr, tickers[tkr], DAILY_DAYS, timezone): tkr for tkr in ticker_list}
@@ -313,7 +313,9 @@ def _download_akshare(tickers, timezone):
             if data is not None:
                 all_data[tkr] = data
             done += 1
-            if done % 200 == 0:
+            if progress_cb:
+                progress_cb(done, len(ticker_list))
+            elif done % 200 == 0:
                 print(f'  {done}/{len(ticker_list)} ...')
     print(f'[AKSHARE] Got data for {len(all_data)} / {len(tickers)} tickers')
     return all_data
