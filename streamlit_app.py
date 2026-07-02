@@ -682,7 +682,7 @@ with st.sidebar:
 
     if st.session_state._market_code != selected_code:
         st.session_state._market_code = selected_code
-        st.cache_data.clear()
+
         for k in list(st.session_state.keys()):
             if k.startswith("_fp") or k.startswith("results_") or k == "run_done":
                 st.session_state.pop(k, None)
@@ -847,7 +847,7 @@ with st.sidebar:
         reset_clicked = st.button("↺", help="Reset all parameters to defaults", key="reset_btn",
                                   type="secondary", use_container_width=True)
         if reset_clicked:
-            st.cache_data.clear()
+    
             for k in list(st.session_state.keys()):
                 if k.startswith("cfg_"):
                     del st.session_state[k]
