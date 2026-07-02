@@ -1222,27 +1222,18 @@ if st.session_state.get("_fp_daily") != fp_daily:
 else:
     results_daily = st.session_state.results_daily_kdj
 
-# Screener 6: Scoring — only re-run if data refreshed or scoring params changed
+# Screener 6: Scoring — always compute (no fingerprint caching, avoids stale results)
 stp = sorted(score_trend_periods_sel) or [10, 20, 50, 100, 200]
-score_fingerprint = (tuple(stp), score_trend_div, score_slope_bars, score_vol_p,
-                     score_vol_t, score_vol_ma_b, score_vol_ma_t, score_top_n)
-last_fp = st.session_state.get("_score_fp")
-
-if last_fp != score_fingerprint:
-    screener_progress.progress(88, text="Scoring all stocks...")
-    results5 = run_scoring_screener(
-        data, ticker_names,
-        trend_periods=stp, trend_threshold=score_trend_div,
-        ema200_slope_bars=score_slope_bars,
-        vol_period=score_vol_p, vol_threshold=score_vol_t,
-        vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
-        top_n=score_top_n,
-    )
-    st.session_state.results_scoring = results5
-    st.session_state._score_fp = score_fingerprint
-    st.info(f'📊 Scoring: {len(results5)} ranked / {len(data)} total')
-else:
-    results5 = st.session_state.get("results_scoring", [])
+screener_progress.progress(88, text="Scoring all stocks...")
+results5 = run_scoring_screener(
+    data, ticker_names,
+    trend_periods=stp, trend_threshold=score_trend_div,
+    ema200_slope_bars=score_slope_bars,
+    vol_period=score_vol_p, vol_threshold=score_vol_t,
+    vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
+    top_n=score_top_n,
+)
+st.info(f"📊 Scoring: {len(results5)} ranked / {len(data)} total")
 
 # Fallback: ensure all result variables exist even if screeners didn't run
 if "results1" not in dir() or results1 is None:
