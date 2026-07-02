@@ -3,3 +3,4 @@ pandas>=2.0.0
 numpy>=1.24.0
 streamlit>=1.28.0
 streamlit-aggrid>=1.2.0
+akshare>=1.18.0
