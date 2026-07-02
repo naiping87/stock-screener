@@ -25,8 +25,8 @@ EMA_PERIODS = [10, 20, 50, 100, 200]
 DIVERGENCE_THRESHOLD = 3.0          # percent
 VOL_MIN = 500000                    # min daily volume MA
 VOL_MIN_HOURLY = 100000             # min hourly volume MA
-MAX_WORKERS = 10                    # concurrent download threads
-REQUEST_DELAY = 0.1                 # seconds between requests per thread
+MAX_WORKERS = 15                    # concurrent download threads
+REQUEST_DELAY = 0.0                 # seconds between requests per thread
 MAX_RETRIES = 3
 MIN_COMPRESSION_BARS = 20           # SMAs must be tight for this many bars
 KDJ_PERIOD = 20                     # KDJ lookback (same as Pine Script 'Period')
@@ -119,7 +119,7 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars, timezone="Asia
 
     for attempt in range(MAX_RETRIES):
         try:
-            resp = sess.get(url, params=params, timeout=30)
+            resp = sess.get(url, params=params, timeout=10)
             if resp.status_code == 429:
                 time.sleep(2 ** attempt)
                 continue
@@ -190,15 +190,19 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezon
         "name": name,
     }
 
-    # Hourly data
-    h_data, _ = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h, timezone)
-    if h_data is not None:
-        h_close = h_data["close"].dropna()
-        h_vol = h_data["volume"].fillna(0)
-        if len(h_close) >= min_bars_h:
-            hi = h_close.index.intersection(h_vol.index)
-            result["close_hourly"] = h_close.loc[hi]
-            result["volume_hourly"] = h_vol.loc[hi]
+    # Hourly data — non-blocking, no retries (fast fail)
+    try:
+        h_data, _ = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h, timezone)
+        if h_data is not None:
+            h_close = h_data["close"].dropna()
+            h_vol = h_data["volume"].fillna(0)
+            if len(h_close) >= min_bars_h:
+                hi = h_close.index.intersection(h_vol.index)
+                result["close_hourly"] = h_close.loc[hi]
+                result["volume_hourly"] = h_vol.loc[hi]
+    except Exception:
+        pass
+
 
     # Weekly data — resample from daily for consistent OHLC
     if len(di) >= 5:
