@@ -1,14 +1,14 @@
-"""Shanghai A-Share market configuration (AkShare data)."""
+"""Shanghai A-Share market configuration (Yahoo Finance data)."""
 
 from .base import MarketConfig, register
 
 SHANGHAI = register(MarketConfig(
     code="sh",
     label="🇨🇳 上海 A股",
-    yahoo_suffix="",             # not used — data via AkShare
+    yahoo_suffix=".SS",           # Yahoo Finance Shanghai suffix
     timezone="Asia/Shanghai",
     tickers_csv="tickers/shanghai.csv",
-    data_provider="akshare",     # use AkShare instead of Yahoo Finance
+    data_provider="yahoo",
 
     vol_daily_min=2_000_000,     # A-shares trade high volume
     vol_weekly_min=2_000_000,
