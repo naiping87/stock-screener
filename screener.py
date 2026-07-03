@@ -205,10 +205,10 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezon
     # Weekly data — resample from daily for consistent OHLC
     if len(di) >= 5:
         w_ohlc = {
-            "close": d_close.loc[di].resample("W").last(),
-            "high": d_high.loc[di].resample("W").max(),
-            "low": d_low.loc[di].resample("W").min(),
-            "volume": d_vol.loc[di].resample("W").sum(),
+            "close": d_close.loc[di].resample("W-FRI").last(),
+            "high": d_high.loc[di].resample("W-FRI").max(),
+            "low": d_low.loc[di].resample("W-FRI").min(),
+            "volume": d_vol.loc[di].resample("W-FRI").sum(),
         }
         wk_idx = w_ohlc["close"].index.intersection(
             w_ohlc["high"].index
