@@ -326,6 +326,14 @@ class Sidebar(QWidget):
         run_layout.addWidget(self.run_btn)
         layout.addWidget(run_container)
 
+        # Auto-refresh
+        ar = QHBoxLayout()
+        self.auto_refresh = QCheckBox("Auto-refresh every 5 min")
+        self.auto_refresh.setStyleSheet("color:#6e6e73; font-size:12px;")
+        ar.addWidget(self.auto_refresh)
+        ar.addStretch()
+        layout.addLayout(ar)
+
     def set_sectors(self, sectors: list):
         current = self.sector_combo.currentData()
         self.sector_combo.blockSignals(True)

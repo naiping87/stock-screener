@@ -98,6 +98,11 @@ class MainWindow(QMainWindow):
         self.sidebar.market_changed.connect(self._on_market_changed)
         self.sidebar.sector_combo.currentIndexChanged.connect(self._on_sector_changed)
 
+        # Auto-refresh timer
+        self._refresh_timer = QTimer()
+        self._refresh_timer.timeout.connect(self._on_refresh)
+        self.sidebar.auto_refresh.stateChanged.connect(self._on_auto_refresh_toggled)
+
     def _setup_tray(self):
         self.tray = SystemTray(self)
         self.tray.show_window.connect(self._show_from_tray)
@@ -230,6 +235,12 @@ class MainWindow(QMainWindow):
         if key and key in self.results_panel.tables:
             table = self.results_panel.tables[key]
             table._export_csv()
+
+    def _on_auto_refresh_toggled(self, state):
+        if state:
+            self._refresh_timer.start(300000)  # 5 min
+        else:
+            self._refresh_timer.stop()
 
     def _on_about(self):
         QMessageBox.about(
