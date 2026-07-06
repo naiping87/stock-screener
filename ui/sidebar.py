@@ -111,6 +111,10 @@ def _multi(label_text, options, defaults, hint=None):
     for opt in options:
         cb = QCheckBox(str(opt))
         cb.setChecked(opt in defaults)
+        cb.setStyleSheet(
+            "QCheckBox{color:#1d1d1f;font-size:14px;font-weight:600;spacing:6px;padding:4px 8px;}"
+            "QCheckBox::indicator{width:20px;height:20px;border:2px solid #d2d2d7;border-radius:5px;background:#fff;}"
+            "QCheckBox::indicator:checked{background:#0071e3;border-color:#0071e3;}")
         if hint:
             cb.setToolTip(hint)
         row.addWidget(cb)
