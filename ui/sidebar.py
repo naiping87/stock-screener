@@ -238,7 +238,7 @@ class Sidebar(QWidget):
                                 "Volume vs SMA threshold")
         sl.addWidget(self.score_vol_t)
         self.score_vol_ma_b = _sld("Vol MA Bars", 2, 20, SCORE_VOL_MA_BARS,
-                                   "Volume SMA lookback for comparison")
+                                   hint="Volume SMA lookback for comparison")
         sl.addWidget(self.score_vol_ma_b)
         self.score_vol_ma_t = _dbl("Vol MA Threshold", 1.0, 20.0, SCORE_VOL_MA_THRESHOLD, 1.0,
                                    "Min volume SMA value")
