@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar.run_clicked.connect(self._on_run_screeners)
         self.sidebar.market_changed.connect(self._on_market_changed)
+        self.sidebar.sector_combo.currentIndexChanged.connect(self._on_sector_changed)
 
     def _setup_tray(self):
         self.tray = SystemTray(self)
@@ -197,6 +198,17 @@ class MainWindow(QMainWindow):
 
         self.status_label.setText("Ready")
         self.update_progress(100, "Ready")
+
+    def _on_sector_changed(self):
+        sector = self.sidebar.sector_combo.currentData()
+        for tab_key, df in self._result_dfs.items():
+            if df is None or df.empty:
+                continue
+            if sector and "Sector" in df.columns:
+                filtered = df[df["Sector"] == sector]
+                self.results_panel.set_results(tab_key, filtered)
+            else:
+                self.results_panel.set_results(tab_key, df)
 
     def _on_screener_error(self, msg):
         self.status_label.setText("Error: " + msg)
