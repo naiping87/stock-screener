@@ -3,7 +3,8 @@
 from PyQt6.QtCore import QThread, pyqtSignal
 from screener import download_data, load_tickers
 from markets import get as get_market
-import os
+import os, sys
+from utils import resource_path
 
 
 class DownloadWorker(QThread):
@@ -20,8 +21,7 @@ class DownloadWorker(QThread):
     def run(self):
         try:
             m = get_market(self.market_code)
-            tickers_path = os.path.join(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__))), m.tickers_csv)
+            tickers_path = resource_path(m.tickers_csv)
 
             self.progress.emit(5, f"Loading {self.market_code.upper()} tickers...")
             tickers = load_tickers(tickers_path, suffix=m.yahoo_suffix)
