@@ -252,7 +252,34 @@ class Sidebar(QWidget):
         scroll.setWidget(pw)
         layout.addWidget(scroll)
 
-        # ── Run ───────────────────────────────────────────────────────
+        # ── Reset + Run ──────────────────────────────────────────────
+        reset_row = QHBoxLayout()
+        self.reset_btn = QPushButton("↺  Reset")
+        self.reset_btn.setMinimumHeight(36)
+        self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reset_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: #0071e3;
+                border: 1px solid #d2d2d7;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 500;
+                padding: 8px 20px;
+            }
+            QPushButton:hover {
+                background: rgba(0,113,227,0.08);
+                border-color: #0071e3;
+            }
+            QPushButton:pressed {
+                background: rgba(0,113,227,0.15);
+            }
+        """)
+        self.reset_btn.clicked.connect(self._reset_params)
+        reset_row.addWidget(self.reset_btn)
+        reset_row.addStretch()
+        layout.addLayout(reset_row)
+
         # Wrap in a container with distinct background for visual pop
         run_container = QWidget()
         run_container.setStyleSheet(
@@ -289,6 +316,29 @@ class Sidebar(QWidget):
         """)
         run_layout.addWidget(self.run_btn)
         layout.addWidget(run_container)
+
+    def _reset_params(self):
+        code = self.market_combo.currentData()
+        if code:
+            m = get_market(code)
+            d = m.defaults
+            self.vol_daily.row_widget.setValue(d.get('vol_d', VOL_MIN))
+            self.vol_hourly.row_widget.setValue(d.get('vol_h', VOL_MIN_HOURLY))
+            self.vol_weekly.row_widget.setValue(d.get('vol_w', WEEKLY_VOL_MIN))
+            self.vol_d_kdj.row_widget.setValue(d.get('vol_d_kdj', DAILY_VOL_MIN))
+            self.kdj_period.slider.setValue(d.get('kdj_p', KDJ_PERIOD))
+            self.kdj_signal.slider.setValue(d.get('kdj_s', KDJ_SIGNAL))
+            self.div_lookback.slider.setValue(d.get('div_lb', DIVERGENCE_LOOKBACK))
+            self.divergence_pct.slider.setValue(int(DIVERGENCE_THRESHOLD / 0.5))
+            self.compress_bars.slider.setValue(MIN_COMPRESSION_BARS)
+            self.daily_vol_r.slider.setValue(int(DAILY_VOL_RATIO / 0.1))
+            self.score_slope.slider.setValue(SCORE_EMA200_SLOPE_BARS)
+            self.score_vol_p.slider.setValue(SCORE_VOL_PERIOD)
+            self.score_vol_ma_b.slider.setValue(SCORE_VOL_MA_BARS)
+            self.score_trend_div.row_widget.setValue(SCORE_TREND_THRESHOLD)
+            self.score_vol_t.row_widget.setValue(SCORE_VOL_THRESHOLD)
+            self.score_vol_ma_t.row_widget.setValue(SCORE_VOL_MA_THRESHOLD)
+            self.score_top_n.row_widget.setValue(SCORE_TOP_N)
 
     def _on_market_changed(self, index):
         code = self.market_combo.currentData()
