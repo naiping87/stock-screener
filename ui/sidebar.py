@@ -253,12 +253,42 @@ class Sidebar(QWidget):
         layout.addWidget(scroll)
 
         # ── Run ───────────────────────────────────────────────────────
+        # Wrap in a container with distinct background for visual pop
+        run_container = QWidget()
+        run_container.setStyleSheet(
+            "background:#e8e8ed; border-radius:14px; padding:6px;")
+        run_layout = QVBoxLayout(run_container)
+        run_layout.setContentsMargins(6, 6, 6, 6)
+
         self.run_btn = QPushButton("▶  Run Screeners")
         self.run_btn.setObjectName("runBtn")
         self.run_btn.clicked.connect(self.run_clicked.emit)
-        self.run_btn.setMinimumHeight(48)
+        self.run_btn.setMinimumHeight(56)
         self.run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        layout.addWidget(self.run_btn)
+        self.run_btn.setStyleSheet("""
+            QPushButton#runBtn {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #0088ff, stop:1 #0066dd);
+                color: #ffffff;
+                border: none;
+                border-radius: 12px;
+                font-size: 17px;
+                font-weight: 700;
+                padding: 16px 0px;
+                letter-spacing: 0.5px;
+            }
+            QPushButton#runBtn:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1a94ff, stop:1 #0077f0);
+                border: 2px solid rgba(255,255,255,0.25);
+            }
+            QPushButton#runBtn:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #0055cc, stop:1 #0044aa);
+            }
+        """)
+        run_layout.addWidget(self.run_btn)
+        layout.addWidget(run_container)
 
     def _on_market_changed(self, index):
         code = self.market_combo.currentData()
