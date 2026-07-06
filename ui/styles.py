@@ -322,3 +322,8 @@ QToolTip {{
     font-size: 12px;
 }}
 """
+
+# Legacy aliases for backward compatibility
+BG_DARK = BG_WINDOW
+TEXT_PRIMARY = TEXT
+TEXT_SECONDARY = TEXT_SEC
