@@ -1,5 +1,8 @@
 """Main window — menu, status bar, sidebar + results tab layout."""
 
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QSplitter, QVBoxLayout, QHBoxLayout,
     QTabWidget, QMenuBar, QMenu, QStatusBar, QLabel, QPushButton,
@@ -14,6 +17,7 @@ from .styles import (
 )
 from .sidebar import Sidebar
 from .results_panel import ResultsPanel
+from workers.download_worker import DownloadWorker
 
 
 class MainWindow(QMainWindow):
@@ -22,8 +26,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Stock Screener Pro")
         self.setMinimumSize(1280, 800)
         self.resize(1440, 900)
+        self.data = {}
+        self.ticker_names = {}
 
-        # Restore window geometry
         settings = QSettings("StockScreenerPro", "MainWindow")
         geo = settings.value("geometry")
         if geo:
@@ -34,13 +39,10 @@ class MainWindow(QMainWindow):
         self._setup_central()
         self._setup_shortcuts()
 
-    # ── Menu bar ─────────────────────────────────────────────────────────
-
     def _setup_menu(self):
         menubar = self.menuBar()
-
-        # File menu
         file_menu = menubar.addMenu("&File")
+
         refresh_action = QAction("&Refresh Data", self)
         refresh_action.setShortcut(QKeySequence("F5"))
         refresh_action.triggered.connect(self._on_refresh)
@@ -57,72 +59,74 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
-        # View menu
-        view_menu = menubar.addMenu("&View")
-        self.dark_action = QAction("&Dark Theme", self)
-        self.dark_action.setCheckable(True)
-        self.dark_action.setChecked(True)
-        file_menu.addAction(self.dark_action)
-
-        # Help menu
         help_menu = menubar.addMenu("&Help")
         about_action = QAction("&About", self)
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
-
-    # ── Status bar ────────────────────────────────────────────────────────
 
     def _setup_statusbar(self):
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
         self.status_label = QLabel("Ready")
         self.statusbar.addWidget(self.status_label, 1)
-
         self.progress_bar = QProgressBar()
         self.progress_bar.setMaximumWidth(200)
         self.progress_bar.setMaximumHeight(16)
         self.progress_bar.hide()
         self.statusbar.addPermanentWidget(self.progress_bar)
 
-    # ── Central widget ────────────────────────────────────────────────────
-
     def _setup_central(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Sidebar (left)
         self.sidebar = Sidebar()
         splitter.addWidget(self.sidebar)
 
-        # Results tabs (right)
         self.results_panel = ResultsPanel()
         splitter.addWidget(self.results_panel)
 
-        # Ratio 1:3
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
         splitter.setSizes([320, 960])
-
         self.setCentralWidget(splitter)
 
-        # Connect sidebar signals
         self.sidebar.run_clicked.connect(self._on_run_screeners)
         self.sidebar.market_changed.connect(self._on_market_changed)
 
-    # ── Shortcuts ─────────────────────────────────────────────────────────
-
     def _setup_shortcuts(self):
-        pass  # already set up via QAction shortcuts
-
-    # ── Slots ─────────────────────────────────────────────────────────────
+        pass
 
     def _on_run_screeners(self):
-        self.status_label.setText("Running screeners...")
+        params = self.sidebar.get_params()
+        market_code = params["market_code"]
+        self._start_download(market_code)
 
-    def _on_market_changed(self, market_code: str):
-        self.status_label.setText(f"Market changed to {market_code} — re-downloading...")
+    def _start_download(self, market_code):
+        self.status_label.setText("Downloading " + market_code.upper() + " market data...")
+        self.worker = DownloadWorker(market_code)
+        self.worker.progress.connect(self.update_progress)
+        self.worker.finished.connect(self._on_data_loaded)
+        self.worker.error.connect(self._on_download_error)
+        self.worker.start()
+
+    def _on_data_loaded(self, data, ticker_names):
+        self.data = data
+        self.ticker_names = ticker_names
+        self.status_label.setText("Loaded " + str(len(data)) + " tickers - ready to screen")
+        self.update_progress(100, str(len(data)) + " tickers loaded")
+
+    def _on_download_error(self, msg):
+        self.status_label.setText("Error: " + msg)
+        QMessageBox.warning(self, "Download Failed",
+                           "Could not download data:\n" + msg)
+
+    def _on_market_changed(self, market_code):
+        self.status_label.setText(
+            "Market changed to " + market_code + " - re-downloading...")
+        self._start_download(market_code)
 
     def _on_refresh(self):
-        self.status_label.setText("Refreshing data...")
+        params = self.sidebar.get_params()
+        self._start_download(params["market_code"])
 
     def _on_export(self):
         self.status_label.setText("Export not yet implemented")
@@ -136,14 +140,12 @@ class MainWindow(QMainWindow):
             "<p><b>Screeners:</b> EMA Compression, KDJ Cross, KDJ Divergence, Scoring</p>"
         )
 
-    # ── Window events ─────────────────────────────────────────────────────
-
     def closeEvent(self, event):
         settings = QSettings("StockScreenerPro", "MainWindow")
         settings.setValue("geometry", self.saveGeometry())
         super().closeEvent(event)
 
-    def update_progress(self, value: int, text: str = ""):
+    def update_progress(self, value, text=""):
         if value >= 100:
             self.progress_bar.hide()
         else:
