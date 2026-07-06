@@ -57,7 +57,7 @@ def _fetch_one_fallback(tkr):
         return None
 
 
-def fetch_meta_batch(tickers, workers=6):
+def fetch_meta_batch(tickers, workers=20):
     """Fetch ROE + sector + industry for a set of tickers. Returns {tkr: {roe, sector, industry}}."""
     if not tickers:
         return {}

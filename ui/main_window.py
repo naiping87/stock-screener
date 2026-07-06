@@ -170,45 +170,40 @@ class MainWindow(QMainWindow):
         self._finalize_results()
 
     def _finalize_results(self):
-        # Attach ROE + sector to each result DataFrame and display
+        # Attach ROE + sector to each result DataFrame (in-place, fast)
+        all_sectors = set()
         for tab_key, df in self._result_dfs.items():
             if df is None or df.empty:
-                self.results_panel.set_results(tab_key, df)
                 continue
-            # Add ROE and Sector columns
-            tkrs = df["ticker"].values if "ticker" in df.columns else []
-            roe_col = []
-            sector_col = []
-            for tkr in tkrs:
-                m = self._meta_cache.get(tkr, {})
-                roe_col.append(m.get("roe"))
-                sector_col.append(m.get("sector", ""))
-            df = df.copy()
-            df["ROE"] = roe_col
-            df["ROE%"] = [f"{v:.1f}%" if v is not None else "" for v in roe_col]
-            df["Sector"] = sector_col
-            self.results_panel.set_results(tab_key, df)
-
-        # Populate sector filter
-        all_sectors = set()
-        for m in self._meta_cache.values():
-            if m.get('sector'):
-                all_sectors.add(m['sector'])
+            if "ticker" in df.columns:
+                tkrs = df["ticker"].values
+                df["ROE"] = [self._meta_cache.get(t, {}).get("roe") for t in tkrs]
+                df["ROE%"] = [f"{v:.1f}%" if v is not None else "" for v in df["ROE"]]
+                df["Sector"] = [self._meta_cache.get(t, {}).get("sector", "") for t in tkrs]
+                for s in df["Sector"]:
+                    if s:
+                        all_sectors.add(s)
         self.sidebar.set_sectors(list(all_sectors))
+        # Show all tabs
+        self._apply_sector_filter()
 
-        self.status_label.setText("Ready")
-        self.update_progress(100, "Ready")
-
-    def _on_sector_changed(self):
+    def _apply_sector_filter(self):
         sector = self.sidebar.sector_combo.currentData()
         for tab_key, df in self._result_dfs.items():
             if df is None or df.empty:
+                self.results_panel.set_results(tab_key, df)
                 continue
             if sector and "Sector" in df.columns:
                 filtered = df[df["Sector"] == sector]
                 self.results_panel.set_results(tab_key, filtered)
             else:
                 self.results_panel.set_results(tab_key, df)
+
+        self.status_label.setText("Ready")
+        self.update_progress(100, "Ready")
+
+    def _on_sector_changed(self):
+        self._apply_sector_filter()
 
     def _on_screener_error(self, msg):
         self.status_label.setText("Error: " + msg)
