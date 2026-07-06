@@ -87,8 +87,14 @@ class ScreenerWorker(QThread):
             self.progress.emit(90, "Scoring screener...")
             r5 = list(run_scoring_screener(
                 self.data, self.ticker_names,
+                trend_periods=p.get("score_trend_periods", SCORE_TREND_PERIODS),
+                trend_threshold=p.get("score_trend_div", SCORE_TREND_THRESHOLD),
+                ema200_slope_bars=p.get("score_slope_bars", SCORE_EMA200_SLOPE_BARS),
+                vol_period=p.get("score_vol_p", SCORE_VOL_PERIOD),
+                vol_threshold=p.get("score_vol_t", SCORE_VOL_THRESHOLD),
+                vol_ma_bars=p.get("score_vol_ma_b", SCORE_VOL_MA_BARS),
+                vol_ma_threshold=p.get("score_vol_ma_t", SCORE_VOL_MA_THRESHOLD),
                 top_n=p.get("score_top_n", SCORE_TOP_N),
-                daily_vol_min=p.get("vol_daily", 200_000),
             ))
             self.result.emit("scoring", self._to_df(r5))
 

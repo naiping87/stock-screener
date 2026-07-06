@@ -20,17 +20,22 @@ from screener import (
 )
 
 
-def _sp(label, min_v, max_v, default, step=1):
+def _sp(label, min_v, max_v, default, step=1, fmt=None):
     """Create a labeled QSpinBox."""
     w = QWidget()
     l = QHBoxLayout(w)
-    l.setContentsMargins(0, 1, 0, 1)
-    l.addWidget(QLabel(label))
+    l.setContentsMargins(0, 2, 0, 2)
+    lbl = QLabel(label)
+    lbl.setMinimumWidth(120)
+    lbl.setStyleSheet('color:#8b949e; font-size:12px;')
+    l.addWidget(lbl)
     sp = QSpinBox()
     sp.setRange(min_v, max_v)
     sp.setValue(default)
     sp.setSingleStep(step)
-    sp.setFixedWidth(90)
+    sp.setFixedWidth(100)
+    if fmt:
+        sp.setSuffix(fmt)
     l.addWidget(sp)
     l.addStretch()
     w.spin = sp
@@ -40,13 +45,16 @@ def _sp(label, min_v, max_v, default, step=1):
 def _dbl(label, min_v, max_v, default, step=0.1):
     w = QWidget()
     l = QHBoxLayout(w)
-    l.setContentsMargins(0, 1, 0, 1)
-    l.addWidget(QLabel(label))
+    l.setContentsMargins(0, 2, 0, 2)
+    lbl = QLabel(label)
+    lbl.setMinimumWidth(120)
+    lbl.setStyleSheet('color:#8b949e; font-size:12px;')
+    l.addWidget(lbl)
     sp = QDoubleSpinBox()
     sp.setRange(min_v, max_v)
     sp.setValue(default)
     sp.setSingleStep(step)
-    sp.setFixedWidth(90)
+    sp.setFixedWidth(100)
     l.addWidget(sp)
     l.addStretch()
     w.spin = sp
