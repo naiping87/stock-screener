@@ -1,110 +1,151 @@
-"""TableView — QTableView with sorting, column sizing, and right-click export."""
+"""Custom QTableView with sorting, conditional formatting, and export."""
 
-import csv
-import os
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QTableView, QHeaderView, QMenu, QFileDialog
+from PyQt6.QtCore import Qt, QSortFilterProxyModel, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence
-from PyQt6.QtWidgets import (
-    QTableView, QHeaderView, QMenu, QFileDialog, QMessageBox,
-)
+import pandas as pd
+
+from .table_model import PandasModel
+from .styles import GREEN, RED, ORANGE, BLUE, TEXT_DIM
+
+
+# ── Default colour maps for common columns ───────────────────────────────
+
+def roe_colour(val) -> str | None:
+    """Green if ROE > 0, red if ROE < 0."""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return TEXT_DIM
+    try:
+        v = float(val)
+        if v > 0:
+            return GREEN
+        elif v < 0:
+            return RED
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def signal_colour(val) -> str | None:
+    """Green for 'crossed', blue for 'above'."""
+    if not isinstance(val, str):
+        return None
+    v = val.strip().lower()
+    if v == "crossed":
+        return GREEN
+    elif v == "above":
+        return BLUE
+    return None
+
+
+def score_colour(val) -> str | None:
+    """Gradient: high score = green, mid = orange, low = red."""
+    try:
+        v = float(val)
+        if v >= 70:
+            return GREEN
+        elif v >= 40:
+            return ORANGE
+        else:
+            return RED
+    except (ValueError, TypeError):
+        return None
+
+
+DEFAULT_COLOUR_MAP = {
+    "ROE%": roe_colour,
+    "ROE": roe_colour,
+    "Signal": signal_colour,
+    "KDJ": signal_colour,
+    "WKDJ": signal_colour,
+    "Score": score_colour,
+}
+
+
+class SortFilterProxy(QSortFilterProxyModel):
+    """Minimal proxy to enable sorting on the PandasModel."""
+    def lessThan(self, left, right):
+        lv = left.data(Qt.ItemDataRole.DisplayRole)
+        rv = right.data(Qt.ItemDataRole.DisplayRole)
+        try:
+            return float(lv) < float(rv)
+        except (ValueError, TypeError):
+            return str(lv) < str(rv)
 
 
 class TableView(QTableView):
-    """Enhanced QTableView with sort-on-click, auto-resize, and export."""
+    """Scrollable, sortable table with conditional colours + export."""
 
-    export_requested = pyqtSignal(str)  # emits export file path
+    export_requested = pyqtSignal(str)  # tab_name
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._model = PandasModel()
+        self._proxy = SortFilterProxy()
+        self._proxy.setSourceModel(self._model)
+        self.setModel(self._proxy)
+
         self.setSortingEnabled(True)
-        self.setShowGrid(True)
+        self.setAlternatingRowColors(True)
         self.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
+        self.setShowGrid(False)
+        self.verticalHeader().setVisible(False)
+        self.horizontalHeader().setStretchLastSection(True)
+        self.horizontalHeader().setSectionsClickable(True)
+
+        # Let user resize columns
+        self.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive)
+
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)
 
-        # Header
-        h_header = self.horizontalHeader()
-        h_header.setSectionsClickable(True)
-        h_header.setSortIndicatorShown(True)
-        h_header.setStretchLastSection(True)
-        h_header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+    def set_dataframe(self, df: pd.DataFrame):
+        """Set the data and apply default colour maps."""
+        model = PandasModel(df, colour_map=DEFAULT_COLOUR_MAP)
+        self._proxy.setSourceModel(model)
+        self._model = model
+        self._auto_size_cols()
 
-        v_header = self.verticalHeader()
-        v_header.setDefaultSectionSize(28)
-        v_header.setVisible(False)
-
-    def setModel(self, model):
-        super().setModel(model)
-        # Auto-resize columns to content
-        self.resizeColumnsToContents()
-        # Set minimum column widths
-        for i in range(model.columnCount()):
-            w = self.columnWidth(i)
-            self.setColumnWidth(i, max(w, 60))
+    def _auto_size_cols(self):
+        header = self.horizontalHeader()
+        for i in range(self._model.columnCount()):
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+            w = header.sectionSize(i)
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+            header.resizeSection(i, max(w + 20, 60))
 
     def _on_context_menu(self, pos):
-        """Right-click menu: copy, export CSV."""
         menu = QMenu(self)
-
-        copy_action = QAction("&Copy Selected Rows", self)
-        copy_action.setShortcut(QKeySequence("Ctrl+C"))
-        copy_action.triggered.connect(self._copy_selected)
+        copy_action = QAction("Copy selection", self)
+        copy_action.triggered.connect(self._copy_selection)
         menu.addAction(copy_action)
 
-        export_action = QAction("&Export All to CSV...", self)
-        export_action.setShortcut(QKeySequence("Ctrl+E"))
+        export_action = QAction("Export CSV...", self)
         export_action.triggered.connect(self._export_csv)
         menu.addAction(export_action)
 
         menu.exec(self.viewport().mapToGlobal(pos))
 
-    def _copy_selected(self):
-        """Copy selected rows to clipboard (tab-separated)."""
-        model = self.model()
-        if not model:
-            return
-        selection = self.selectionModel().selectedRows()
-        if not selection:
+    def _copy_selection(self):
+        rows = set()
+        for idx in self.selectionModel().selectedRows():
+            rows.add(idx.row())
+        if not rows:
             return
         lines = []
-        for idx in sorted(selection, key=lambda x: x.row()):
-            row_data = []
-            for col in range(model.columnCount()):
-                row_data.append(str(model.index(idx.row(), col).data() or ""))
-            lines.append("\t".join(row_data))
+        cols = self._model.columnCount()
+        for row in sorted(rows):
+            cells = []
+            for col in range(cols):
+                val = self._model.index(row, col).data(Qt.ItemDataRole.DisplayRole)
+                cells.append(val or "")
+            lines.append("\t".join(cells))
         from PyQt6.QtWidgets import QApplication
         QApplication.clipboard().setText("\n".join(lines))
 
     def _export_csv(self):
-        """Export full table to CSV file."""
-        model = self.model()
-        if not model:
-            return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Results", "screener_results.csv",
-            "CSV Files (*.csv);;All Files (*)"
-        )
-        if not path:
-            return
-        try:
-            with open(path, "w", encoding="utf-8", newline="") as f:
-                writer = csv.writer(f)
-                # Header
-                writer.writerow([
-                    model.headerData(c, Qt.Orientation.Horizontal,
-                                     Qt.ItemDataRole.DisplayRole)
-                    for c in range(model.columnCount())
-                ])
-                # Rows
-                for r in range(model.rowCount()):
-                    row = []
-                    for c in range(model.columnCount()):
-                        row.append(model.index(r, c).data() or "")
-                    writer.writerow(row)
-            QMessageBox.information(
-                self, "Export Complete",
-                f"Exported {model.rowCount()} rows to:\n{path}"
-            )
-        except Exception as e:
-            QMessageBox.warning(self, "Export Failed", str(e))
+            self, "Export CSV", "", "CSV Files (*.csv);;All Files (*)")
+        if path:
+            self._model.dataframe().to_csv(path, index=False, encoding="utf-8")

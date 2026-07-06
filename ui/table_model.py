@@ -1,85 +1,93 @@
-"""PandasModel — bridges pd.DataFrame to QTableView via QAbstractTableModel."""
+"""PandasModel — wraps a DataFrame for QTableView with high performance."""
 
-from PyQt6.QtCore import Qt, QAbstractTableModel, QModelIndex
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QAbstractTableModel, Qt, QModelIndex
+from PyQt6.QtGui import QColor, QBrush
 import pandas as pd
 
 
 class PandasModel(QAbstractTableModel):
-    """High-performance table model wrapping a pandas DataFrame."""
+    """A table model that wraps a pandas DataFrame for QTableView.
 
-    # Columns that should be right-aligned (numeric)
-    RIGHT_ALIGN_COLS = {"Price", "kdj_k", "kdj_d", "kdj_j", "Vol Ratio",
-                        "Vol MA", "Score", "Div%", ">200", "Align",
-                        "Tight", "BB", "Vol%", "Spike", "Vol↑", "VolMA"}
-    # Columns with color-coded values
-    GREEN_RED_COLS = {"ROE%", "Price"}
+    Supports:
+      - Read-only display with row count / column headers
+      - Numeric sorting by clicking column headers
+      - Conditional colour per column via a colour_map callback
+    """
 
-    def __init__(self, df: pd.DataFrame = None):
-        super().__init__()
+    def __init__(self, df: pd.DataFrame = None, colour_map: dict = None, parent=None):
+        super().__init__(parent)
         self._df = df if df is not None else pd.DataFrame()
+        self._colour_map = colour_map or {}
+        self._sort_col = None
+        self._sort_order = Qt.SortOrder.AscendingOrder
 
-    def setDataFrame(self, df: pd.DataFrame):
-        """Replace the underlying DataFrame."""
-        self.beginResetModel()
-        self._df = df
-        self.endResetModel()
+    # ── Core QAbstractTableModel overrides ─────────────────────────────────
 
     def rowCount(self, parent=QModelIndex()):
-        return self._df.shape[0]
+        return len(self._df)
 
     def columnCount(self, parent=QModelIndex()):
-        return self._df.shape[1]
+        return len(self._df.columns)
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
 
-        col = self._df.columns[index.column()]
-        raw = self._df.iloc[index.row(), index.column()]
+        val = self._df.iat[index.row(), index.column()]
+        col_name = self._df.columns[index.column()]
 
         if role == Qt.ItemDataRole.DisplayRole:
-            if isinstance(raw, float):
-                return f"{raw:.2f}"
-            return str(raw) if raw is not None else "—"
+            if isinstance(val, float):
+                if val == 0 or pd.isna(val):
+                    return "—"
+                return f"{val:.2f}"
+            return str(val) if val is not None else "—"
 
-        if role == Qt.ItemDataRole.TextAlignmentRole:
-            if col in self.RIGHT_ALIGN_COLS:
+        elif role == Qt.ItemDataRole.ForegroundRole:
+            cb = self._colour_map.get(col_name)
+            if cb:
+                colour = cb(val)
+                if colour:
+                    return QBrush(QColor(colour))
+            return None
+
+        elif role == Qt.ItemDataRole.TextAlignmentRole:
+            if isinstance(val, (int, float)):
                 return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-
-        if role == Qt.ItemDataRole.ForegroundRole:
-            if col in self.GREEN_RED_COLS:
-                try:
-                    v = float(raw)
-                    if v > 0:
-                        return QColor("#3fb950")
-                    elif v < 0:
-                        return QColor("#f85149")
-                except (ValueError, TypeError):
-                    pass
-
-        if role == Qt.ItemDataRole.FontRole:
-            # Bold for positive ROE
-            if col == "ROE%":
-                try:
-                    if float(raw) > 0:
-                        font = self._df.attrs.get("_bold_font")
-                        return font
-                except (ValueError, TypeError):
-                    pass
 
         return None
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
-        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            return str(self._df.columns[section])
+        if role == Qt.ItemDataRole.DisplayRole:
+            if orientation == Qt.Orientation.Horizontal:
+                return str(self._df.columns[section])
+            else:
+                return str(section + 1)
         return None
 
-    def sort(self, column: int, order: Qt.SortOrder):
-        """Sort DataFrame by clicked column."""
+    # ── Sorting ───────────────────────────────────────────────────────────
+
+    def sort(self, column, order=Qt.SortOrder.AscendingOrder):
         col_name = self._df.columns[column]
-        ascending = order == Qt.SortOrder.AscendingOrder
+        self.layoutAboutToBeChanged.emit()
+        try:
+            ascending = order == Qt.SortOrder.AscendingOrder
+            self._df = self._df.sort_values(col_name, ascending=ascending,
+                                            na_position="last")
+        except (TypeError, KeyError):
+            pass
+        self._sort_col = column
+        self._sort_order = order
+        self.layoutChanged.emit()
+
+    # ── Public API ────────────────────────────────────────────────────────
+
+    def setDataFrame(self, df: pd.DataFrame):
+        """Replace underlying DataFrame and reset the view."""
         self.beginResetModel()
-        self._df = self._df.sort_values(by=col_name, ascending=ascending, na_position='last')
+        self._df = df if df is not None else pd.DataFrame()
         self.endResetModel()
+
+    def dataframe(self) -> pd.DataFrame:
+        return self._df.copy()

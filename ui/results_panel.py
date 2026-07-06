@@ -1,12 +1,17 @@
-"""Results panel — tab widget with table views for each screener."""
+"""Results panel — tab widget with TableView for each screener."""
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTabWidget, QLabel
 from PyQt6.QtCore import Qt
+import pandas as pd
+
+from .table_view import TableView
+from .styles import TEXT_SECONDARY
 
 
 class ResultsPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.tables = {}  # tab_key -> TableView
         self._build()
 
     def _build(self):
@@ -16,8 +21,7 @@ class ResultsPanel(QWidget):
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
 
-        # Placeholder tabs — will be replaced with real TableView widgets
-        tab_names = [
+        tab_specs = [
             ("📅 Daily EMA", "daily_ema"),
             ("⏱ Hourly EMA", "hourly_ema"),
             ("📉 KDJ Divergence", "kdj_div"),
@@ -26,14 +30,28 @@ class ResultsPanel(QWidget):
             ("⭐ Scoring", "scoring"),
         ]
 
-        for tab_label, tab_key in tab_names:
-            placeholder = QLabel(f"{tab_label}\n\nRun screeners to see results")
-            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            placeholder.setStyleSheet("color: #8b949e; font-size: 16px;")
-            self.tabs.addTab(placeholder, tab_label)
+        for tab_label, tab_key in tab_specs:
+            table = TableView()
+            self.tables[tab_key] = table
+            self.tabs.addTab(table, tab_label)
 
         layout.addWidget(self.tabs)
 
-    def set_tab_results(self, tab_key: str, df):
-        """Update a tab with DataFrame results. (Not yet implemented.)"""
-        pass
+    # ── Public API ────────────────────────────────────────────────────────
+
+    def set_results(self, tab_key: str, df: pd.DataFrame):
+        """Update a tab with DataFrame results."""
+        if tab_key in self.tables and df is not None and not df.empty:
+            self.tables[tab_key].set_dataframe(df)
+        else:
+            self.tables[tab_key].set_dataframe(pd.DataFrame())
+
+    def set_all_empty(self):
+        """Clear all tabs (e.g. after market switch)."""
+        for table in self.tables.values():
+            table.set_dataframe(pd.DataFrame())
+
+    def current_tab_key(self) -> str | None:
+        index = self.tabs.currentIndex()
+        keys = list(self.tables.keys())
+        return keys[index] if 0 <= index < len(keys) else None
