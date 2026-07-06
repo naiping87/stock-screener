@@ -17,7 +17,9 @@ from .styles import (
 )
 from .sidebar import Sidebar
 from .results_panel import ResultsPanel
+from .system_tray import SystemTray
 from workers.download_worker import DownloadWorker
+from workers.screener_worker import ScreenerWorker
 
 
 class MainWindow(QMainWindow):
@@ -37,7 +39,7 @@ class MainWindow(QMainWindow):
         self._setup_menu()
         self._setup_statusbar()
         self._setup_central()
-        self._setup_shortcuts()
+        self._setup_tray()
 
     def _setup_menu(self):
         menubar = self.menuBar()
@@ -92,16 +94,28 @@ class MainWindow(QMainWindow):
         self.sidebar.run_clicked.connect(self._on_run_screeners)
         self.sidebar.market_changed.connect(self._on_market_changed)
 
-    def _setup_shortcuts(self):
-        pass
+    def _setup_tray(self):
+        self.tray = SystemTray(self)
+        self.tray.show_window.connect(self._show_from_tray)
+        self.tray.quit_app.connect(self.close)
+
+    def _show_from_tray(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    # ── Slots ─────────────────────────────────────────────────────────────
 
     def _on_run_screeners(self):
-        params = self.sidebar.get_params()
-        market_code = params["market_code"]
-        self._start_download(market_code)
+        if not self.data:
+            params = self.sidebar.get_params()
+            self._start_download(params["market_code"])
+        else:
+            self._run_screeners()
 
     def _start_download(self, market_code):
         self.status_label.setText("Downloading " + market_code.upper() + " market data...")
+        self.results_panel.set_all_empty()
         self.worker = DownloadWorker(market_code)
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self._on_data_loaded)
@@ -111,8 +125,26 @@ class MainWindow(QMainWindow):
     def _on_data_loaded(self, data, ticker_names):
         self.data = data
         self.ticker_names = ticker_names
-        self.status_label.setText("Loaded " + str(len(data)) + " tickers - ready to screen")
-        self.update_progress(100, str(len(data)) + " tickers loaded")
+        self.status_label.setText("Loaded " + str(len(data)) + " tickers - running screeners...")
+        self._run_screeners()
+
+    def _run_screeners(self):
+        params = self.sidebar.get_params()
+        self.screener_worker = ScreenerWorker(self.data, self.ticker_names, params)
+        self.screener_worker.progress.connect(self.update_progress)
+        self.screener_worker.result.connect(self.results_panel.set_results)
+        self.screener_worker.finished.connect(self._on_screeners_done)
+        self.screener_worker.error.connect(self._on_screener_error)
+        self.screener_worker.start()
+
+    def _on_screeners_done(self):
+        self.status_label.setText("Screeners complete")
+        self.update_progress(100, "Ready")
+
+    def _on_screener_error(self, msg):
+        self.status_label.setText("Error: " + msg)
+        QMessageBox.warning(self, "Screener Error",
+                           "Screener failed:\n" + msg)
 
     def _on_download_error(self, msg):
         self.status_label.setText("Error: " + msg)
@@ -122,6 +154,7 @@ class MainWindow(QMainWindow):
     def _on_market_changed(self, market_code):
         self.status_label.setText(
             "Market changed to " + market_code + " - re-downloading...")
+        self.results_panel.set_all_empty()
         self._start_download(market_code)
 
     def _on_refresh(self):
@@ -129,21 +162,27 @@ class MainWindow(QMainWindow):
         self._start_download(params["market_code"])
 
     def _on_export(self):
-        self.status_label.setText("Export not yet implemented")
+        key = self.results_panel.current_tab_key()
+        if key and key in self.results_panel.tables:
+            table = self.results_panel.tables[key]
+            table._export_csv()
 
     def _on_about(self):
         QMessageBox.about(
             self, "About Stock Screener Pro",
             "<h3>Stock Screener Pro v1.0.0</h3>"
             "<p>Multi-market stock screening terminal.</p>"
-            "<p><b>Supported Markets:</b> Bursa Malaysia, NYSE, NASDAQ, AMEX, SSE</p>"
-            "<p><b>Screeners:</b> EMA Compression, KDJ Cross, KDJ Divergence, Scoring</p>"
+            "<p><b>Markets:</b> Bursa MY, NYSE, NASDAQ, AMEX, SSE</p>"
+            "<p><b>Screeners:</b> EMA Compression, KDJ Cross, "
+            "KDJ Divergence, Scoring</p>"
         )
 
     def closeEvent(self, event):
         settings = QSettings("StockScreenerPro", "MainWindow")
         settings.setValue("geometry", self.saveGeometry())
-        super().closeEvent(event)
+        # Minimize to tray instead of closing
+        event.ignore()
+        self.hide()
 
     def update_progress(self, value, text=""):
         if value >= 100:
