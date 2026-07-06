@@ -20,6 +20,7 @@ from .results_panel import ResultsPanel
 from .system_tray import SystemTray
 from workers.download_worker import DownloadWorker
 from workers.screener_worker import ScreenerWorker
+from workers.meta_worker import MetaWorker
 
 
 class MainWindow(QMainWindow):
@@ -30,6 +31,8 @@ class MainWindow(QMainWindow):
         self.resize(1440, 900)
         self.data = {}
         self.ticker_names = {}
+        self._result_dfs = {}
+        self._meta_cache = {}
 
         settings = QSettings("StockScreenerPro", "MainWindow")
         geo = settings.value("geometry")
@@ -130,15 +133,69 @@ class MainWindow(QMainWindow):
 
     def _run_screeners(self):
         params = self.sidebar.get_params()
+        self._result_dfs = {}
         self.screener_worker = ScreenerWorker(self.data, self.ticker_names, params)
         self.screener_worker.progress.connect(self.update_progress)
-        self.screener_worker.result.connect(self.results_panel.set_results)
+        self.screener_worker.result.connect(self._store_result)
         self.screener_worker.finished.connect(self._on_screeners_done)
         self.screener_worker.error.connect(self._on_screener_error)
         self.screener_worker.start()
 
+    def _store_result(self, tab_key, df):
+        self._result_dfs[tab_key] = df
+
     def _on_screeners_done(self):
-        self.status_label.setText("Screeners complete")
+        # Collect all unique tickers from results
+        all_tickers = set()
+        for df in self._result_dfs.values():
+            if df is not None and not df.empty and "Code" in df.columns:
+                # Need original ticker with suffix for Yahoo lookup
+                for tkr in df.get("ticker", df["Code"]):
+                    all_tickers.add(tkr)
+
+        # Filter to tickers not already cached
+        new_tickers = all_tickers - set(self._meta_cache.keys())
+        if new_tickers:
+            self.meta_worker = MetaWorker(new_tickers)
+            self.meta_worker.progress.connect(self.update_progress)
+            self.meta_worker.finished.connect(self._on_meta_loaded)
+            self.meta_worker.error.connect(lambda e: self.status_label.setText("Meta error: " + e))
+            self.meta_worker.start()
+        else:
+            self._finalize_results()
+
+    def _on_meta_loaded(self, meta):
+        self._meta_cache.update(meta)
+        self._finalize_results()
+
+    def _finalize_results(self):
+        # Attach ROE + sector to each result DataFrame and display
+        for tab_key, df in self._result_dfs.items():
+            if df is None or df.empty:
+                self.results_panel.set_results(tab_key, df)
+                continue
+            # Add ROE and Sector columns
+            tkrs = df["ticker"].values if "ticker" in df.columns else []
+            roe_col = []
+            sector_col = []
+            for tkr in tkrs:
+                m = self._meta_cache.get(tkr, {})
+                roe_col.append(m.get("roe"))
+                sector_col.append(m.get("sector", ""))
+            df = df.copy()
+            df["ROE"] = roe_col
+            df["ROE%"] = [f"{v:.1f}%" if v is not None else "" for v in roe_col]
+            df["Sector"] = sector_col
+            self.results_panel.set_results(tab_key, df)
+
+        # Populate sector filter
+        all_sectors = set()
+        for m in self._meta_cache.values():
+            if m.get('sector'):
+                all_sectors.add(m['sector'])
+        self.sidebar.set_sectors(list(all_sectors))
+
+        self.status_label.setText("Ready")
         self.update_progress(100, "Ready")
 
     def _on_screener_error(self, msg):

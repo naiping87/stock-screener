@@ -157,6 +157,15 @@ class Sidebar(QWidget):
         layout.addWidget(market)
         self.market_combo = market
 
+        # Sector filter
+        sector_lbl = QLabel("Sector")
+        sector_lbl.setStyleSheet("color:#6e6e73; font-size:12px; font-weight:600; background:transparent; margin-top:8px;")
+        layout.addWidget(sector_lbl)
+        self.sector_combo = QComboBox()
+        self.sector_combo.addItem("All Sectors", "")
+        self.sector_combo.setMinimumHeight(32)
+        layout.addWidget(self.sector_combo)
+
         # ── Scroll ────────────────────────────────────────────────────
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -316,6 +325,17 @@ class Sidebar(QWidget):
         """)
         run_layout.addWidget(self.run_btn)
         layout.addWidget(run_container)
+
+    def set_sectors(self, sectors: list):
+        current = self.sector_combo.currentData()
+        self.sector_combo.blockSignals(True)
+        self.sector_combo.clear()
+        self.sector_combo.addItem('All Sectors', '')
+        for s in sorted(s for s in sectors if s):
+            self.sector_combo.addItem(s, s)
+        idx = self.sector_combo.findData(current)
+        self.sector_combo.setCurrentIndex(max(idx, 0))
+        self.sector_combo.blockSignals(False)
 
     def _reset_params(self):
         code = self.market_combo.currentData()

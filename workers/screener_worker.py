@@ -108,12 +108,12 @@ class ScreenerWorker(QThread):
         if not results:
             return pd.DataFrame()
         df = pd.DataFrame(results)
-        # Strip market suffix for display
+        # Keep original ticker for internal lookup, add stripped Code for display
         if "ticker" in df.columns:
-            df["ticker"] = df["ticker"].apply(_strip_kl)
-        # Rename columns for display
+            df["Code"] = df["ticker"].apply(_strip_kl)
+        # Rename other columns for display
         rename = {
-            "ticker": "Code", "name": "Name", "close": "Price",
+            "name": "Name", "close": "Price",
             "kdj_signal": "Signal", "vol_ma": "Vol MA", "vol_ratio": "Vol Ratio",
             "ROE": "ROE%",
         }
