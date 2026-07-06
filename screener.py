@@ -8,7 +8,6 @@ Bursa Malaysia Stock Screener — 5 screeners:
 """
 import csv
 import os
-import pickle
 import sys
 import time
 from collections.abc import Callable, Generator
@@ -19,14 +18,15 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import requests
+import akshare as ak
 
 # ── Configuration ────────────────────────────────────────────────────────────
 EMA_PERIODS = [10, 20, 50, 100, 200]
 DIVERGENCE_THRESHOLD = 3.0          # percent
 VOL_MIN = 500000                    # min daily volume MA
 VOL_MIN_HOURLY = 100000             # min hourly volume MA
-MAX_WORKERS = 10                    # concurrent download threads
-REQUEST_DELAY = 0.1                 # seconds between requests per thread
+MAX_WORKERS = 15                    # concurrent download threads
+REQUEST_DELAY = 0.0                 # seconds between requests per thread
 MAX_RETRIES = 3
 MIN_COMPRESSION_BARS = 20           # SMAs must be tight for this many bars
 KDJ_PERIOD = 20                     # KDJ lookback (same as Pine Script 'Period')
@@ -39,8 +39,6 @@ DAILY_VOL_MIN = 500000              # min daily volume MA for KDJ screener
 DAILY_VOL_RATIO = 1.2               # cross bar vol must be > 1.2x 20-day MA vol
 KDJ_LOOKBACK = 3                    # bars to look back for golden cross
 KDJ_OVERSOLD = 50                   # K must be below this for valid signal (legacy, not enforced)
-CACHE_DIR = "cache"                 # disk cache for downloaded data
-CACHE_TTL_SEC = 600                 # reuse cached data if fresher than 10 minutes
 SCORE_TREND_PERIODS = [10, 20, 50, 100, 200]  # EMA periods for trend divergence
 SCORE_TREND_THRESHOLD = 1.0         # max divergence % for trend score
 SCORE_EMA200_SLOPE_BARS = 20         # bars for EMA200 slope check
@@ -119,7 +117,7 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars, timezone="Asia
 
     for attempt in range(MAX_RETRIES):
         try:
-            resp = sess.get(url, params=params, timeout=30)
+            resp = sess.get(url, params=params, timeout=10)
             if resp.status_code == 429:
                 time.sleep(2 ** attempt)
                 continue
@@ -190,23 +188,27 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezon
         "name": name,
     }
 
-    # Hourly data
-    h_data, _ = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h, timezone)
-    if h_data is not None:
-        h_close = h_data["close"].dropna()
-        h_vol = h_data["volume"].fillna(0)
-        if len(h_close) >= min_bars_h:
-            hi = h_close.index.intersection(h_vol.index)
-            result["close_hourly"] = h_close.loc[hi]
-            result["volume_hourly"] = h_vol.loc[hi]
+    # Hourly data — non-blocking, no retries (fast fail)
+    try:
+        h_data, _ = _fetch_chart(sess, tkr, hp1, hp2, "1h", min_bars_h, timezone)
+        if h_data is not None:
+            h_close = h_data["close"].dropna()
+            h_vol = h_data["volume"].fillna(0)
+            if len(h_close) >= min_bars_h:
+                hi = h_close.index.intersection(h_vol.index)
+                result["close_hourly"] = h_close.loc[hi]
+                result["volume_hourly"] = h_vol.loc[hi]
+    except Exception:
+        pass
+
 
     # Weekly data — resample from daily for consistent OHLC
     if len(di) >= 5:
         w_ohlc = {
-            "close": d_close.loc[di].resample("W").last(),
-            "high": d_high.loc[di].resample("W").max(),
-            "low": d_low.loc[di].resample("W").min(),
-            "volume": d_vol.loc[di].resample("W").sum(),
+            "close": d_close.loc[di].resample("W-FRI").last(),
+            "high": d_high.loc[di].resample("W-FRI").max(),
+            "low": d_low.loc[di].resample("W-FRI").min(),
+            "volume": d_vol.loc[di].resample("W-FRI").sum(),
         }
         wk_idx = w_ohlc["close"].index.intersection(
             w_ohlc["high"].index
@@ -219,23 +221,10 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezon
     return tkr, result
 
 
-def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur") -> dict[str, dict[str, Any]]:
-    """Download daily + hourly + weekly data concurrently via Yahoo chart API.
-    Uses disk cache (pickle) to avoid re-downloading within CACHE_TTL_SEC."""
-    
-    # Check disk cache
-    cache_file = os.path.join(CACHE_DIR, "data_cache.pkl")
-    try:
-        if os.path.exists(cache_file):
-            cache_age = time.time() - os.path.getmtime(cache_file)
-            if cache_age < CACHE_TTL_SEC:
-                with open(cache_file, "rb") as f:
-                    cached = pickle.load(f)
-                if len(cached) >= len(tickers) * 0.9:
-                    print(f"[CACHE] Using cached data ({int(cache_age)}s old, {len(cached)} tickers)")
-                    return cached
-    except Exception:
-        pass
+def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur", market_code: str = "my", data_provider: str = "yahoo") -> dict[str, dict[str, Any]]:
+    """Download daily + hourly + weekly data concurrently via Yahoo chart API."""
+    if data_provider == "akshare":
+        return _download_akshare(tickers, timezone, progress_cb)
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
@@ -273,15 +262,62 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
             time.sleep(REQUEST_DELAY)
 
     print(f"[DATA] Got price history for {len(all_data)} / {len(tickers)} tickers")
-    
-    # Save to disk cache (ignore errors on read-only filesystems)
-    try:
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        with open(cache_file, "wb") as f:
-            pickle.dump(all_data, f, pickle.HIGHEST_PROTOCOL)
-    except Exception:
-        pass
-    
+    return all_data
+def _fetch_akshare_ticker(tkr, name, days, timezone):
+    """Download daily data for one A-share ticker via AkShare. Returns dict or None."""
+    end_str = datetime.now().strftime("%Y%m%d")
+    start_str = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+    for attempt in range(2):
+        try:
+            df = ak.stock_zh_a_hist(symbol=tkr, period="daily", start_date=start_str,
+                                    end_date=end_str, adjust="qfq")
+            if df is None or len(df) < 20:
+                return None
+            df = df.rename(columns={"日期": "date", "开盘": "open", "收盘": "close",
+                                    "最高": "high", "最低": "low", "成交量": "volume"})
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date")
+            tz_idx = df.index.tz_localize(timezone) if df.index.tz is None else df.index.tz_convert(timezone)
+            def _s(col):
+                return pd.Series(df[col].values, index=tz_idx, dtype=float)
+            result = {"close": _s("close"), "high": _s("high"), "low": _s("low"),
+                      "volume": _s("volume"), "name": name}
+            if len(tz_idx) >= 5:
+                w_close = result["close"].resample("W").last()
+                w_high = result["high"].resample("W").max()
+                w_low = result["low"].resample("W").min()
+                w_vol = result["volume"].resample("W").sum()
+                wk_idx = w_close.index.intersection(w_high.index).intersection(w_low.index).intersection(w_vol.index)
+                result["close_weekly"] = w_close.loc[wk_idx]
+                result["high_weekly"] = w_high.loc[wk_idx]
+                result["low_weekly"] = w_low.loc[wk_idx]
+                result["volume_weekly"] = w_vol.loc[wk_idx]
+            return result
+        except Exception:
+            if attempt < 1:
+                time.sleep(0.5)
+    return None
+
+
+def _download_akshare(tickers, timezone, progress_cb=None):
+    all_data = {}
+    ticker_list = sorted(tickers.keys())
+    ak_workers = min(MAX_WORKERS, 15)
+    print(f'[AKSHARE] Fetching {DAILY_DAYS}d daily for {len(ticker_list)} tickers (workers={ak_workers}) ...')
+    with ThreadPoolExecutor(max_workers=ak_workers) as pool:
+        futures = {pool.submit(_fetch_akshare_ticker, tkr, tickers[tkr], DAILY_DAYS, timezone): tkr for tkr in ticker_list}
+        done = 0
+        for f in as_completed(futures):
+            tkr = futures[f]
+            data = f.result()
+            if data is not None:
+                all_data[tkr] = data
+            done += 1
+            if progress_cb:
+                progress_cb(done, len(ticker_list))
+            elif done % 200 == 0:
+                print(f'  {done}/{len(ticker_list)} ...')
+    print(f'[AKSHARE] Got data for {len(all_data)} / {len(tickers)} tickers')
     return all_data
 
 
