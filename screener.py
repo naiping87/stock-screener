@@ -18,7 +18,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import requests
-import akshare as ak
+try:
+    import akshare as ak
+except ImportError:
+    ak = None
 
 # ── Configuration ────────────────────────────────────────────────────────────
 EMA_PERIODS = [10, 20, 50, 100, 200]
@@ -265,6 +268,8 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
     return all_data
 def _fetch_akshare_ticker(tkr, name, days, timezone):
     """Download daily data for one A-share ticker via AkShare. Returns dict or None."""
+    if ak is None:
+        return None
     end_str = datetime.now().strftime("%Y%m%d")
     start_str = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
     for attempt in range(2):
