@@ -502,36 +502,39 @@ def _run_ema_screener_impl(data, ticker_names, periods, threshold, min_compressi
 def run_ema_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
                      periods: list[int] | None = None,
                      threshold: float = DIVERGENCE_THRESHOLD,
-                     min_compression: int = MIN_COMPRESSION_BARS) -> Generator[dict[str, Any], None, None]:
+                     min_compression: int = MIN_COMPRESSION_BARS,
+                     min_vol: int = VOL_MIN) -> Generator[dict[str, Any], None, None]:
     """
     EMA Compression Screener (daily):
       Stage 1 — EMA divergence <= threshold% for >= min_compression bars
-      Stage 2 — daily volume MA > VOL_MIN
+      Stage 2 — daily volume MA > min_vol
     """
     yield from _run_ema_screener_impl(
         data, ticker_names, periods, threshold, min_compression,
-        close_key="close", vol_key="volume", vol_min=VOL_MIN, label="daily",
+        close_key="close", vol_key="volume", vol_min=min_vol, label="daily",
     )
 
 
 def run_ema_hourly_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
                             periods: list[int] | None = None,
                             threshold: float = DIVERGENCE_THRESHOLD,
-                            min_compression: int = MIN_COMPRESSION_BARS) -> Generator[dict[str, Any], None, None]:
+                            min_compression: int = MIN_COMPRESSION_BARS,
+                            min_vol: int = VOL_MIN_HOURLY) -> Generator[dict[str, Any], None, None]:
     """
     EMA Compression Screener (hourly):
       Stage 1 — EMA divergence <= threshold% for >= min_compression bars
-      Stage 2 — hourly volume MA > VOL_MIN_HOURLY
+      Stage 2 — hourly volume MA > min_vol
     """
     yield from _run_ema_screener_impl(
         data, ticker_names, periods, threshold, min_compression,
         close_key="close_hourly", vol_key="volume_hourly",
-        vol_min=VOL_MIN_HOURLY, label="hourly",
+        vol_min=min_vol, label="hourly",
     )
 
 
 def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
-                            lookback: int = DIVERGENCE_LOOKBACK) -> Generator[dict[str, Any], None, None]:
+                            lookback: int = DIVERGENCE_LOOKBACK,
+                            min_vol: int = VOL_MIN) -> Generator[dict[str, Any], None, None]:
     """
     KDJ Divergence Screener:
       Stage 1 — Bullish divergence (price falling, KDJ rising, daily lookback bars)
@@ -550,7 +553,7 @@ def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
             continue
         s1 += 1
 
-        if not _check_volume(d.get("volume")):
+        if not _check_volume(d.get("volume"), min_vol=min_vol):
             continue
         s2 += 1
 
