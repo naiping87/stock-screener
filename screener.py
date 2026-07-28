@@ -25,6 +25,7 @@ EMA_PERIODS = [10, 20, 50, 100, 200]
 DIVERGENCE_THRESHOLD = 3.0          # percent
 VOL_MIN = 500000                    # min daily volume MA
 VOL_MIN_HOURLY = 100000             # min hourly volume MA
+VOL_MIN_WEEKLY_EMA = 500000         # min weekly volume MA (EMA screener)
 MAX_WORKERS = 15                    # concurrent download threads
 REQUEST_DELAY = 0.0                 # seconds between requests per thread
 MAX_RETRIES = 3
@@ -522,6 +523,22 @@ def run_ema_hourly_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
         data, ticker_names, periods, threshold, min_compression,
         close_key="close_hourly", vol_key="volume_hourly",
         vol_min=VOL_MIN_HOURLY, label="hourly",
+    )
+
+
+def run_ema_weekly_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
+                            periods: list[int] | None = None,
+                            threshold: float = DIVERGENCE_THRESHOLD,
+                            min_compression: int = MIN_COMPRESSION_BARS) -> Generator[dict[str, Any], None, None]:
+    """
+    EMA Compression Screener (weekly):
+      Stage 1 — EMA divergence <= threshold% for >= min_compression bars
+      Stage 2 — weekly volume MA > VOL_MIN_WEEKLY_EMA
+    """
+    yield from _run_ema_screener_impl(
+        data, ticker_names, periods, threshold, min_compression,
+        close_key="close_weekly", vol_key="volume_weekly",
+        vol_min=VOL_MIN_WEEKLY_EMA, label="weekly",
     )
 
 

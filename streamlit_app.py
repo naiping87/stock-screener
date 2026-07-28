@@ -21,6 +21,7 @@ from screener import (
     load_tickers, download_data,
     run_ema_screener, run_ema_hourly_screener, run_divergence_screener,
     run_weekly_kdj_screener, run_daily_kdj_screener, run_scoring_screener, backtest_scoring,
+    run_ema_weekly_screener,
     EMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
     KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
     VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN, DAILY_VOL_MIN, DAILY_VOL_RATIO,
@@ -1143,6 +1144,7 @@ import screener as scr
 scr.VOL_MIN = vol_daily
 scr.VOL_MIN_HOURLY = vol_hourly
 scr.WEEKLY_VOL_MIN = vol_weekly
+scr.VOL_MIN_WEEKLY_EMA = vol_weekly
 
 # Stage 1: Download (cached — survives refresh, force when button clicked)
 if refresh_clicked:
@@ -1188,20 +1190,33 @@ if st.session_state.get("_fp2") != fp2:
 else:
     results2 = st.session_state.results_ema_hourly
 
-# Screener 3: KDJ Divergence — params: div_lookback, vol_daily, kdj_period, kdj_signal
+# Screener 3: Weekly EMA — params: periods, divergence, compression, vol_weekly
+fp_weekly_ema = (str(ema_periods), divergence_pct, compression_bars, vol_weekly)
+if st.session_state.get("_fp_weekly_ema") != fp_weekly_ema:
+    screener_progress.progress(68, text="Weekly EMA Compression...")
+    results_weekly_ema = list(run_ema_weekly_screener(
+        data, ticker_names, periods=ema_periods,
+        threshold=divergence_pct, min_compression=compression_bars,
+    ))
+    st.session_state.results_weekly_ema = results_weekly_ema
+    st.session_state._fp_weekly_ema = fp_weekly_ema
+else:
+    results_weekly_ema = st.session_state.results_weekly_ema
+
+# Screener 4: KDJ Divergence — params: div_lookback, vol_daily, kdj_period, kdj_signal
 fp3 = (div_lookback, vol_daily, kdj_period, kdj_signal)
 if st.session_state.get("_fp3") != fp3:
-    screener_progress.progress(75, text="KDJ Divergence...")
+    screener_progress.progress(76, text="KDJ Divergence...")
     results3 = list(run_divergence_screener(data, ticker_names, lookback=div_lookback))
     st.session_state.results_div = results3
     st.session_state._fp3 = fp3
 else:
     results3 = st.session_state.results_div
 
-# Screener 4: Weekly KDJ — params: kdj_period, kdj_signal, vol_weekly
+# Screener 5: Weekly KDJ — params: kdj_period, kdj_signal, vol_weekly
 fp4 = (kdj_period, kdj_signal, vol_weekly)
 if st.session_state.get("_fp4") != fp4:
-    screener_progress.progress(83, text="Weekly KDJ Cross...")
+    screener_progress.progress(84, text="Weekly KDJ Cross...")
     results4 = list(run_weekly_kdj_screener(data, ticker_names))
     st.session_state.results_weekly = results4
     st.session_state._fp4 = fp4
@@ -1216,16 +1231,16 @@ if _cached_daily and len(_cached_daily) > 0 and "kdj_signal" not in _cached_dail
     st.session_state._fp_daily = None   # force re-run
 
 if st.session_state.get("_fp_daily") != fp_daily:
-    screener_progress.progress(86, text="Daily KDJ Cross...")
+    screener_progress.progress(88, text="Daily KDJ Cross...")
     results_daily = list(run_daily_kdj_screener(data, ticker_names, vol_min=vol_daily, vol_ratio=daily_vol_ratio))
     st.session_state.results_daily_kdj = results_daily
     st.session_state._fp_daily = fp_daily
 else:
     results_daily = st.session_state.results_daily_kdj
 
-# Screener 6: Scoring — always compute (no fingerprint caching, avoids stale results)
+# Screener 7: Scoring — always compute (no fingerprint caching, avoids stale results)
 stp = sorted(score_trend_periods_sel) or [10, 20, 50, 100, 200]
-screener_progress.progress(88, text="Scoring all stocks...")
+screener_progress.progress(90, text="Scoring all stocks...")
 results5 = run_scoring_screener(
     data, ticker_names,
     trend_periods=stp, trend_threshold=score_trend_div,
@@ -1243,6 +1258,8 @@ if "results1" not in dir() or results1 is None:
     results1 = st.session_state.get("results_ema_daily", [])
 if "results2" not in dir() or results2 is None:
     results2 = st.session_state.get("results_ema_hourly", [])
+if "results_weekly_ema" not in dir() or results_weekly_ema is None:
+    results_weekly_ema = st.session_state.get("results_weekly_ema", [])
 if "results3" not in dir() or results3 is None:
     results3 = st.session_state.get("results_div", [])
 if "results4" not in dir() or results4 is None:
@@ -1257,6 +1274,8 @@ all_tickers = set()
 for r in results1:
     all_tickers.add(r["ticker"])
 for r in results2:
+    all_tickers.add(r["ticker"])
+for r in results_weekly_ema:
     all_tickers.add(r["ticker"])
 for r in results3:
     all_tickers.add(r["ticker"])
@@ -1347,6 +1366,13 @@ if st.session_state.run_done:
 
     # Second row — Daily KDJ
     td1, td2, td3, td4, td5 = st.columns(5)
+    with td2:
+        st.markdown(f"""
+        <div class="metric-card metric-accent-hourly">
+            <div class="metric-value">{len(results_weekly_ema)}</div>
+            <div class="metric-label"><span class="tag-hourly section-tag">Weekly EMA</span></div>
+        </div>
+        """, unsafe_allow_html=True)
     with td3:
         st.markdown(f"""
         <div class="metric-card metric-accent-weekly">
@@ -1356,9 +1382,10 @@ if st.session_state.run_done:
         """, unsafe_allow_html=True)
 
     # Detail tables
-    tab1, tab2, tab3, tab4, tab_daily, tab5 = st.tabs([
+    tab1, tab2, tab_weekly_ema, tab3, tab4, tab_daily, tab5 = st.tabs([
         f"📅 Daily EMA ({len(results1)})",
         f"⏱ Hourly EMA ({len(results2)})",
+        f"📆 Weekly EMA ({len(results_weekly_ema)})",
         f"📉 KDJ Divergence ({len(results3)})",
         f"📆 Weekly KDJ ({len(results4)})",
         f"📊 Daily KDJ ({len(results_daily)})",
@@ -1390,6 +1417,25 @@ if st.session_state.run_done:
             _render_aggrid(df, roe_col=True)
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the EMA hourly filter</div></div>', unsafe_allow_html=True)
+
+    with tab_weekly_ema:
+        if results_weekly_ema:
+            df = pd.DataFrame(results_weekly_ema)
+            df["ticker"] = df["ticker"].apply(_strip_kl)
+            show_ema_cols = [c for c in df.columns if c.startswith("EMA")]
+            df = df.rename(columns={
+                "ticker": "Code", "name": "Name", "close": "Price",
+                "trend": "T", "divergence_pct": "Div%",
+                "vol_ma": "Vol MA", "ROE": "ROE%",
+            })
+            display_cols = ["Code", "Name", "Price", "T", "Div%"]
+            if "EMA50" in df.columns:
+                display_cols.append("EMA50")
+            display_cols += ["Vol MA", "ROE%"]
+            df = df[[c for c in display_cols if c in df.columns]]
+            _render_aggrid(df, roe_col=True)
+        else:
+            st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the EMA weekly filter</div></div>', unsafe_allow_html=True)
 
     with tab3:
         if results3:
