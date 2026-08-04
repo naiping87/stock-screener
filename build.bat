@@ -9,6 +9,7 @@ pyinstaller --onefile --windowed ^
     --name="StockScreenerPro" ^
     --add-data="markets;markets" ^
     --add-data="tickers;tickers" ^
+    --add-data="tickers.csv;." ^
     --add-data="ui;ui" ^
     --add-data="workers;workers" ^
     --hidden-import="PyQt6" ^
@@ -16,7 +17,6 @@ pyinstaller --onefile --windowed ^
     --hidden-import="numpy" ^
     --hidden-import="requests" ^
     --hidden-import="akshare" ^
-    --hidden-import="streamlit" ^
     --hidden-import="markets.bursa" ^
     --hidden-import="markets.us" ^
     --hidden-import="markets.shanghai" ^

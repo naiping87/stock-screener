@@ -20,7 +20,7 @@ import pandas as pd
 import requests
 try:
     import akshare as ak
-except ImportError:
+except Exception:  # akshare 是可选的;导入失败(ImportError/FileNotFoundError 等)时降级为 None
     ak = None
 
 # ── Configuration ────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ EMA_PERIODS = [10, 20, 50, 100, 200]
 DIVERGENCE_THRESHOLD = 3.0          # percent
 VOL_MIN = 500000                    # min daily volume MA
 VOL_MIN_HOURLY = 100000             # min hourly volume MA
+VOL_MIN_WEEKLY_EMA = 500000         # min weekly volume MA (EMA screener)
 MAX_WORKERS = 15                    # concurrent download threads
 REQUEST_DELAY = 0.0                 # seconds between requests per thread
 MAX_RETRIES = 3
@@ -37,6 +38,8 @@ KDJ_SIGNAL = 5                      # KDJ smooth (same as Pine Script 'Signal Pe
 DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
 DAILY_DAYS = 400                    # days of daily data (max EMA period 200 + 20 compression bars)
 HOURLY_DAYS = 50                    # days of hourly data
+WEEKLY_DAYS = 1600                  # days of weekly (1wk) history — enough for weekly EMA200 + 20 compression bars
+MIN_WEEKLY_BARS = max(EMA_PERIODS) + MIN_COMPRESSION_BARS  # weekly bars needed for EMA200 compression
 WEEKLY_VOL_MIN = 500000             # min weekly volume MA
 DAILY_VOL_MIN = 500000              # min daily volume MA for KDJ screener
 DAILY_VOL_RATIO = 1.2               # cross bar vol must be > 1.2x 20-day MA vol
@@ -64,8 +67,9 @@ def load_tickers(path: str, suffix: str = ".KL") -> dict[str, str]:
         suffix: Yahoo Finance suffix to append (".KL" for Bursa, "" for US, etc.)
     """
     if not os.path.exists(path):
-        print(f"[ERROR] {path} not found.")
-        sys.exit(1)
+        # Never sys.exit() here: in the GUI this kills the whole process.
+        # Raise instead so the caller (QThread) can surface a friendly error.
+        raise FileNotFoundError(f"tickers file not found: {path}")
 
     tickers = {}
     with open(path, "r", encoding="utf-8") as f:
@@ -171,8 +175,8 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars, timezone="Asia
     return None, ""
 
 
-def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezone="Asia/Kuala_Lumpur"):
-    """Download daily + hourly data for one ticker (weekly resampled from daily)."""
+def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w, timezone="Asia/Kuala_Lumpur"):
+    """Download daily + hourly + weekly(1wk) data for one ticker."""
     d_data, name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d, timezone)
     if d_data is None:
         return tkr, None
@@ -205,21 +209,22 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezon
         pass
 
 
-    # Weekly data — resample from daily for consistent OHLC
-    if len(di) >= 5:
-        w_ohlc = {
-            "close": d_close.loc[di].resample("W-FRI").last(),
-            "high": d_high.loc[di].resample("W-FRI").max(),
-            "low": d_low.loc[di].resample("W-FRI").min(),
-            "volume": d_vol.loc[di].resample("W-FRI").sum(),
-        }
-        wk_idx = w_ohlc["close"].index.intersection(
-            w_ohlc["high"].index
-        ).intersection(w_ohlc["low"].index).intersection(w_ohlc["volume"].index)
-        result["close_weekly"] = w_ohlc["close"].loc[wk_idx]
-        result["high_weekly"] = w_ohlc["high"].loc[wk_idx]
-        result["low_weekly"] = w_ohlc["low"].loc[wk_idx]
-        result["volume_weekly"] = w_ohlc["volume"].loc[wk_idx]
+    # Weekly data — fetch 1wk interval directly (long history needed for weekly EMA200)
+    try:
+        w_data, _ = _fetch_chart(sess, tkr, wp1, wp2, "1wk", min_bars_w, timezone)
+        if w_data is not None:
+            w_close = w_data["close"].dropna()
+            w_high = w_data["high"].dropna()
+            w_low = w_data["low"].dropna()
+            w_vol = w_data["volume"].fillna(0)
+            wi = w_close.index.intersection(w_high.index).intersection(w_low.index).intersection(w_vol.index)
+            if len(wi) >= min_bars_w:
+                result["close_weekly"] = w_close.loc[wi]
+                result["high_weekly"] = w_high.loc[wi]
+                result["low_weekly"] = w_low.loc[wi]
+                result["volume_weekly"] = w_vol.loc[wi]
+    except Exception:
+        pass
 
     return tkr, result
 
@@ -231,24 +236,28 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
+    w_start = end_date - timedelta(days=WEEKLY_DAYS)
     dp1, dp2 = int(d_start.timestamp()), int(end_date.timestamp())
     hp1, hp2 = int(h_start.timestamp()), int(end_date.timestamp())
+    wp1, wp2 = int(w_start.timestamp()), int(end_date.timestamp())
     min_bars_d = max(EMA_PERIODS) + MIN_COMPRESSION_BARS
     # Hourly: Yahoo may return fewer bars; cap requirement at EMA50+compression
     min_bars_h = 50 + MIN_COMPRESSION_BARS
+    min_bars_w = MIN_WEEKLY_BARS
 
     ticker_list = sorted(tickers.keys())
     all_data = {}
     session = _build_session()
 
-    print(f"[DOWNLOAD] Fetching {DAILY_DAYS}d daily + {HOURLY_DAYS}d hourly "
+    print(f"[DOWNLOAD] Fetching {DAILY_DAYS}d daily + {HOURLY_DAYS}d hourly + {WEEKLY_DAYS}d weekly "
           f"for {len(ticker_list)} tickers (workers={MAX_WORKERS}) ...")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
             pool.submit(
                 _fetch_ticker, session, tkr,
-                dp1, dp2, hp1, hp2, min_bars_d, min_bars_h, timezone,
+                dp1, dp2, hp1, hp2, wp1, wp2,
+                min_bars_d, min_bars_h, min_bars_w, timezone,
             ): tkr
             for tkr in ticker_list
         }
@@ -530,6 +539,26 @@ def run_ema_hourly_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
         close_key="close_hourly", vol_key="volume_hourly",
         vol_min=min_vol, label="hourly",
     )
+
+
+def run_ema_weekly_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
+                            periods: list[int] | None = None,
+                            threshold: float = DIVERGENCE_THRESHOLD,
+                            min_compression: int = MIN_COMPRESSION_BARS,
+                            min_vol: int = VOL_MIN_WEEKLY_EMA) -> Generator[dict[str, Any], None, None]:
+    """
+    EMA Compression Screener (weekly):
+      Stage 1 — EMA divergence <= threshold% for >= min_compression bars
+      Stage 2 — weekly volume MA > min_vol
+    """
+    yield from _run_ema_screener_impl(
+        data, ticker_names, periods, threshold, min_compression,
+        close_key="close_weekly", vol_key="volume_weekly",
+        vol_min=min_vol, label="weekly",
+    )
+
+
+
 
 
 def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
@@ -1022,7 +1051,7 @@ def main():
     print("=" * 56)
     print("  Bursa Malaysia Stock Screener  (3 scripts, 1 output)")
     print(f"  EMA: {EMA_PERIODS} | divergence < {DIVERGENCE_THRESHOLD}%")
-    print(f"  Compression >= {MIN_COMPRESSION_BARS} bars | Vol daily>{VOL_MIN//1000}k hourly>{VOL_MIN_HOURLY//1000}k")
+    print(f"  Compression >= {MIN_COMPRESSION_BARS} bars | Vol daily>{VOL_MIN//1000}k hourly>{VOL_MIN_HOURLY//1000}k weekly>{VOL_MIN_WEEKLY_EMA//1000}k")
     print(f"  KDJ divergence {DIVERGENCE_LOOKBACK}d")
     print("=" * 56)
     print()
@@ -1081,3 +1110,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n[CANCEL] Screener cancelled by user.")
         sys.exit(0)
+

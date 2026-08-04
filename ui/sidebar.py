@@ -397,6 +397,7 @@ class Sidebar(QWidget):
             "vol_daily": self.vol_daily.row_widget.value(),
             "vol_hourly": self.vol_hourly.row_widget.value(),
             "vol_weekly": self.vol_weekly.row_widget.value(),
+            "vol_weekly_ema": self.vol_weekly.row_widget.value(),
             "vol_daily_kdj": self.vol_d_kdj.row_widget.value(),
             "daily_vol_ratio": _sv(self.daily_vol_r),
             "kdj_period": _sv(self.kdj_period),
@@ -411,3 +412,4 @@ class Sidebar(QWidget):
             "score_vol_ma_t": self.score_vol_ma_t.row_widget.value(),
             "score_top_n": self.score_top_n.row_widget.value(),
         }
+

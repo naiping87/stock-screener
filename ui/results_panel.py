@@ -23,7 +23,8 @@ class ResultsPanel(QWidget):
 
         tab_specs = [
             ("📅 Daily EMA", "daily_ema"),
-            ("⏱ Hourly EMA", "hourly_ema"),
+            ("Hourly EMA", "hourly_ema"),
+            ("Weekly EMA", "weekly_ema"),
             ("📉 KDJ Divergence", "kdj_div"),
             ("📆 Weekly KDJ", "weekly_kdj"),
             ("📊 Daily KDJ", "daily_kdj"),
@@ -55,3 +56,4 @@ class ResultsPanel(QWidget):
         index = self.tabs.currentIndex()
         keys = list(self.tables.keys())
         return keys[index] if 0 <= index < len(keys) else None
+

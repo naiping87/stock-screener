@@ -154,10 +154,14 @@ class MainWindow(QMainWindow):
         # Collect all unique tickers from results
         all_tickers = set()
         for df in self._result_dfs.values():
-            if df is not None and not df.empty and "Code" in df.columns:
-                # Need original ticker with suffix for Yahoo lookup
-                for tkr in df.get("ticker", df["Code"]):
-                    all_tickers.add(tkr)
+            if df is None or df.empty:
+                continue
+            # Need original ticker with suffix for Yahoo lookup
+            col = "ticker" if "ticker" in df.columns else "Code"
+            if col not in df.columns:
+                continue
+            for tkr in df[col]:
+                all_tickers.add(tkr)
 
         # Filter to tickers not already cached
         new_tickers = all_tickers - set(self._meta_cache.keys())
@@ -248,7 +252,7 @@ class MainWindow(QMainWindow):
             "<h3>Stock Screener Pro v1.0.0</h3>"
             "<p>Multi-market stock screening terminal.</p>"
             "<p><b>Markets:</b> Bursa MY, NYSE, NASDAQ, AMEX, SSE</p>"
-            "<p><b>Screeners:</b> EMA Compression, KDJ Cross, "
+            "<p><b>Screeners:</b> EMA Compression (Daily/Hourly/Weekly), KDJ Cross, "
             "KDJ Divergence, Scoring</p>"
         )
 
@@ -267,3 +271,4 @@ class MainWindow(QMainWindow):
             self.progress_bar.setValue(value)
         if text:
             self.status_label.setText(text)
+

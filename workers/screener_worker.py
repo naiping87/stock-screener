@@ -4,12 +4,12 @@ from PyQt6.QtCore import QThread, pyqtSignal
 import pandas as pd
 
 from screener import (
-    run_ema_screener, run_ema_hourly_screener,
+    run_ema_screener, run_ema_hourly_screener, run_ema_weekly_screener,
     run_divergence_screener,
     run_weekly_kdj_screener, run_daily_kdj_screener,
     run_scoring_screener,
     KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
-    VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN, DAILY_VOL_MIN,
+    VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN, VOL_MIN_WEEKLY_EMA, DAILY_VOL_MIN,
     EMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
     DAILY_VOL_RATIO, SCORE_TOP_N,
     SCORE_TREND_PERIODS, SCORE_TREND_THRESHOLD,
@@ -57,7 +57,19 @@ class ScreenerWorker(QThread):
             ))
             self.result.emit("hourly_ema", self._to_df(r2))
 
-            # Screen 3: KDJ Divergence
+
+            # Screen 3: Weekly EMA
+            self.progress.emit(50, "Weekly EMA screener...")
+            r_weekly_ema = list(run_ema_weekly_screener(
+                self.data, self.ticker_names,
+                periods=p.get("ema_periods", [20, 50, 100, 200]),
+                threshold=p.get("ema_threshold", 5.0),
+                min_compression=p.get("compress_bars", 8),
+                min_vol=p.get("vol_weekly_ema", 500_000),
+            ))
+            self.result.emit("weekly_ema", self._to_df(r_weekly_ema))
+
+            # Screen 4: KDJ Divergence
             self.progress.emit(60, "KDJ Divergence screener...")
             r3 = list(run_divergence_screener(
                 self.data, self.ticker_names,
@@ -66,7 +78,7 @@ class ScreenerWorker(QThread):
             ))
             self.result.emit("kdj_div", self._to_df(r3))
 
-            # Screen 4: Weekly KDJ
+            # Screen 5: Weekly KDJ
             self.progress.emit(70, "Weekly KDJ screener...")
             r4 = list(run_weekly_kdj_screener(
                 self.data, self.ticker_names,
@@ -74,7 +86,7 @@ class ScreenerWorker(QThread):
             ))
             self.result.emit("weekly_kdj", self._to_df(r4))
 
-            # Screen 5: Daily KDJ
+            # Screen 6: Daily KDJ
             self.progress.emit(80, "Daily KDJ screener...")
             r_daily = list(run_daily_kdj_screener(
                 self.data, self.ticker_names,
@@ -83,7 +95,7 @@ class ScreenerWorker(QThread):
             ))
             self.result.emit("daily_kdj", self._to_df(r_daily))
 
-            # Screen 6: Scoring
+            # Screen 7: Scoring
             self.progress.emit(90, "Scoring screener...")
             r5 = list(run_scoring_screener(
                 self.data, self.ticker_names,
@@ -126,3 +138,4 @@ def _strip_kl(tkr):
     if isinstance(tkr, str) and tkr.endswith(".KL"):
         return tkr[:-3]
     return tkr
+
