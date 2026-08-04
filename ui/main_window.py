@@ -122,10 +122,10 @@ class MainWindow(QMainWindow):
         else:
             self._run_screeners()
 
-    def _start_download(self, market_code):
+    def _start_download(self, market_code, force_refresh=False):
         self.status_label.setText("Downloading " + market_code.upper() + " market data...")
         self.results_panel.set_all_empty()
-        self.worker = DownloadWorker(market_code)
+        self.worker = DownloadWorker(market_code, force_refresh=force_refresh)
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self._on_data_loaded)
         self.worker.error.connect(self._on_download_error)
@@ -232,7 +232,9 @@ class MainWindow(QMainWindow):
 
     def _on_refresh(self):
         params = self.sidebar.get_params()
-        self._start_download(params["market_code"])
+        # Refresh Data / F5 / auto-refresh must always fetch fresh data,
+        # never serve the day-cache.
+        self._start_download(params["market_code"], force_refresh=True)
 
     def _on_export(self):
         key = self.results_panel.current_tab_key()

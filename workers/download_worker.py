@@ -48,18 +48,21 @@ class DownloadWorker(QThread):
     finished = pyqtSignal(dict, dict)  # (data, ticker_names)
     error = pyqtSignal(str)
 
-    def __init__(self, market_code: str, parent=None):
+    def __init__(self, market_code: str, parent=None, force_refresh: bool = False):
         super().__init__(parent)
         self.market_code = market_code
+        # True = bypass the day-cache and re-download fresh data
+        # (used by the Refresh Data / auto-refresh actions)
+        self.force_refresh = force_refresh
 
     def run(self):
         try:
             m = get_market(self.market_code)
             cache_p = _cache_path(self.market_code)
 
-            # ── Fast path: reuse today's cache ──────────────────────────
+            # ── Fast path: reuse today's cache (unless force_refresh) ───
             cached = _load_cache(cache_p)
-            if cached is not None:
+            if cached is not None and not self.force_refresh:
                 data, ticker_names = cached
                 self.progress.emit(95, f"Loaded {len(data)} tickers from cache")
                 self.progress.emit(100, "Ready")
