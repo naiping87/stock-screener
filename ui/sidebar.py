@@ -249,8 +249,8 @@ class Sidebar(QWidget):
         self.score_vol_ma_b = _sld("Vol MA Bars", 2, 20, SCORE_VOL_MA_BARS,
                                    hint="Volume SMA lookback for comparison")
         sl.addWidget(self.score_vol_ma_b)
-        self.score_vol_ma_t = _dbl("Vol MA Threshold", 1.0, 20.0, SCORE_VOL_MA_THRESHOLD, 1.0,
-                                   "Min volume SMA value")
+        self.score_vol_ma_t = _sp("Vol MA Threshold", 0, 100_000_000, SCORE_VOL_MA_THRESHOLD, 100_000,
+                                 "Min volume SMA value (in shares)")
         sl.addWidget(self.score_vol_ma_t)
         self.score_top_n = _sp("Top N Results", 5, 100, SCORE_TOP_N, 5,
                                "Number of top-scoring stocks to show")

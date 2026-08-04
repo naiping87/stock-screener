@@ -243,7 +243,7 @@ QSpinBox, QDoubleSpinBox {{
     color: {TEXT};
     border: 1px solid {BORDER};
     border-radius: 8px;
-    padding: 7px 12px;
+    padding: 4px 30px 4px 10px;
     font-size: 13px;
 }}
 QSpinBox:hover, QDoubleSpinBox:hover {{
@@ -252,6 +252,51 @@ QSpinBox:hover, QDoubleSpinBox:hover {{
 QSpinBox:focus, QDoubleSpinBox:focus {{
     border-color: {ACCENT};
     background: #fff;
+}}
+/* Qt6/Windows 11 默认把 up/down 按钮左右并排,箭头小且难分辨;
+   这里强制上下堆叠并画清晰三角箭头。 */
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 28px;
+    border-left: 1px solid {BORDER};
+    border-bottom: 1px solid {BORDER};
+    border-top-right-radius: 8px;
+    background: {BG_INPUT};
+}}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover {{
+    background: {BG_HOVER};
+}}
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed {{
+    background: rgba(0,113,227,0.15);
+}}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 6px solid {ACCENT};
+    image: none;
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 28px;
+    border-left: 1px solid {BORDER};
+    border-bottom-right-radius: 8px;
+    background: {BG_INPUT};
+}}
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background: {BG_HOVER};
+}}
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {{
+    background: rgba(0,113,227,0.15);
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid {ACCENT};
+    image: none;
 }}
 
 /* ── Check box ──────────────────────────────────────────────────────── */
