@@ -5,3 +5,7 @@ requests>=2.31.0
 
 # 可选:A股备用数据源(screener.py data_provider="akshare" 路径,默认使用 Yahoo)
 akshare>=1.0.0
+# Streamlit Cloud 部署依赖(https://stock-screener-*.streamlit.app)
+# streamlit_app.py 入口需要;桌面版不受影响
+streamlit>=1.28.0
+streamlit-aggrid>=1.2.0
