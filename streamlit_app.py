@@ -5,6 +5,7 @@ Access from any device: mobile, tablet, desktop.
 import sys
 import os
 import time
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
@@ -61,7 +62,7 @@ st.set_page_config(
     page_title="Bursa Screener",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 # ── Keep-alive ──────────────────────────────────────────────────────────────
@@ -191,7 +192,7 @@ st.markdown("""
 
     /* Sidebar expanders */
     [data-testid="stSidebar"] .streamlit-expanderHeader {
-        font-size: 0.82rem; font-weight: 600; color: var(--text-primary);
+        font-size: 0.85rem; font-weight: 600; color: var(--text-primary);
         border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
         padding: 0.6rem 0.8rem; background: var(--bg-card);
         transition: all 0.15s;
@@ -218,7 +219,7 @@ st.markdown("""
         width: 100%; border-radius: var(--radius-sm); font-weight: 600;
         border: 1px solid rgba(255,255,255,0.1) !important;
         padding: 0.55rem 1rem; transition: all 0.2s ease;
-        font-size: 0.82rem; letter-spacing: 0.01em;
+        font-size: 0.86rem; letter-spacing: 0.01em;
     }
     .stButton > button:hover {
         border-color: rgba(255,255,255,0.2) !important;
@@ -266,6 +267,20 @@ st.markdown("""
         font-size: 0.72rem; margin-top: 0.35rem; opacity: 0.7;
         font-weight: 500; letter-spacing: 0.02em;
     }
+    .metric-delta {
+        font-size: 0.68rem; margin-top: 0.3rem; font-weight: 600;
+        font-family: var(--font-mono);
+    }
+    .metric-delta.up { color: var(--green); }
+    .metric-delta.down { color: var(--red); }
+    .metric-delta.flat { color: var(--text-muted); }
+
+    /* App footer */
+    .app-footer {
+        text-align: center; font-size: 0.7rem; color: var(--text-muted);
+        margin-top: 2.5rem; padding: 1rem 0 0.5rem 0;
+        border-top: 1px solid var(--border-subtle);
+    }
 
     /* Metric accent colors */
     .metric-accent-daily .metric-value { color: var(--green); }
@@ -298,7 +313,7 @@ st.markdown("""
         margin-bottom: 0.75rem;
     }
     .stTabs [data-baseweb="tab"] {
-        font-size: 0.82rem; font-weight: 500; padding: 0.6rem 1rem;
+        font-size: 0.85rem; font-weight: 500; padding: 0.6rem 1rem;
         color: var(--text-secondary); border-radius: 0;
         background: transparent !important; border: none !important;
         border-bottom: 2px solid transparent !important;
@@ -389,7 +404,7 @@ st.markdown("""
     /* Label */
     [data-testid="stSlider"] label, [data-testid="stNumberInput"] label,
     [data-testid="stSelectbox"] label, [data-testid="stToggle"] label {
-        font-size: 0.76rem !important; font-weight: 500 !important;
+        font-size: 0.8rem !important; font-weight: 500 !important;
         color: var(--text-secondary) !important; margin-bottom: 0.2rem !important;
     }
 
@@ -562,18 +577,38 @@ if "_alert_pause_loaded" not in st.session_state:
 
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", "demo123")
 
-# Auto-login via URL query param (persists across refreshes)
-if not st.session_state.authenticated:
-    if "1" in st.query_params.get_all("auth"):
-        st.session_state.authenticated = True
-        st.rerun()
+
+def _daily_token() -> str:
+    """Daily-rotating quick-access token: a shared ?auth= link expires at midnight."""
+    return hashlib.sha256(f"{APP_PASSWORD}:{time.strftime('%Y-%m-%d')}".encode()).hexdigest()[:16]
+
 
 # ── Password gate ──────────────────────────────────────────────────────────
+if "pwd_attempts" not in st.session_state:
+    st.session_state.pwd_attempts = 0
+if "pwd_locked_until" not in st.session_state:
+    st.session_state.pwd_locked_until = 0.0
+
+
 def handle_unlock():
+    if time.time() < st.session_state.pwd_locked_until:
+        return
     if st.session_state.pwd_input == APP_PASSWORD:
         st.session_state.authenticated = True
+        st.session_state.pwd_attempts = 0
     else:
+        st.session_state.pwd_attempts += 1
+        if st.session_state.pwd_attempts >= 5:
+            st.session_state.pwd_locked_until = time.time() + 60
+            st.session_state.pwd_attempts = 0
         st.session_state.pwd_error = True
+
+
+# Auto-login via daily-rotating URL token (never a permanent bypass)
+if not st.session_state.authenticated:
+    if st.query_params.get("auth") == _daily_token():
+        st.session_state.authenticated = True
+        st.rerun()
 
 
 if not st.session_state.authenticated:
@@ -603,11 +638,13 @@ if not st.session_state.authenticated:
                 st.rerun()
             else:
                 st.error("Wrong password")
+        if time.time() < st.session_state.pwd_locked_until:
+            st.warning("Too many failed attempts — locked for 60 seconds.")
     st.stop()
 
-# Redirect to ?auth=1 after first login so URL persists across refreshes
-if not st.query_params.get("auth"):
-    st.query_params["auth"] = "1"
+# Redirect to a daily token so the URL persists across refreshes (expires at midnight)
+if st.query_params.get("auth") != _daily_token():
+    st.query_params["auth"] = _daily_token()
     st.rerun()
 
 # ── Heartbeat: touch a file so alert_monitor knows the page is open ────────
@@ -649,7 +686,7 @@ with c2:
         st.rerun()
 
 # ── Header ─────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <div class="nav-bar">
     <div class="nav-brand">
         <div class="nav-brand-icon">📈</div>
@@ -658,7 +695,7 @@ st.markdown("""
     </div>
     <div class="nav-status">
         <div class="nav-dot"></div>
-        Live Market Data
+        <span>Updated {st.session_state.get("_market_ts", "—")}</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -705,7 +742,7 @@ with st.sidebar:
 
     st.markdown('<div class="sidebar-section-title">Parameters</div>', unsafe_allow_html=True)
 
-    with st.expander("🔔 Alerts", expanded=True):
+    with st.expander("🔔 Alerts", expanded=False):
         alert_paused = st.toggle(
             "Pause desktop alerts", value=False, key="alert_paused",
             help="When checked, alert_monitor will not send Windows notifications",
@@ -751,12 +788,12 @@ with st.sidebar:
         )
         daily_vol_ratio = st.slider("Daily KDJ Vol Ratio", 1.0, 3.0, DEFAULTS["daily_vol_r"], 0.1, key="cfg_kdj_vol_r")
 
-    with st.expander("KDJ Divergence", expanded=True):
+    with st.expander("KDJ Divergence", expanded=False):
         kdj_period = st.slider("KDJ Period", 3, 30, DEFAULTS["kdj_p"], 1, key="cfg_kdj_p")
         kdj_signal = st.slider("KDJ Signal", 1, 10, DEFAULTS["kdj_s"], 1, key="cfg_kdj_s")
         div_lookback = st.slider("Div Lookback", 10, 60, DEFAULTS["div_lb"], 5, key="cfg_div_lb")
 
-    with st.expander("Scoring System", expanded=True):
+    with st.expander("Scoring System", expanded=False):
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             score_trend_periods_sel = st.multiselect(
@@ -1016,7 +1053,7 @@ function(params) {
 """)
 
 
-def _render_aggrid(df, height=420, roe_col=False, score_col=False):
+def _render_aggrid(df, height=420, roe_col=False, score_col=False, default_sort=None):
     """Render an AgGrid table with dark theme, sorting, filtering, and conditional formatting."""
     if df is None or df.empty:
         return
@@ -1080,6 +1117,12 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False):
     # Auto-size columns to content, then fit to grid width
     gb.configure_grid_options(suppressColumnVirtualisation=False)
 
+    # Professional default ordering (nulls naturally sort last in ag-grid)
+    if default_sort:
+        for _col, _dir in default_sort.items():
+            if _col in df.columns:
+                gb.configure_column(_col, sort=_dir)
+
     grid_options = gb.build()
 
     AgGrid(
@@ -1130,7 +1173,9 @@ def get_data():
     # load_tickers already returns keys with the correct suffix — use as-is
     ticker_names = dict(tickers)
     import json
-    st.cache_data.clear()  # force fresh download, no stale cache
+    # NOTE: no blanket cache clear here — _cached_download has a 1h TTL and is
+    # invalidated explicitly by Refresh Data / market switches. A blanket clear
+    # here would force a full 1-2 min re-download on every page refresh.
     tickers_json = json.dumps(dict(sorted(tickers.items())))
     dp = getattr(m, "data_provider", "yahoo")
     data = _cached_download(tickers_json, tz, code, _data_provider=dp)
@@ -1159,6 +1204,25 @@ except Exception as e:
 if not data:
     st.warning("No data loaded. Market may be rate-limited. Try again or switch market.")
     st.stop()
+
+# Record the latest bar timestamp for the nav status (honest freshness indicator)
+try:
+    _latest = None
+    for _df in data.values():
+        if _df is not None and len(_df.index) > 0:
+            _ts = _df.index.max()
+            if _latest is None or _ts > _latest:
+                _latest = _ts
+    if _latest is not None:
+        _ts = pd.Timestamp(_latest)
+        if _ts.tzinfo is not None:
+            try:
+                _ts = _ts.tz_convert(market.timezone)
+            except Exception:
+                pass
+        st.session_state._market_ts = _ts.strftime("%Y-%m-%d %H:%M")
+except Exception:
+    pass
 
 # Stage 2: Run screeners — cached by param fingerprint, skip on unrelated changes
 screener_progress = st.empty()
@@ -1250,8 +1314,6 @@ results5 = run_scoring_screener(
     top_n=score_top_n,
 )
 st.info(f"📊 Scoring: {len(results5)} ranked / {len(data)} total")
-sample = list(data.keys())[:5]
-st.caption('Sample tickers: ' + ', '.join(t.replace('.KL','') for t in sample))
 
 # Fallback: ensure all result variables exist even if screeners didn't run
 if "results1" not in dir() or results1 is None:
@@ -1326,70 +1388,56 @@ if st.session_state.run_done:
     results_daily = st.session_state.results_daily_kdj or []
     # results5 already set by scoring above — do NOT overwrite from session_state
 
-    # Summary bar — 5 columns
-    tc1, tc2, tc3, tc4, tc5 = st.columns(5)
-    with tc1:
-        st.markdown(f"""
-        <div class="metric-card metric-accent-daily">
-            <div class="metric-value">{len(results1)}</div>
-            <div class="metric-label"><span class="tag-daily section-tag">Daily EMA</span></div>
+    # Summary bar — balanced 4 + 3 layout with deltas vs the previous run
+    def _metric_card(accent_cls, tag_cls, tag_text, count, key):
+        prev = st.session_state.get("_prev_counts", {}).get(key)
+        if "_prev_counts" not in st.session_state:
+            st.session_state._prev_counts = {}
+        st.session_state._prev_counts[key] = count
+        if prev is None:
+            delta = ""
+        elif count > prev:
+            delta = f'<div class="metric-delta up">▲ +{count - prev}</div>'
+        elif count < prev:
+            delta = f'<div class="metric-delta down">▼ {prev - count}</div>'
+        else:
+            delta = '<div class="metric-delta flat">—</div>'
+        return f"""
+        <div class="metric-card {accent_cls}">
+            <div class="metric-value">{count}</div>
+            <div class="metric-label"><span class="{tag_cls} section-tag">{tag_text}</span></div>
+            {delta}
         </div>
-        """, unsafe_allow_html=True)
-    with tc2:
-        st.markdown(f"""
-        <div class="metric-card metric-accent-hourly">
-            <div class="metric-value">{len(results2)}</div>
-            <div class="metric-label"><span class="tag-hourly section-tag">Hourly EMA</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-    with tc3:
-        st.markdown(f"""
-        <div class="metric-card metric-accent-kdj">
-            <div class="metric-value">{len(results3)}</div>
-            <div class="metric-label"><span class="tag-div section-tag">KDJ Divergence</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-    with tc4:
-        st.markdown(f"""
-        <div class="metric-card metric-accent-weekly">
-            <div class="metric-value">{len(results4)}</div>
-            <div class="metric-label"><span class="tag-div section-tag">Weekly KDJ Cross</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-    with tc5:
-        st.markdown(f"""
-        <div class="metric-card metric-accent-score">
-            <div class="metric-value">{len(results5)}</div>
-            <div class="metric-label"><span class="tag-score section-tag">Scoring Top</span></div>
-        </div>
-        """, unsafe_allow_html=True)
+        """
 
-    # Second row — Daily KDJ
-    td1, td2, td3, td4, td5 = st.columns(5)
-    with td2:
-        st.markdown(f"""
-        <div class="metric-card metric-accent-hourly">
-            <div class="metric-value">{len(results_weekly_ema)}</div>
-            <div class="metric-label"><span class="tag-hourly section-tag">Weekly EMA</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-    with td3:
-        st.markdown(f"""
-        <div class="metric-card metric-accent-weekly">
-            <div class="metric-value">{len(results_daily)}</div>
-            <div class="metric-label"><span class="tag-div section-tag">Daily KDJ Cross</span></div>
-        </div>
-        """, unsafe_allow_html=True)
+    r1a, r1b, r1c, r1d = st.columns(4)
+    with r1a:
+        st.markdown(_metric_card("metric-accent-daily", "tag-daily", "Daily EMA", len(results1), "daily"), unsafe_allow_html=True)
+    with r1b:
+        st.markdown(_metric_card("metric-accent-hourly", "tag-hourly", "Hourly EMA", len(results2), "hourly"), unsafe_allow_html=True)
+    with r1c:
+        st.markdown(_metric_card("metric-accent-weekly", "tag-hourly", "Weekly EMA", len(results_weekly_ema), "weekly_ema"), unsafe_allow_html=True)
+    with r1d:
+        st.markdown(_metric_card("metric-accent-kdj", "tag-div", "KDJ Divergence", len(results3), "kdj_div"), unsafe_allow_html=True)
+
+    r2a, r2b, r2c = st.columns(3)
+    with r2a:
+        st.markdown(_metric_card("metric-accent-weekly", "tag-div", "Weekly KDJ", len(results4), "wkdj"), unsafe_allow_html=True)
+    with r2b:
+        st.markdown(_metric_card("metric-accent-kdj", "tag-div", "Daily KDJ", len(results_daily), "dkdj"), unsafe_allow_html=True)
+    with r2c:
+        st.markdown(_metric_card("metric-accent-score", "tag-score", "Scoring Top", len(results5), "score"), unsafe_allow_html=True)
 
     # Detail tables
-    tab1, tab2, tab_weekly_ema, tab3, tab4, tab_daily, tab5 = st.tabs([
+    tab_score, tab1, tab2, tab_weekly_ema, tab3, tab4, tab_daily, tab_bt = st.tabs([
+        f"⭐ Scoring ({len(results5)})",
         f"📅 Daily EMA ({len(results1)})",
         f"⏱ Hourly EMA ({len(results2)})",
-        f"📆 Weekly EMA ({len(results_weekly_ema)})",
+        f"🗓 Weekly EMA ({len(results_weekly_ema)})",
         f"📉 KDJ Divergence ({len(results3)})",
         f"📆 Weekly KDJ ({len(results4)})",
         f"📊 Daily KDJ ({len(results_daily)})",
-        f"⭐ Scoring ({len(results5)})",
+        "🧪 Backtest",
     ])
 
     with tab1:
@@ -1401,7 +1449,7 @@ if st.session_state.run_done:
                 "trend": "T", "divergence_pct": "Div%",
                 "vol_ma": "Vol MA", "ROE": "ROE%",
             })[["Code", "Name", "Price", "T", "EMA50", "Div%", "Vol MA", "ROE%"]]
-            _render_aggrid(df, roe_col=True)
+            _render_aggrid(df, roe_col=True, default_sort={"Div%": "asc"})
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the EMA daily filter</div></div>', unsafe_allow_html=True)
 
@@ -1414,7 +1462,7 @@ if st.session_state.run_done:
                 "trend": "T", "divergence_pct": "Div%",
                 "vol_ma": "Vol MA", "ROE": "ROE%",
             })[["Code", "Name", "Price", "T", "EMA50", "Div%", "Vol MA", "ROE%"]]
-            _render_aggrid(df, roe_col=True)
+            _render_aggrid(df, roe_col=True, default_sort={"Div%": "asc"})
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the EMA hourly filter</div></div>', unsafe_allow_html=True)
 
@@ -1433,7 +1481,7 @@ if st.session_state.run_done:
                 display_cols.append("EMA50")
             display_cols += ["Vol MA", "ROE%"]
             df = df[[c for c in display_cols if c in df.columns]]
-            _render_aggrid(df, roe_col=True)
+            _render_aggrid(df, roe_col=True, default_sort={"Div%": "asc"})
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the EMA weekly filter</div></div>', unsafe_allow_html=True)
 
@@ -1445,7 +1493,7 @@ if st.session_state.run_done:
                 "ticker": "Code", "name": "Name", "close": "Price",
                 "vol_ma": "Vol MA", "ROE": "ROE%",
             })[["Code", "Name", "Price", "kdj_k", "kdj_d", "Vol MA", "ROE%"]]
-            _render_aggrid(df, roe_col=True)
+            _render_aggrid(df, roe_col=True, default_sort={"ROE%": "desc"})
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the KDJ divergence filter</div></div>', unsafe_allow_html=True)
 
@@ -1459,7 +1507,7 @@ if st.session_state.run_done:
                 "ticker": "Code", "name": "Name", "close": "Price",
                 "kdj_signal": "Signal", "vol_ma": "Vol MA", "ROE": "ROE%",
             })[["Code", "Name", "Price", "kdj_k", "kdj_d", "kdj_j", "Signal", "Vol MA", "ROE%"]]
-            _render_aggrid(df, roe_col=True)
+            _render_aggrid(df, roe_col=True, default_sort={"ROE%": "desc"})
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the weekly KDJ filter</div></div>', unsafe_allow_html=True)
 
@@ -1476,11 +1524,11 @@ if st.session_state.run_done:
             })
             show_cols = [c for c in ["Code", "Name", "Price", "kdj_k", "kdj_d", "kdj_j", "Signal", "Vol Ratio", "Vol MA", "ROE%"] if c in df.columns]
             df = df[show_cols]
-            _render_aggrid(df, roe_col=True)
+            _render_aggrid(df, roe_col=True, default_sort={"ROE%": "desc"})
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks passed the daily KDJ filter</div></div>', unsafe_allow_html=True)
 
-    with tab5:
+    with tab_score:
         if results5:
             df = pd.DataFrame(results5)
             df["ticker"] = df["ticker"].apply(_strip_kl)
@@ -1494,12 +1542,11 @@ if st.session_state.run_done:
             })[["Code", "Name", "Price", "Score",
                 ">200", "Align", "Tight", "BB",
                 "KDJ", "WKDJ", "Vol%", "Spike", "Vol↑", "VolMA", "ROE%"]]
-            _render_aggrid(df, height=440, roe_col=True, score_col=True)
+            _render_aggrid(df, height=440, roe_col=True, score_col=True, default_sort={"Score": "desc"})
         else:
             st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No stocks scored yet</div></div>', unsafe_allow_html=True)
 
-        # Backtest
-        st.markdown('<hr class="backtest-divider">', unsafe_allow_html=True)
+    with tab_bt:
         st.markdown("#### 🔬 Backtest Scoring System")
         st.markdown('<div class="backtest-card">', unsafe_allow_html=True)
 
@@ -1536,6 +1583,8 @@ if st.session_state.run_done:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
+    st.markdown('<div class="app-footer">Data: Yahoo Finance · 数据仅供参考,不构成投资建议</div>', unsafe_allow_html=True)
+
 else:
     # Idle state
     st.markdown("""
@@ -1549,3 +1598,4 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
+    st.markdown('<div class="app-footer">Data: Yahoo Finance · 数据仅供参考,不构成投资建议</div>', unsafe_allow_html=True)
