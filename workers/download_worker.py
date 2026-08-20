@@ -5,12 +5,19 @@ hitting Run again the same day) loads from cache instantly instead of
 re-downloading thousands of tickers.
 """
 
-from PyQt6.QtCore import QThread, pyqtSignal
-from screener import download_data, load_tickers
-from markets import get as get_market
-import os, sys, pickle
+import logging
+import os
+import pickle
+import threading
 from datetime import datetime
-from utils import resource_path, cache_dir
+
+from PyQt6.QtCore import QThread, pyqtSignal
+
+from markets import get as get_market
+from screener import DownloadCancelled, download_data, load_tickers
+from utils import cache_dir, resource_path
+
+logger = logging.getLogger(__name__)
 
 
 def _cache_path(market_code: str) -> str:
@@ -25,7 +32,8 @@ def _load_cache(path: str):
     try:
         with open(path, "rb") as f:
             return pickle.load(f)
-    except Exception:
+    except Exception as e:
+        logger.warning("Cache read failed (%s): %s", path, e)
         return None
 
 
@@ -34,19 +42,21 @@ def _save_cache(path: str, data, ticker_names) -> None:
     try:
         with open(path, "wb") as f:
             pickle.dump((data, ticker_names), f, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Cache write failed (%s): %s", path, e)
 
 
 class DownloadWorker(QThread):
     """Downloads market data in a background thread, emitting progress.
 
     Tries the local day-cache first; only downloads when the cache is missing.
+    Supports cooperative cancellation via cancel().
     """
 
     progress = pyqtSignal(int, str)   # (percent, message)
     finished = pyqtSignal(dict, dict)  # (data, ticker_names)
     error = pyqtSignal(str)
+    cancelled = pyqtSignal()
 
     def __init__(self, market_code: str, parent=None, force_refresh: bool = False):
         super().__init__(parent)
@@ -54,6 +64,13 @@ class DownloadWorker(QThread):
         # True = bypass the day-cache and re-download fresh data
         # (used by the Refresh Data / auto-refresh actions)
         self.force_refresh = force_refresh
+        self.cancel_requested = False
+        self._cancel_event = threading.Event()
+
+    def cancel(self):
+        """Request cancellation; the worker stops at the next check point."""
+        self.cancel_requested = True
+        self._cancel_event.set()
 
     def run(self):
         try:
@@ -82,6 +99,8 @@ class DownloadWorker(QThread):
             last_pct = [10]
 
             def progress_cb(current, total):
+                if self.cancel_requested:
+                    raise DownloadCancelled()
                 pct = 10 + int((current / max(total, 1)) * 80)
                 if pct > last_pct[0]:
                     last_pct[0] = pct
@@ -92,13 +111,21 @@ class DownloadWorker(QThread):
                 progress_cb=progress_cb,
                 timezone=m.timezone,
                 market_code=self.market_code,
-                data_provider="yahoo",
+                data_provider=getattr(m, "data_provider", "yahoo"),
+                cancel_event=self._cancel_event,
             )
+
+            if self.cancel_requested:
+                self.cancelled.emit()
+                return
 
             _save_cache(cache_p, data, ticker_names)
             self.progress.emit(95, f"Download complete — {len(data)} tickers (cached)")
             self.progress.emit(100, "Ready")
             self.finished.emit(data, ticker_names)
 
+        except DownloadCancelled:
+            self.cancelled.emit()
         except Exception as e:
+            logger.exception("Download failed for %s", self.market_code)
             self.error.emit(str(e))

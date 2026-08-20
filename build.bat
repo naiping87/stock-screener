@@ -12,6 +12,7 @@ pyinstaller --onefile --windowed ^
     --add-data="tickers.csv;." ^
     --add-data="ui;ui" ^
     --add-data="workers;workers" ^
+    --add-data="resources;resources" ^
     --hidden-import="PyQt6" ^
     --hidden-import="pandas" ^
     --hidden-import="numpy" ^

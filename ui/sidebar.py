@@ -1,40 +1,70 @@
 """Sidebar — Apple-style parameter panel with card sections."""
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QComboBox, QGroupBox, QPushButton,
-    QLabel, QSpinBox, QDoubleSpinBox, QCheckBox, QSlider,
-    QHBoxLayout, QScrollArea,
-)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
-
-from markets import list_all, get as get_market
-from screener import (
-    EMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
-    KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
-    VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN,
-    DAILY_VOL_MIN, DAILY_VOL_RATIO,
-    SCORE_TREND_PERIODS, SCORE_TREND_THRESHOLD, SCORE_EMA200_SLOPE_BARS,
-    SCORE_VOL_PERIOD, SCORE_VOL_THRESHOLD, SCORE_VOL_MA_BARS,
-    SCORE_VOL_MA_THRESHOLD, SCORE_TOP_N,
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 
+from markets import get as get_market
+from markets import list_all
+from screener import (
+    DAILY_VOL_MIN,
+    DAILY_VOL_RATIO,
+    DIVERGENCE_LOOKBACK,
+    DIVERGENCE_THRESHOLD,
+    KDJ_PERIOD,
+    KDJ_SIGNAL,
+    MIN_COMPRESSION_BARS,
+    SCORE_EMA200_SLOPE_BARS,
+    SCORE_TOP_N,
+    SCORE_TREND_PERIODS,
+    SCORE_TREND_THRESHOLD,
+    SCORE_VOL_MA_BARS,
+    SCORE_VOL_MA_THRESHOLD,
+    SCORE_VOL_PERIOD,
+    SCORE_VOL_THRESHOLD,
+    VOL_MIN,
+    VOL_MIN_HOURLY,
+    WEEKLY_VOL_MIN,
+)
 
-LABEL_STYLE = "color:#6e6e73; font-size:12px; font-weight:500;"
-VALUE_STYLE = "color:#1d1d1f; font-weight:600; font-size:12px; min-width:28px;"
+from .styles import (
+    ACCENT,
+    ACCENT_HOVER,
+    BG_SURFACE,
+    BORDER,
+    SIDEBAR_BG,
+    TEXT,
+    TEXT_SEC,
+)
+
+LABEL_STYLE = f"color:{TEXT_SEC}; font-size:12px; font-weight:500;"
+VALUE_STYLE = f"color:{TEXT}; font-weight:600; font-size:12px; min-width:28px;"
 
 
 def _row(label_text, widget, hint=None):
     """One row: label | widget."""
     w = QWidget()
-    l = QHBoxLayout(w)
-    l.setContentsMargins(0, 3, 0, 3)
+    lay = QHBoxLayout(w)
+    lay.setContentsMargins(0, 3, 0, 3)
     lbl = QLabel(label_text)
     lbl.setMinimumWidth(130)
     lbl.setStyleSheet(LABEL_STYLE)
-    l.addWidget(lbl)
-    l.addWidget(widget)
-    l.addStretch()
+    lay.addWidget(lbl)
+    lay.addWidget(widget)
+    lay.addStretch()
     w.row_widget = widget
     if hint:
         w.setToolTip(hint)
@@ -112,9 +142,10 @@ def _multi(label_text, options, defaults, hint=None):
         cb = QCheckBox(str(opt))
         cb.setChecked(opt in defaults)
         cb.setStyleSheet(
-            "QCheckBox{color:#1d1d1f;font-size:14px;font-weight:600;spacing:6px;padding:4px 8px;}"
-            "QCheckBox::indicator{width:20px;height:20px;border:2px solid #d2d2d7;border-radius:5px;background:#fff;}"
-            "QCheckBox::indicator:checked{background:#0071e3;border-color:#0071e3;}")
+            f"QCheckBox{{color:{TEXT};font-size:14px;font-weight:600;spacing:6px;padding:4px 8px;}}"
+            f"QCheckBox::indicator{{width:20px;height:20px;border:2px solid {BORDER};border-radius:5px;background:{BG_SURFACE};}}"
+            f"QCheckBox::indicator:checked{{background:{ACCENT};border-color:{ACCENT};}}"
+            f"QCheckBox::indicator:hover{{border-color:{ACCENT};}}")
         if hint:
             cb.setToolTip(hint)
         row.addWidget(cb)
@@ -134,7 +165,7 @@ class Sidebar(QWidget):
         super().__init__(parent)
         self.setMinimumWidth(320)
         self.setMaximumWidth(440)
-        self.setStyleSheet("background:#f0f0f2;")
+        self.setStyleSheet(f"background:{SIDEBAR_BG};")
         self._build()
 
     def _build(self):
@@ -145,7 +176,7 @@ class Sidebar(QWidget):
         # ── Header ────────────────────────────────────────────────────
         title = QLabel("Parameters")
         title.setFont(QFont("SF Pro Display, Segoe UI", 20, QFont.Weight.Bold))
-        title.setStyleSheet("color:#1d1d1f; background:transparent;")
+        title.setStyleSheet(f"color:{TEXT}; background:transparent;")
         layout.addWidget(title)
 
         # ── Market ────────────────────────────────────────────────────
@@ -159,7 +190,7 @@ class Sidebar(QWidget):
 
         # Sector filter
         sector_lbl = QLabel("Sector")
-        sector_lbl.setStyleSheet("color:#6e6e73; font-size:12px; font-weight:600; background:transparent; margin-top:8px;")
+        sector_lbl.setStyleSheet(f"color:{TEXT_SEC}; font-size:12px; font-weight:600; background:transparent; margin-top:8px;")
         layout.addWidget(sector_lbl)
         self.sector_combo = QComboBox()
         self.sector_combo.addItem("All Sectors", "")
@@ -266,23 +297,23 @@ class Sidebar(QWidget):
         self.reset_btn = QPushButton("↺  Reset")
         self.reset_btn.setMinimumHeight(36)
         self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.reset_btn.setStyleSheet("""
-            QPushButton {
+        self.reset_btn.setStyleSheet(f"""
+            QPushButton {{
                 background: transparent;
-                color: #0071e3;
-                border: 1px solid #d2d2d7;
+                color: {ACCENT};
+                border: 1px solid {BORDER};
                 border-radius: 8px;
                 font-size: 13px;
                 font-weight: 500;
                 padding: 8px 20px;
-            }
-            QPushButton:hover {
-                background: rgba(0,113,227,0.08);
-                border-color: #0071e3;
-            }
-            QPushButton:pressed {
-                background: rgba(0,113,227,0.15);
-            }
+            }}
+            QPushButton:hover {{
+                background: rgba(41,98,255,0.12);
+                border-color: {ACCENT};
+            }}
+            QPushButton:pressed {{
+                background: rgba(41,98,255,0.20);
+            }}
         """)
         self.reset_btn.clicked.connect(self._reset_params)
         reset_row.addWidget(self.reset_btn)
@@ -292,7 +323,7 @@ class Sidebar(QWidget):
         # Wrap in a container with distinct background for visual pop
         run_container = QWidget()
         run_container.setStyleSheet(
-            "background:#e8e8ed; border-radius:14px; padding:6px;")
+            f"background:#1a1e28; border:1px solid {BORDER}; border-radius:14px; padding:6px;")
         run_layout = QVBoxLayout(run_container)
         run_layout.setContentsMargins(6, 6, 6, 6)
 
@@ -301,10 +332,10 @@ class Sidebar(QWidget):
         self.run_btn.clicked.connect(self.run_clicked.emit)
         self.run_btn.setMinimumHeight(56)
         self.run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.run_btn.setStyleSheet("""
-            QPushButton#runBtn {
+        self.run_btn.setStyleSheet(f"""
+            QPushButton#runBtn {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0088ff, stop:1 #0066dd);
+                    stop:0 {ACCENT}, stop:1 #1e53e5);
                 color: #ffffff;
                 border: none;
                 border-radius: 12px;
@@ -312,16 +343,16 @@ class Sidebar(QWidget):
                 font-weight: 700;
                 padding: 16px 0px;
                 letter-spacing: 0.5px;
-            }
-            QPushButton#runBtn:hover {
+            }}
+            QPushButton#runBtn:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #1a94ff, stop:1 #0077f0);
+                    stop:0 {ACCENT_HOVER}, stop:1 {ACCENT});
                 border: 2px solid rgba(255,255,255,0.25);
-            }
-            QPushButton#runBtn:pressed {
+            }}
+            QPushButton#runBtn:pressed {{
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0055cc, stop:1 #0044aa);
-            }
+                    stop:0 #1e53e5, stop:1 #1746c2);
+            }}
         """)
         run_layout.addWidget(self.run_btn)
         layout.addWidget(run_container)
@@ -329,10 +360,25 @@ class Sidebar(QWidget):
         # Auto-refresh
         ar = QHBoxLayout()
         self.auto_refresh = QCheckBox("Auto-refresh every 5 min")
-        self.auto_refresh.setStyleSheet("color:#6e6e73; font-size:12px;")
+        self.auto_refresh.setStyleSheet(f"color:{TEXT_SEC}; font-size:12px;")
         ar.addWidget(self.auto_refresh)
         ar.addStretch()
         layout.addLayout(ar)
+
+        # Weekly KDJ golden-cross alerts
+        al = QHBoxLayout()
+        self.alerts_checkbox = QCheckBox("🔔 Weekly KDJ alerts")
+        self.alerts_checkbox.setStyleSheet(f"color:{TEXT_SEC}; font-size:12px;")
+        self.alerts_checkbox.setToolTip(
+            "After each screening run, checks for fresh weekly KDJ golden crosses in the "
+            "background; new crosses fire a system tray notification "
+            "(each stock alerts once per cross)")
+        al.addWidget(self.alerts_checkbox)
+        al.addStretch()
+        layout.addLayout(al)
+
+        # First launch: apply this market's defaults (no market_changed emission).
+        self._apply_market_defaults(self.market_combo.currentData())
 
     def set_sectors(self, sectors: list):
         current = self.sector_combo.currentData()
@@ -345,38 +391,41 @@ class Sidebar(QWidget):
         self.sector_combo.setCurrentIndex(max(idx, 0))
         self.sector_combo.blockSignals(False)
 
+    def _apply_market_defaults(self, code):
+        """Apply the market's default parameters to all controls.
+
+        Emits no signals, so it is safe to call at startup (no download is
+        triggered) and from both the market combo and the Reset button.
+        """
+        if not code:
+            return
+        m = get_market(code)
+        d = m.defaults
+        self.vol_daily.row_widget.setValue(d.get('vol_d', VOL_MIN))
+        self.vol_hourly.row_widget.setValue(d.get('vol_h', VOL_MIN_HOURLY))
+        self.vol_weekly.row_widget.setValue(d.get('vol_w', WEEKLY_VOL_MIN))
+        self.vol_d_kdj.row_widget.setValue(d.get('vol_d_kdj', DAILY_VOL_MIN))
+        self.kdj_period.slider.setValue(d.get('kdj_p', KDJ_PERIOD))
+        self.kdj_signal.slider.setValue(d.get('kdj_s', KDJ_SIGNAL))
+        self.div_lookback.slider.setValue(d.get('div_lb', DIVERGENCE_LOOKBACK))
+        self.divergence_pct.slider.setValue(int(d.get('div', DIVERGENCE_THRESHOLD) / 0.5))
+        self.compress_bars.slider.setValue(d.get('bars', MIN_COMPRESSION_BARS))
+        self.daily_vol_r.slider.setValue(int(d.get('daily_vol_r', DAILY_VOL_RATIO) / 0.1))
+        self.score_slope.slider.setValue(SCORE_EMA200_SLOPE_BARS)
+        self.score_vol_p.slider.setValue(SCORE_VOL_PERIOD)
+        self.score_vol_ma_b.slider.setValue(SCORE_VOL_MA_BARS)
+        self.score_trend_div.row_widget.setValue(SCORE_TREND_THRESHOLD)
+        self.score_vol_t.row_widget.setValue(SCORE_VOL_THRESHOLD)
+        self.score_vol_ma_t.row_widget.setValue(SCORE_VOL_MA_THRESHOLD)
+        self.score_top_n.row_widget.setValue(SCORE_TOP_N)
+
     def _reset_params(self):
-        code = self.market_combo.currentData()
-        if code:
-            m = get_market(code)
-            d = m.defaults
-            self.vol_daily.row_widget.setValue(d.get('vol_d', VOL_MIN))
-            self.vol_hourly.row_widget.setValue(d.get('vol_h', VOL_MIN_HOURLY))
-            self.vol_weekly.row_widget.setValue(d.get('vol_w', WEEKLY_VOL_MIN))
-            self.vol_d_kdj.row_widget.setValue(d.get('vol_d_kdj', DAILY_VOL_MIN))
-            self.kdj_period.slider.setValue(d.get('kdj_p', KDJ_PERIOD))
-            self.kdj_signal.slider.setValue(d.get('kdj_s', KDJ_SIGNAL))
-            self.div_lookback.slider.setValue(d.get('div_lb', DIVERGENCE_LOOKBACK))
-            self.divergence_pct.slider.setValue(int(DIVERGENCE_THRESHOLD / 0.5))
-            self.compress_bars.slider.setValue(MIN_COMPRESSION_BARS)
-            self.daily_vol_r.slider.setValue(int(DAILY_VOL_RATIO / 0.1))
-            self.score_slope.slider.setValue(SCORE_EMA200_SLOPE_BARS)
-            self.score_vol_p.slider.setValue(SCORE_VOL_PERIOD)
-            self.score_vol_ma_b.slider.setValue(SCORE_VOL_MA_BARS)
-            self.score_trend_div.row_widget.setValue(SCORE_TREND_THRESHOLD)
-            self.score_vol_t.row_widget.setValue(SCORE_VOL_THRESHOLD)
-            self.score_vol_ma_t.row_widget.setValue(SCORE_VOL_MA_THRESHOLD)
-            self.score_top_n.row_widget.setValue(SCORE_TOP_N)
+        self._apply_market_defaults(self.market_combo.currentData())
 
     def _on_market_changed(self, index):
         code = self.market_combo.currentData()
         if code:
-            m = get_market(code)
-            d = m.defaults
-            self.vol_daily.row_widget.setValue(d.get("vol_d", 200_000))
-            self.vol_hourly.row_widget.setValue(d.get("vol_h", 20_000))
-            self.vol_weekly.row_widget.setValue(d.get("vol_w", 500_000))
-            self.vol_d_kdj.row_widget.setValue(d.get("vol_d_kdj", 500_000))
+            self._apply_market_defaults(code)
             self.market_changed.emit(code)
 
     # ── Param collector ────────────────────────────────────────────────

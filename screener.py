@@ -7,8 +7,11 @@ Bursa Malaysia Stock Screener — 5 screeners:
   5. scoring        — weighted 11-factor scoring system
 """
 import csv
+import io
+import logging
 import os
 import sys
+import threading
 import time
 from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,10 +21,21 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import requests
+
 try:
     import akshare as ak
 except Exception:  # akshare 是可选的;导入失败(ImportError/FileNotFoundError 等)时降级为 None
     ak = None
+
+logger = logging.getLogger(__name__)
+
+
+class DownloadCancelled(Exception):
+    """Raised inside download_data when the caller requests cancellation.
+
+    The worker threads catch this and emit a `cancelled` signal instead of
+    treating it as a download failure.
+    """
 
 # ── Configuration ────────────────────────────────────────────────────────────
 EMA_PERIODS = [10, 20, 50, 100, 200]
@@ -72,7 +86,19 @@ def load_tickers(path: str, suffix: str = ".KL") -> dict[str, str]:
         raise FileNotFoundError(f"tickers file not found: {path}")
 
     tickers = {}
-    with open(path, "r", encoding="utf-8") as f:
+    # 本地 tickers CSV 有 utf-8（Bursa/US）与 gb18030（A 股）两种编码。
+    # open() 的解码是惰性的，须先读字节再显式解码回退。
+    def _read_text() -> str:
+        with open(path, "rb") as f:
+            raw = f.read()
+        for enc in ("utf-8", "gb18030"):
+            try:
+                return raw.decode(enc)
+            except UnicodeDecodeError:
+                continue
+        return raw.decode("utf-8", errors="replace")
+
+    with io.StringIO(_read_text()) as f:
         for row in csv.reader(f):
             if not row:
                 continue
@@ -88,7 +114,7 @@ def load_tickers(path: str, suffix: str = ".KL") -> dict[str, str]:
             else:
                 # US: no suffix, accept all non-numeric-looking codes
                 tickers[code] = name
-    print(f"[INFO] Loaded {len(tickers)} tickers")
+    logger.info("Loaded %d tickers", len(tickers))
     return tickers
 
 
@@ -229,10 +255,14 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_
     return tkr, result
 
 
-def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur", market_code: str = "my", data_provider: str = "yahoo") -> dict[str, dict[str, Any]]:
-    """Download daily + hourly + weekly data concurrently via Yahoo chart API."""
+def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur", market_code: str = "my", data_provider: str = "yahoo", cancel_event: threading.Event | None = None) -> dict[str, dict[str, Any]]:
+    """Download daily + hourly + weekly data concurrently via Yahoo chart API.
+
+    `cancel_event` (optional): when set, the loop raises DownloadCancelled at
+    the next check so the caller can abort without treating it as an error.
+    """
     if data_provider == "akshare":
-        return _download_akshare(tickers, timezone, progress_cb)
+        return _download_akshare(tickers, timezone, progress_cb, cancel_event)
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
@@ -249,10 +279,11 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
     all_data = {}
     session = _build_session()
 
-    print(f"[DOWNLOAD] Fetching {DAILY_DAYS}d daily + {HOURLY_DAYS}d hourly + {WEEKLY_DAYS}d weekly "
-          f"for {len(ticker_list)} tickers (workers={MAX_WORKERS}) ...")
+    logger.info("[DOWNLOAD] Fetching %dd daily + %dd hourly + %dd weekly for %d tickers (workers=%d)",
+                DAILY_DAYS, HOURLY_DAYS, WEEKLY_DAYS, len(ticker_list), MAX_WORKERS)
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+    pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+    try:
         futures = {
             pool.submit(
                 _fetch_ticker, session, tkr,
@@ -263,6 +294,8 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
         }
         done = 0
         for f in as_completed(futures):
+            if cancel_event is not None and cancel_event.is_set():
+                raise DownloadCancelled()
             tkr, data = f.result()
             if data is not None:
                 all_data[tkr] = data
@@ -270,20 +303,26 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
             if progress_cb:
                 progress_cb(done, len(ticker_list))
             elif done % 100 == 0:
-                print(f"  {done}/{len(ticker_list)} tickers processed ...")
+                logger.info("  %d/%d tickers processed ...", done, len(ticker_list))
             time.sleep(REQUEST_DELAY)
+    finally:
+        # wait=False + cancel_futures: don't block the UI thread on abort;
+        # in-flight requests finish in daemon threads (Python >= 3.9).
+        pool.shutdown(wait=False, cancel_futures=True)
 
-    print(f"[DATA] Got price history for {len(all_data)} / {len(tickers)} tickers")
+    logger.info("[DATA] Got price history for %d / %d tickers", len(all_data), len(tickers))
     return all_data
 def _fetch_akshare_ticker(tkr, name, days, timezone):
     """Download daily data for one A-share ticker via AkShare. Returns dict or None."""
     if ak is None:
         return None
+    # Internal keys carry the market suffix (e.g. "600000.SS"); akshare wants the bare code.
+    symbol = tkr.split(".")[0]
     end_str = datetime.now().strftime("%Y%m%d")
     start_str = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
     for attempt in range(2):
         try:
-            df = ak.stock_zh_a_hist(symbol=tkr, period="daily", start_date=start_str,
+            df = ak.stock_zh_a_hist(symbol=symbol, period="daily", start_date=start_str,
                                     end_date=end_str, adjust="qfq")
             if df is None or len(df) < 20:
                 return None
@@ -292,7 +331,7 @@ def _fetch_akshare_ticker(tkr, name, days, timezone):
             df["date"] = pd.to_datetime(df["date"])
             df = df.set_index("date")
             tz_idx = df.index.tz_localize(timezone) if df.index.tz is None else df.index.tz_convert(timezone)
-            def _s(col):
+            def _s(col, df=df, tz_idx=tz_idx):
                 return pd.Series(df[col].values, index=tz_idx, dtype=float)
             result = {"close": _s("close"), "high": _s("high"), "low": _s("low"),
                       "volume": _s("volume"), "name": name}
@@ -313,15 +352,19 @@ def _fetch_akshare_ticker(tkr, name, days, timezone):
     return None
 
 
-def _download_akshare(tickers, timezone, progress_cb=None):
+def _download_akshare(tickers, timezone, progress_cb=None, cancel_event=None):
     all_data = {}
     ticker_list = sorted(tickers.keys())
     ak_workers = min(MAX_WORKERS, 15)
-    print(f'[AKSHARE] Fetching {DAILY_DAYS}d daily for {len(ticker_list)} tickers (workers={ak_workers}) ...')
-    with ThreadPoolExecutor(max_workers=ak_workers) as pool:
+    logger.info('[AKSHARE] Fetching %dd daily for %d tickers (workers=%d) ...',
+                DAILY_DAYS, len(ticker_list), ak_workers)
+    pool = ThreadPoolExecutor(max_workers=ak_workers)
+    try:
         futures = {pool.submit(_fetch_akshare_ticker, tkr, tickers[tkr], DAILY_DAYS, timezone): tkr for tkr in ticker_list}
         done = 0
         for f in as_completed(futures):
+            if cancel_event is not None and cancel_event.is_set():
+                raise DownloadCancelled()
             tkr = futures[f]
             data = f.result()
             if data is not None:
@@ -330,8 +373,10 @@ def _download_akshare(tickers, timezone, progress_cb=None):
             if progress_cb:
                 progress_cb(done, len(ticker_list))
             elif done % 200 == 0:
-                print(f'  {done}/{len(ticker_list)} ...')
-    print(f'[AKSHARE] Got data for {len(all_data)} / {len(tickers)} tickers')
+                logger.info('  %d/%d ...', done, len(ticker_list))
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    logger.info('[AKSHARE] Got data for %d / %d tickers', len(all_data), len(tickers))
     return all_data
 
 
@@ -504,8 +549,8 @@ def _run_ema_screener_impl(data, ticker_names, periods, threshold, min_compressi
                 result[f"EMA{p}"] = ema[p]
         yield result
 
-    print(f"  Stage 1 ({label} compression):     {s1} passed")
-    print(f"  Stage 2 ({label} vol > {vol_min//1000}k): {s2} passed")
+    logger.info("  Stage 1 (%s compression): %d passed", label, s1)
+    logger.info("  Stage 2 (%s vol > %dk): %d passed", label, vol_min // 1000, s2)
 
 
 def run_ema_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
@@ -604,8 +649,8 @@ def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
             "vol_ma": vol_ma_val,
         }
 
-    print(f"  Stage 1 (divergence):     {s1} passed")
-    print(f"  Stage 2 (vol > {VOL_MIN//1000}k): {s2} passed")
+    logger.info("  Stage 1 (divergence): %d passed", s1)
+    logger.info("  Stage 2 (vol > %dk): %d passed", VOL_MIN // 1000, s2)
 
 
 def detectKDJSignal(k, d, j, lookback = KDJ_LOOKBACK, oversold = KDJ_OVERSOLD):
@@ -627,7 +672,6 @@ def detectKDJSignal(k, d, j, lookback = KDJ_LOOKBACK, oversold = KDJ_OVERSOLD):
     # Must: J[-1] > K[-1] and J[-2] <= K[-2]
     j1, k1 = j.iloc[-1], k.iloc[-1]
     j2, k2 = j.iloc[-2], k.iloc[-2]
-    j3, k3 = j.iloc[-3], k.iloc[-3]
     
     cross_trigger = j1 > k1 and j2 <= k2
     
@@ -697,8 +741,8 @@ def run_weekly_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
             "vol_ma": vol_ma_val,
         }
 
-    print(f"  Stage 1 (weekly KDJ cross): {s1} passed")
-    print(f"  Stage 2 (weekly vol > {vol_min//1000}k):   {s2} passed")
+    logger.info("  Stage 1 (weekly KDJ cross): %d passed", s1)
+    logger.info("  Stage 2 (weekly vol > %dk): %d passed", vol_min // 1000, s2)
 
 
 def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
@@ -754,8 +798,8 @@ def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[s
             "vol_ma": vol_ma_val,
         }
 
-    print(f"  Stage 1 (daily KDJ cross):  {s1} passed")
-    print(f"  Stage 2 (vol MA > {vol_min//1000}k): {s2} passed")
+    logger.info("  Stage 1 (daily KDJ cross): %d passed", s1)
+    logger.info("  Stage 2 (vol MA > %dk): %d passed", vol_min // 1000, s2)
 
 
 def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str, str] | None = None,
@@ -929,7 +973,7 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
         })
 
     results.sort(key=lambda r: r["score"], reverse=True)
-    print(f"  Scored {len(results)} stocks, top score: {results[0]['score'] if results else 0}")
+    logger.info("  Scored %d stocks, top score: %s", len(results), results[0]["score"] if results else 0)
     return results[:top_n]
 
 
@@ -953,7 +997,7 @@ def backtest_scoring(data: dict[str, dict[str, Any]], ticker_names=None,
     # Find stocks with enough data
     valid_tkrs = [tkr for tkr, d in data.items() if len(d.get("close", [])) >= min_bars_needed]
     if len(valid_tkrs) < top_n:
-        print(f"  Only {len(valid_tkrs)} stocks with >= {min_bars_needed} bars, need {top_n}")
+        logger.warning("  Only %d stocks with >= %d bars, need %d", len(valid_tkrs), min_bars_needed, top_n)
         return []
 
     # Build time index from a reference stock
@@ -967,7 +1011,7 @@ def backtest_scoring(data: dict[str, dict[str, Any]], ticker_names=None,
     if not test_dates:
         return []
 
-    print(f"  Backtesting {len(test_dates)} dates, {len(valid_tkrs)} stocks ...")
+    logger.info("  Backtesting %d dates, %d stocks ...", len(test_dates), len(valid_tkrs))
     results = []
 
     for test_date in test_dates:
@@ -1043,7 +1087,7 @@ def _write_csv(results, prefix, cols, sort_key, output_dir=OUTPUT_DIR):
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
         w.writerows(results)
-    print(f"  -> {len(results)} stocks saved to {path}")
+    logger.info("  -> %d stocks saved to %s", len(results), path)
     return path
 
 

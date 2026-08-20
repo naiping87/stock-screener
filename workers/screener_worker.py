@@ -1,20 +1,25 @@
 """Background worker for running all screeners on loaded data."""
 
-from PyQt6.QtCore import QThread, pyqtSignal
 import pandas as pd
+from PyQt6.QtCore import QThread, pyqtSignal
 
 from screener import (
-    run_ema_screener, run_ema_hourly_screener, run_ema_weekly_screener,
+    DIVERGENCE_LOOKBACK,
+    SCORE_EMA200_SLOPE_BARS,
+    SCORE_TOP_N,
+    SCORE_TREND_PERIODS,
+    SCORE_TREND_THRESHOLD,
+    SCORE_VOL_MA_BARS,
+    SCORE_VOL_MA_THRESHOLD,
+    SCORE_VOL_PERIOD,
+    SCORE_VOL_THRESHOLD,
+    run_daily_kdj_screener,
     run_divergence_screener,
-    run_weekly_kdj_screener, run_daily_kdj_screener,
+    run_ema_hourly_screener,
+    run_ema_screener,
+    run_ema_weekly_screener,
     run_scoring_screener,
-    KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
-    VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN, VOL_MIN_WEEKLY_EMA, DAILY_VOL_MIN,
-    EMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
-    DAILY_VOL_RATIO, SCORE_TOP_N,
-    SCORE_TREND_PERIODS, SCORE_TREND_THRESHOLD,
-    SCORE_EMA200_SLOPE_BARS, SCORE_VOL_PERIOD, SCORE_VOL_THRESHOLD,
-    SCORE_VOL_MA_BARS, SCORE_VOL_MA_THRESHOLD,
+    run_weekly_kdj_screener,
 )
 
 
@@ -25,12 +30,24 @@ class ScreenerWorker(QThread):
     result = pyqtSignal(str, object)    # (tab_key, pd.DataFrame)
     finished = pyqtSignal()
     error = pyqtSignal(str)
+    cancelled = pyqtSignal()
 
     def __init__(self, data, ticker_names, params, parent=None):
         super().__init__(parent)
         self.data = data
         self.ticker_names = ticker_names
         self.params = params
+
+    def cancel(self):
+        """Request cancellation; checked between screeners."""
+        self.requestInterruption()
+
+    def _check_cancel(self) -> bool:
+        """Return True when the run should stop (already emitted cancelled)."""
+        if self.isInterruptionRequested():
+            self.cancelled.emit()
+            return True
+        return False
 
     def run(self):
         try:
@@ -45,6 +62,8 @@ class ScreenerWorker(QThread):
                 min_vol=p.get("vol_daily", 200_000),
             ))
             self.result.emit("daily_ema", self._to_df(r1))
+            if self._check_cancel():
+                return
 
             # Screen 2: Hourly EMA
             self.progress.emit(40, "Hourly EMA screener...")
@@ -56,6 +75,8 @@ class ScreenerWorker(QThread):
                 min_vol=p.get("vol_hourly", 20_000),
             ))
             self.result.emit("hourly_ema", self._to_df(r2))
+            if self._check_cancel():
+                return
 
 
             # Screen 3: Weekly EMA
@@ -68,6 +89,8 @@ class ScreenerWorker(QThread):
                 min_vol=p.get("vol_weekly_ema", 500_000),
             ))
             self.result.emit("weekly_ema", self._to_df(r_weekly_ema))
+            if self._check_cancel():
+                return
 
             # Screen 4: KDJ Divergence
             self.progress.emit(60, "KDJ Divergence screener...")
@@ -77,6 +100,8 @@ class ScreenerWorker(QThread):
                 min_vol=p.get("vol_daily", 200_000),
             ))
             self.result.emit("kdj_div", self._to_df(r3))
+            if self._check_cancel():
+                return
 
             # Screen 5: Weekly KDJ
             self.progress.emit(70, "Weekly KDJ screener...")
@@ -85,6 +110,8 @@ class ScreenerWorker(QThread):
                 vol_min=p.get("vol_weekly", 500_000),
             ))
             self.result.emit("weekly_kdj", self._to_df(r4))
+            if self._check_cancel():
+                return
 
             # Screen 6: Daily KDJ
             self.progress.emit(80, "Daily KDJ screener...")
@@ -94,6 +121,8 @@ class ScreenerWorker(QThread):
                 vol_ratio=p.get("daily_vol_ratio", 1.5),
             ))
             self.result.emit("daily_kdj", self._to_df(r_daily))
+            if self._check_cancel():
+                return
 
             # Screen 7: Scoring
             self.progress.emit(90, "Scoring screener...")
@@ -109,6 +138,8 @@ class ScreenerWorker(QThread):
                 top_n=p.get("score_top_n", SCORE_TOP_N),
             ))
             self.result.emit("scoring", self._to_df(r5))
+            if self._check_cancel():
+                return
 
             self.progress.emit(100, "All screeners complete")
             self.finished.emit()

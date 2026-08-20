@@ -5,8 +5,6 @@ and filter by market capitalisation to keep the top 2500.
 
 import csv
 import os
-import sys
-import time
 from pathlib import Path
 
 import requests

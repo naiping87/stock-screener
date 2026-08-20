@@ -1,26 +1,31 @@
-"""Apple-inspired light-dark hybrid theme — clean, minimal, professional."""
+"""TradingView-inspired dark theme — flat, dense, professional terminal look.
+
+Palette mirrors TradingView's classic dark scheme:
+  #131722 window / #1e222d panels / #2a2e39 raised & borders /
+  #2962FF brand blue / #089981 up / #f23645 down.
+"""
 
 # ── Color palette ────────────────────────────────────────────────────────
-BG_WINDOW = "#f5f5f7"
-BG_SURFACE = "#ffffff"
-BG_CARD = "#fafafa"
-BG_INPUT = "#f0f0f2"
-BG_HOVER = "#e8e8ed"
-BORDER = "#d2d2d7"
-BORDER_FOCUS = "#0071e3"
-TEXT = "#1d1d1f"
-TEXT_SEC = "#6e6e73"
-TEXT_DIM = "#aeaeb2"
-GREEN = "#34c759"
-RED = "#ff3b30"
-ORANGE = "#ff9500"
-BLUE = "#0071e3"
-PURPLE = "#af52de"
-ACCENT = "#0071e3"
-ACCENT_HOVER = "#0077ed"
+BG_WINDOW = "#131722"
+BG_SURFACE = "#1e222d"
+BG_CARD = "#1e222d"
+BG_INPUT = "#2a2e39"
+BG_HOVER = "#2a2e39"
+BORDER = "#2a2e39"
+BORDER_FOCUS = "#2962FF"
+TEXT = "#d1d4dc"
+TEXT_SEC = "#787b86"
+TEXT_DIM = "#5d606b"
+GREEN = "#089981"
+RED = "#f23645"
+ORANGE = "#f7c600"
+BLUE = "#2962FF"
+PURPLE = "#b18cff"
+ACCENT = "#2962FF"
+ACCENT_HOVER = "#3b7aff"
 
-SIDEBAR_BG = "#f0f0f2"
-SIDEBAR_SECTION = "#fafafa"
+SIDEBAR_BG = "#131722"
+SIDEBAR_SECTION = "#1e222d"
 
 # ── Stylesheet ───────────────────────────────────────────────────────────
 STYLESHEET = f"""
@@ -36,8 +41,8 @@ QMainWindow {{
 
 /* ── Menu bar ──────────────────────────────────────────────────────── */
 QMenuBar {{
-    background: rgba(255,255,255,0.85);
-    border-bottom: 1px solid rgba(0,0,0,0.08);
+    background: rgba(30,34,45,0.95);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
     padding: 4px 16px;
     font-size: 13px;
 }}
@@ -48,12 +53,12 @@ QMenuBar::item {{
     margin: 2px 1px;
 }}
 QMenuBar::item:selected {{
-    background: rgba(0,0,0,0.06);
+    background: rgba(255,255,255,0.06);
 }}
 QMenu {{
-    background: rgba(255,255,255,0.95);
-    border: 1px solid rgba(0,0,0,0.1);
-    border-radius: 10px;
+    background: rgba(30,34,45,0.98);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
     padding: 6px;
 }}
 QMenu::item {{
@@ -66,7 +71,7 @@ QMenu::item:selected {{
 }}
 QMenu::separator {{
     height: 1px;
-    background: rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.08);
     margin: 4px 8px;
 }}
 
@@ -97,11 +102,11 @@ QTabBar::tab:hover:!selected {{
 /* ── Table view ─────────────────────────────────────────────────────── */
 QTableView {{
     background: {BG_SURFACE};
-    alternate-background-color: #f9f9fb;
-    border: 1px solid rgba(0,0,0,0.06);
-    border-radius: 10px;
+    alternate-background-color: #181c26;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
     gridline-color: transparent;
-    selection-background-color: rgba(0, 113, 227, 0.12);
+    selection-background-color: rgba(41, 98, 255, 0.25);
     selection-color: {TEXT};
     outline: none;
 }}
@@ -110,7 +115,7 @@ QHeaderView::section {{
     color: {TEXT_SEC};
     padding: 10px 14px;
     border: none;
-    border-bottom: 1px solid rgba(0,0,0,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
     font-weight: 600;
     font-size: 11px;
     letter-spacing: 0.5px;
@@ -118,7 +123,7 @@ QHeaderView::section {{
 }}
 QHeaderView::section:hover {{
     color: {TEXT};
-    background: rgba(0,0,0,0.03);
+    background: rgba(255,255,255,0.04);
 }}
 
 /* ── Scrollbar ──────────────────────────────────────────────────────── */
@@ -128,12 +133,12 @@ QScrollBar:vertical {{
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
-    background: rgba(0,0,0,0.15);
+    background: rgba(255,255,255,0.15);
     border-radius: 3px;
     min-height: 40px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: rgba(0,0,0,0.25);
+    background: rgba(255,255,255,0.25);
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
@@ -145,7 +150,7 @@ QGroupBox {{
     color: {TEXT};
     border: none;
     background: {SIDEBAR_SECTION};
-    border-radius: 12px;
+    border-radius: 10px;
     margin-top: 10px;
     padding: 20px 16px 14px 16px;
     font-size: 12px;
@@ -164,7 +169,7 @@ QPushButton {{
     background: {BG_SURFACE};
     color: {TEXT};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 8px 20px;
     font-weight: 500;
 }}
@@ -172,7 +177,7 @@ QPushButton:hover {{
     background: {BG_HOVER};
 }}
 QPushButton:pressed {{
-    background: rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.08);
 }}
 QPushButton#runBtn {{
     background: {ACCENT};
@@ -181,22 +186,41 @@ QPushButton#runBtn {{
     font-weight: 600;
     font-size: 15px;
     padding: 14px 32px;
-    border-radius: 12px;
+    border-radius: 8px;
     letter-spacing: 0.3px;
 }}
 QPushButton#runBtn:hover {{
     background: {ACCENT_HOVER};
 }}
 QPushButton#runBtn:pressed {{
-    background: #0062cc;
+    background: #1e53e5;
+}}
+
+/* ── Line edit (search box etc.) ───────────────────────────────────── */
+QLineEdit {{
+    background: {BG_INPUT};
+    color: {TEXT};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    selection-background-color: {ACCENT};
+    selection-color: #fff;
+}}
+QLineEdit:hover {{
+    border-color: rgba(255,255,255,0.14);
+}}
+QLineEdit:focus {{
+    border-color: {ACCENT};
+    background: {BG_INPUT};
 }}
 
 /* ── Combo box ──────────────────────────────────────────────────────── */
 QComboBox {{
-    background: {BG_SURFACE};
+    background: {BG_INPUT};
     color: {TEXT};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 8px 16px;
     font-size: 14px;
     min-width: 100px;
@@ -210,8 +234,8 @@ QComboBox::drop-down {{
 }}
 QComboBox QAbstractItemView {{
     background: {BG_SURFACE};
-    border: 1px solid rgba(0,0,0,0.1);
-    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
     padding: 6px;
     selection-background-color: {ACCENT};
     selection-color: #fff;
@@ -220,7 +244,7 @@ QComboBox QAbstractItemView {{
 
 /* ── Slider ─────────────────────────────────────────────────────────── */
 QSlider::groove:horizontal {{
-    background: rgba(0,0,0,0.1);
+    background: rgba(255,255,255,0.15);
     height: 4px;
     border-radius: 2px;
 }}
@@ -230,7 +254,7 @@ QSlider::handle:horizontal {{
     height: 18px;
     margin: -7px 0;
     border-radius: 9px;
-    border: 2px solid #fff;
+    border: 2px solid {BG_WINDOW};
 }}
 QSlider::handle:horizontal:hover {{
     background: {ACCENT_HOVER};
@@ -239,10 +263,10 @@ QSlider::handle:horizontal:hover {{
 
 /* ── Spin box ───────────────────────────────────────────────────────── */
 QSpinBox, QDoubleSpinBox {{
-    background: {BG_SURFACE};
+    background: {BG_INPUT};
     color: {TEXT};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 4px 30px 4px 10px;
     font-size: 13px;
 }}
@@ -251,7 +275,7 @@ QSpinBox:hover, QDoubleSpinBox:hover {{
 }}
 QSpinBox:focus, QDoubleSpinBox:focus {{
     border-color: {ACCENT};
-    background: #fff;
+    background: {BG_INPUT};
 }}
 /* Qt6/Windows 11 默认把 up/down 按钮左右并排,箭头小且难分辨;
    这里强制上下堆叠并画清晰三角箭头。 */
@@ -261,14 +285,14 @@ QSpinBox::up-button, QDoubleSpinBox::up-button {{
     width: 28px;
     border-left: 1px solid {BORDER};
     border-bottom: 1px solid {BORDER};
-    border-top-right-radius: 8px;
+    border-top-right-radius: 6px;
     background: {BG_INPUT};
 }}
 QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover {{
     background: {BG_HOVER};
 }}
 QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed {{
-    background: rgba(0,113,227,0.15);
+    background: rgba(41,98,255,0.20);
 }}
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
     width: 0; height: 0;
@@ -282,14 +306,14 @@ QSpinBox::down-button, QDoubleSpinBox::down-button {{
     subcontrol-position: bottom right;
     width: 28px;
     border-left: 1px solid {BORDER};
-    border-bottom-right-radius: 8px;
+    border-bottom-right-radius: 6px;
     background: {BG_INPUT};
 }}
 QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
     background: {BG_HOVER};
 }}
 QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {{
-    background: rgba(0,113,227,0.15);
+    background: rgba(41,98,255,0.20);
 }}
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
     width: 0; height: 0;
@@ -310,7 +334,7 @@ QCheckBox::indicator {{
     height: 20px;
     border: 2px solid {BORDER};
     border-radius: 5px;
-    background: {BG_SURFACE};
+    background: {BG_INPUT};
 }}
 QCheckBox::indicator:checked {{
     background: {ACCENT};
@@ -322,7 +346,7 @@ QCheckBox::indicator:hover {{
 
 /* ── Progress bar ───────────────────────────────────────────────────── */
 QProgressBar {{
-    background: rgba(0,0,0,0.06);
+    background: rgba(255,255,255,0.08);
     border: none;
     border-radius: 3px;
     height: 4px;
@@ -335,15 +359,15 @@ QProgressBar::chunk {{
 
 /* ── Splitter ───────────────────────────────────────────────────────── */
 QSplitter::handle {{
-    background: rgba(0,0,0,0.06);
+    background: rgba(255,255,255,0.08);
     width: 1px;
 }}
 
 /* ── Status bar ─────────────────────────────────────────────────────── */
 QStatusBar {{
-    background: rgba(255,255,255,0.85);
+    background: rgba(30,34,45,0.95);
     color: {TEXT_SEC};
-    border-top: 1px solid rgba(0,0,0,0.06);
+    border-top: 1px solid rgba(255,255,255,0.06);
     font-size: 12px;
     padding: 4px 16px;
 }}
@@ -364,11 +388,26 @@ QLabel#sectionTitle {{
     padding: 8px 0 4px 0;
 }}
 
+/* ── Empty state (results panel) ────────────────────────────────────── */
+QLabel#emptyStateIcon {{
+    color: {TEXT_DIM};
+    font-size: 36px;
+}}
+QLabel#emptyStateTitle {{
+    color: {TEXT_SEC};
+    font-size: 14px;
+    font-weight: 600;
+}}
+QLabel#emptyStateHint {{
+    color: {TEXT_DIM};
+    font-size: 12px;
+}}
+
 /* ── Tool tip ───────────────────────────────────────────────────────── */
 QToolTip {{
-    background: rgba(30,30,32,0.95);
-    color: #fff;
-    border: none;
+    background: rgba(30,34,45,0.98);
+    color: {TEXT};
+    border: 1px solid rgba(255,255,255,0.1);
     border-radius: 6px;
     padding: 8px 14px;
     font-size: 12px;

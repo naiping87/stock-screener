@@ -1,13 +1,12 @@
 """Custom QTableView with sorting, conditional formatting, and export."""
 
-from PyQt6.QtWidgets import QTableView, QHeaderView, QMenu, QFileDialog
-from PyQt6.QtCore import Qt, QSortFilterProxyModel, pyqtSignal
-from PyQt6.QtGui import QAction, QKeySequence
 import pandas as pd
+from PyQt6.QtCore import QSortFilterProxyModel, Qt, pyqtSignal
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QFileDialog, QHeaderView, QMenu, QTableView
 
+from .styles import BLUE, GREEN, ORANGE, RED, TEXT_DIM
 from .table_model import PandasModel
-from .styles import GREEN, RED, ORANGE, BLUE, TEXT_DIM
-
 
 # ── Default colour maps for common columns ───────────────────────────────
 
@@ -63,13 +62,21 @@ DEFAULT_COLOUR_MAP = {
 
 
 class SortFilterProxy(QSortFilterProxyModel):
-    """Minimal proxy to enable sorting on the PandasModel."""
+    """Minimal proxy to enable sorting + filtering on the PandasModel.
+
+    Sorting compares the raw values (Qt.UserRole) so formatted display
+    strings ("1.2M", "12.30%") never break numeric ordering.
+    """
     def lessThan(self, left, right):
-        lv = left.data(Qt.ItemDataRole.DisplayRole)
-        rv = right.data(Qt.ItemDataRole.DisplayRole)
+        lv = left.data(Qt.ItemDataRole.UserRole)
+        rv = right.data(Qt.ItemDataRole.UserRole)
+        if lv is None:
+            return True
+        if rv is None:
+            return False
         try:
             return float(lv) < float(rv)
-        except (ValueError, TypeError):
+        except (TypeError, ValueError):
             return str(lv) < str(rv)
 
 
@@ -77,12 +84,16 @@ class TableView(QTableView):
     """Scrollable, sortable table with conditional colours + export."""
 
     export_requested = pyqtSignal(str)  # tab_name
+    row_activated = pyqtSignal(str)     # ticker (double-click -> drill-down)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._model = PandasModel()
         self._proxy = SortFilterProxy()
         self._proxy.setSourceModel(self._model)
+        # Search across every column (set via set_filter below).
+        self._proxy.setFilterKeyColumn(-1)
+        self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.setModel(self._proxy)
 
         self.setSortingEnabled(True)
@@ -99,6 +110,16 @@ class TableView(QTableView):
 
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)
+        self.doubleClicked.connect(self._on_double_clicked)
+
+    def _on_double_clicked(self, index):
+        """Emit the raw ticker (with market suffix) for chart drill-down."""
+        src = self._proxy.mapToSource(index)
+        df = self._model.dataframe()
+        if src.isValid() and "ticker" in df.columns and 0 <= src.row() < len(df):
+            tkr = df.iloc[src.row()]["ticker"]
+            if tkr is not None:
+                self.row_activated.emit(str(tkr))
 
     def set_dataframe(self, df: pd.DataFrame):
         """Set the data and apply default colour maps."""
@@ -106,6 +127,10 @@ class TableView(QTableView):
         self._proxy.setSourceModel(model)
         self._model = model
         self._auto_size_cols()
+
+    def set_filter(self, text: str):
+        """Filter rows by text across all columns (empty string = clear)."""
+        self._proxy.setFilterFixedString(text.strip())
 
     def _auto_size_cols(self):
         header = self.horizontalHeader()
@@ -148,4 +173,5 @@ class TableView(QTableView):
         path, _ = QFileDialog.getSaveFileName(
             self, "Export CSV", "", "CSV Files (*.csv);;All Files (*)")
         if path:
-            self._model.dataframe().to_csv(path, index=False, encoding="utf-8")
+            # utf-8-sig: Excel 打开中文不乱码
+            self._model.dataframe().to_csv(path, index=False, encoding="utf-8-sig")

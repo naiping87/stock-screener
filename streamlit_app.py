@@ -2,13 +2,12 @@
 Bursa Malaysia Stock Screener — Streamlit Web App.
 Access from any device: mobile, tablet, desktop.
 """
-import sys
-import os
-import time
 import hashlib
+import os
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
@@ -18,21 +17,37 @@ from st_aggrid.shared import JsCode
 # Ensure the project root is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from markets import get as get_market
+from markets import list_all as list_markets
 from screener import (
-    load_tickers, download_data,
-    run_ema_screener, run_ema_hourly_screener, run_divergence_screener,
-    run_weekly_kdj_screener, run_daily_kdj_screener, run_scoring_screener, backtest_scoring,
-    run_ema_weekly_screener,
-    EMA_PERIODS, DIVERGENCE_THRESHOLD, MIN_COMPRESSION_BARS,
-    KDJ_PERIOD, KDJ_SIGNAL, DIVERGENCE_LOOKBACK,
-    VOL_MIN, VOL_MIN_HOURLY, WEEKLY_VOL_MIN, DAILY_VOL_MIN, DAILY_VOL_RATIO,
-    SCORE_TREND_PERIODS, SCORE_TREND_THRESHOLD, SCORE_EMA200_SLOPE_BARS,
-    SCORE_VOL_PERIOD, SCORE_VOL_THRESHOLD, SCORE_VOL_MA_BARS, SCORE_VOL_MA_THRESHOLD,
+    DAILY_VOL_MIN,
+    DAILY_VOL_RATIO,
+    DIVERGENCE_LOOKBACK,
+    DIVERGENCE_THRESHOLD,
+    KDJ_PERIOD,
+    KDJ_SIGNAL,
+    MIN_COMPRESSION_BARS,
+    SCORE_EMA200_SLOPE_BARS,
     SCORE_TOP_N,
-    TICKERS_FILE,
+    SCORE_TREND_THRESHOLD,
+    SCORE_VOL_MA_BARS,
+    SCORE_VOL_MA_THRESHOLD,
+    SCORE_VOL_PERIOD,
+    SCORE_VOL_THRESHOLD,
+    VOL_MIN,
+    VOL_MIN_HOURLY,
+    WEEKLY_VOL_MIN,
+    backtest_scoring,
+    download_data,
+    load_tickers,
+    run_daily_kdj_screener,
+    run_divergence_screener,
+    run_ema_hourly_screener,
+    run_ema_screener,
+    run_ema_weekly_screener,
+    run_scoring_screener,
+    run_weekly_kdj_screener,
 )
-
-from markets import get as get_market, list_all as list_markets
 
 # ── Defaults for reset ─────────────────────────────────────────────────────
 DEFAULTS = {
@@ -561,6 +576,9 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
+# ── Alert state file (shared with the desktop alert worker) ───────────────
+ALERT_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alert_state.json")
+
 # Load alert_paused from alert_state.json (only on first run, before widget init)
 if "_alert_pause_loaded" not in st.session_state:
     st.session_state._alert_pause_loaded = True
@@ -656,7 +674,6 @@ except Exception:
     pass  # never let heartbeat failure break the app
 
 # ── Alert pause helper ─────────────────────────────────────────────────────
-ALERT_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alert_state.json")
 
 def _update_alert_pause(paused):
     """Write the paused flag to alert_state.json so alert_monitor respects it."""
@@ -1183,7 +1200,7 @@ def get_data():
 
 
 # ── Run screeners (auto if cached data exists) ──────────────────────────────
-import screener as scr
+import screener as scr  # noqa: E402  (module-level import after st() calls)
 
 # Override volume thresholds
 scr.VOL_MIN = vol_daily
@@ -1560,7 +1577,7 @@ if st.session_state.run_done:
             bt_run = st.button("⚡ Run Backtest", type="secondary", use_container_width=True)
 
         if bt_run:
-            with st.spinner(f"Backtesting over historical dates..."):
+            with st.spinner("Backtesting over historical dates..."):
                 bt_results = backtest_scoring(
                     data, ticker_names,
                     trend_periods=stp, trend_threshold=score_trend_div,
@@ -1583,7 +1600,7 @@ if st.session_state.run_done:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="app-footer">Data: Yahoo Finance · 数据仅供参考,不构成投资建议</div>', unsafe_allow_html=True)
+    st.markdown('<div class="app-footer">Data: Yahoo Finance · For reference only, not investment advice</div>', unsafe_allow_html=True)
 
 else:
     # Idle state
@@ -1598,4 +1615,4 @@ else:
         </div>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown('<div class="app-footer">Data: Yahoo Finance · 数据仅供参考,不构成投资建议</div>', unsafe_allow_html=True)
+    st.markdown('<div class="app-footer">Data: Yahoo Finance · For reference only, not investment advice</div>', unsafe_allow_html=True)

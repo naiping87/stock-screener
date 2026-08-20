@@ -1,9 +1,15 @@
 """Background worker for fetching ROE + Sector + Industry from Yahoo Finance."""
 
-from PyQt6.QtCore import QThread, pyqtSignal
-import requests
+import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
+from PyQt6.QtCore import QThread, pyqtSignal
+
+from screener import DownloadCancelled
+
+logger = logging.getLogger(__name__)
 
 YAHOO_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 MODULES = "financialData,assetProfile"
@@ -57,7 +63,7 @@ def _fetch_one_fallback(tkr):
         return None
 
 
-def fetch_meta_batch(tickers, workers=20):
+def fetch_meta_batch(tickers, workers=20, cancel_event=None):
     """Fetch ROE + sector + industry for a set of tickers. Returns {tkr: {roe, sector, industry}}."""
     if not tickers:
         return {}
@@ -73,8 +79,8 @@ def fetch_meta_batch(tickers, workers=20):
         if crumb_resp.status_code == 200:
             crumb = crumb_resp.text.strip()
             cookies = master.cookies.get_dict()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("crumb fetch failed: %s", e)
 
     results = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -84,13 +90,15 @@ def fetch_meta_batch(tickers, workers=20):
             futs = {pool.submit(_fetch_one_fallback, tkr): tkr for tkr in tickers}
 
         for f in as_completed(futs):
+            if cancel_event is not None and cancel_event.is_set():
+                raise DownloadCancelled()
             tkr = futs[f]
             try:
                 meta = f.result()
                 if meta is not None:
                     results[tkr] = meta
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("meta fetch failed for %s: %s", tkr, e)
 
     return results
 
@@ -100,16 +108,23 @@ class MetaWorker(QThread):
     progress = pyqtSignal(int, str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
+    cancelled = pyqtSignal()
 
     def __init__(self, tickers, parent=None):
         super().__init__(parent)
         self.tickers = list(tickers)
+        self._cancel_event = threading.Event()
+
+    def cancel(self):
+        self._cancel_event.set()
 
     def run(self):
         try:
             self.progress.emit(90, f"Fetching ROE + sector for {len(self.tickers)} stocks...")
-            meta = fetch_meta_batch(self.tickers)
+            meta = fetch_meta_batch(self.tickers, cancel_event=self._cancel_event)
             self.progress.emit(100, f"Loaded meta for {len(meta)} stocks")
             self.finished.emit(meta)
+        except DownloadCancelled:
+            self.cancelled.emit()
         except Exception as e:
             self.error.emit(str(e))

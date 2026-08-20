@@ -1,26 +1,32 @@
 """Main window — menu, status bar, sidebar + results tab layout."""
 
-import os, sys
+import logging
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from PyQt6.QtCore import QSettings, Qt, QTimer
+from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QSplitter, QVBoxLayout, QHBoxLayout,
-    QTabWidget, QMenuBar, QMenu, QStatusBar, QLabel, QPushButton,
-    QMessageBox, QProgressBar, QApplication,
+    QLabel,
+    QMainWindow,
+    QProgressBar,
+    QPushButton,
+    QSplitter,
+    QStatusBar,
 )
-from PyQt6.QtCore import Qt, QTimer, QSettings
-from PyQt6.QtGui import QAction, QKeySequence, QIcon
 
-from .styles import (
-    BG_DARK, BG_CARD, TEXT_PRIMARY, TEXT_SECONDARY,
-    GREEN, RED, ACCENT, STYLESHEET,
-)
-from .sidebar import Sidebar
-from .results_panel import ResultsPanel
-from .system_tray import SystemTray
+from workers.alert_worker import AlertWorker
 from workers.download_worker import DownloadWorker
-from workers.screener_worker import ScreenerWorker
 from workers.meta_worker import MetaWorker
+from workers.screener_worker import ScreenerWorker
+
+from .results_panel import ResultsPanel
+from .sidebar import Sidebar
+from .system_tray import SystemTray
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -33,6 +39,9 @@ class MainWindow(QMainWindow):
         self.ticker_names = {}
         self._result_dfs = {}
         self._meta_cache = {}
+        self._busy = False            # a download / screener run is in flight
+        self._last_market_code = None
+        self._retry_cb = None         # callback for the status-bar Retry button
 
         settings = QSettings("StockScreenerPro", "MainWindow")
         geo = settings.value("geometry")
@@ -80,6 +89,26 @@ class MainWindow(QMainWindow):
         self.progress_bar.hide()
         self.statusbar.addPermanentWidget(self.progress_bar)
 
+        # Cancel button — visible only while a worker is running
+        self.cancel_btn = QPushButton("✕ Cancel")
+        self.cancel_btn.setStyleSheet(
+            "QPushButton { background: transparent; color: #f23645; border: 1px solid #f23645;"
+            " border-radius: 6px; padding: 4px 14px; font-size: 12px; }"
+            "QPushButton:hover { background: rgba(242,54,69,0.12); }")
+        self.cancel_btn.clicked.connect(self._on_cancel)
+        self.cancel_btn.hide()
+        self.statusbar.addPermanentWidget(self.cancel_btn)
+
+        # Retry button — visible after a failed download / screener run
+        self.retry_btn = QPushButton("↻ Retry")
+        self.retry_btn.setStyleSheet(
+            "QPushButton { background: transparent; color: #f7c600; border: 1px solid #f7c600;"
+            " border-radius: 6px; padding: 4px 14px; font-size: 12px; }"
+            "QPushButton:hover { background: rgba(247,198,0,0.12); }")
+        self.retry_btn.clicked.connect(self._on_retry)
+        self.retry_btn.hide()
+        self.statusbar.addPermanentWidget(self.retry_btn)
+
     def _setup_central(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -97,6 +126,12 @@ class MainWindow(QMainWindow):
         self.sidebar.run_clicked.connect(self._on_run_screeners)
         self.sidebar.market_changed.connect(self._on_market_changed)
         self.sidebar.sector_combo.currentIndexChanged.connect(self._on_sector_changed)
+        self.results_panel.ticker_activated.connect(self._open_chart)
+
+        # Alert toggle — persisted across launches
+        settings = QSettings("StockScreenerPro", "Alerts")
+        self.sidebar.alerts_checkbox.setChecked(settings.value("enabled", True, type=bool))
+        self.sidebar.alerts_checkbox.stateChanged.connect(self._on_alerts_toggled)
 
         # Auto-refresh timer
         self._refresh_timer = QTimer()
@@ -113,38 +148,94 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
+    # ── Busy state / feedback ─────────────────────────────────────────────
+
+    def _set_busy(self, busy: bool, text: str = ""):
+        """Lock the controls while a worker runs and reflect it on the Run button."""
+        self._busy = busy
+        self.sidebar.run_btn.setEnabled(not busy)
+        self.sidebar.reset_btn.setEnabled(not busy)
+        self.sidebar.market_combo.setEnabled(not busy)
+        self.cancel_btn.setVisible(busy)
+        if busy:
+            self.sidebar.run_btn.setText("⏳ Running…")
+            if text:
+                self.status_label.setText(text)
+        else:
+            self.sidebar.run_btn.setText("▶  Run Screeners")
+            self._hide_error()
+
+    def _show_error(self, msg: str, retry_cb=None):
+        """Non-modal error: red status text + optional Retry button."""
+        logger.error("Operation failed: %s", msg)
+        self.status_label.setText("⚠ " + msg)
+        self.status_label.setStyleSheet("color:#f23645;")
+        self._retry_cb = retry_cb
+        self.retry_btn.setVisible(retry_cb is not None)
+
+    def _hide_error(self):
+        self.status_label.setStyleSheet("")
+        self._retry_cb = None
+        self.retry_btn.hide()
+
+    def _on_cancel(self):
+        for w in (getattr(self, "worker", None),
+                  getattr(self, "screener_worker", None),
+                  getattr(self, "meta_worker", None)):
+            if w is not None and w.isRunning():
+                w.cancel()
+                self.status_label.setText("Cancelling…")
+                return
+        self._set_busy(False)
+
+    def _on_retry(self):
+        cb = self._retry_cb
+        self._hide_error()
+        if cb:
+            cb()
+
     # ── Slots ─────────────────────────────────────────────────────────────
 
     def _on_run_screeners(self):
+        if self._busy:
+            return
         if not self.data:
             params = self.sidebar.get_params()
             self._start_download(params["market_code"])
         else:
-            self._run_screeners()
+            self._start_screeners()
 
     def _start_download(self, market_code, force_refresh=False):
-        self.status_label.setText("Downloading " + market_code.upper() + " market data...")
+        if self._busy:
+            return
+        self._last_market_code = market_code
+        self._set_busy(True, "Downloading " + market_code.upper() + " market data...")
         self.results_panel.set_all_empty()
         self.worker = DownloadWorker(market_code, force_refresh=force_refresh)
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self._on_data_loaded)
         self.worker.error.connect(self._on_download_error)
+        self.worker.cancelled.connect(self._on_worker_cancelled)
         self.worker.start()
 
     def _on_data_loaded(self, data, ticker_names):
         self.data = data
         self.ticker_names = ticker_names
         self.status_label.setText("Loaded " + str(len(data)) + " tickers - running screeners...")
-        self._run_screeners()
+        # Internal chain: busy flag stays set, so bypass the guard.
+        self._start_screeners()
 
-    def _run_screeners(self):
+    def _start_screeners(self):
+        """Start the screener pipeline (busy is already set by the caller)."""
         params = self.sidebar.get_params()
         self._result_dfs = {}
+        self._set_busy(True, "Running screeners...")
         self.screener_worker = ScreenerWorker(self.data, self.ticker_names, params)
         self.screener_worker.progress.connect(self.update_progress)
         self.screener_worker.result.connect(self._store_result)
         self.screener_worker.finished.connect(self._on_screeners_done)
         self.screener_worker.error.connect(self._on_screener_error)
+        self.screener_worker.cancelled.connect(self._on_worker_cancelled)
         self.screener_worker.start()
 
     def _store_result(self, tab_key, df):
@@ -169,7 +260,9 @@ class MainWindow(QMainWindow):
             self.meta_worker = MetaWorker(new_tickers)
             self.meta_worker.progress.connect(self.update_progress)
             self.meta_worker.finished.connect(self._on_meta_loaded)
-            self.meta_worker.error.connect(lambda e: self.status_label.setText("Meta error: " + e))
+            self.meta_worker.error.connect(
+                lambda e: self._show_error("Meta data failed: " + e, self._start_screeners))
+            self.meta_worker.cancelled.connect(self._on_worker_cancelled)
             self.meta_worker.start()
         else:
             self._finalize_results()
@@ -181,7 +274,7 @@ class MainWindow(QMainWindow):
     def _finalize_results(self):
         # Attach ROE + sector to each result DataFrame (in-place, fast)
         all_sectors = set()
-        for tab_key, df in self._result_dfs.items():
+        for _tab_key, df in self._result_dfs.items():
             if df is None or df.empty:
                 continue
             if "ticker" in df.columns:
@@ -195,8 +288,17 @@ class MainWindow(QMainWindow):
         self.sidebar.set_sectors(list(all_sectors))
         # Show all tabs
         self._apply_sector_filter()
+        self.status_label.setText("Ready")
+        self.update_progress(100, "Ready")
+        self._set_busy(False)
+        self._maybe_run_alerts()
 
     def _apply_sector_filter(self):
+        """Re-render the result tables under the current sector filter.
+
+        Pure filtering — must NOT touch busy/status state, because it is also
+        invoked live from the sector combo while a run is in flight.
+        """
         sector = self.sidebar.sector_combo.currentData()
         for tab_key, df in self._result_dfs.items():
             if df is None or df.empty:
@@ -208,29 +310,103 @@ class MainWindow(QMainWindow):
             else:
                 self.results_panel.set_results(tab_key, df)
 
-        self.status_label.setText("Ready")
-        self.update_progress(100, "Ready")
-
     def _on_sector_changed(self):
         self._apply_sector_filter()
 
+    # ── Weekly KDJ alerts ─────────────────────────────────────────────────
+
+    def _on_alerts_toggled(self, state):
+        QSettings("StockScreenerPro", "Alerts").setValue("enabled", bool(state))
+
+    def _maybe_run_alerts(self):
+        """After a completed run, check for fresh weekly KDJ crosses in the
+        background and notify via the system tray (never blocks the UI)."""
+        if not self.sidebar.alerts_checkbox.isChecked():
+            return
+        if not self.data:
+            return
+        if getattr(self, "alert_worker", None) is not None and self.alert_worker.isRunning():
+            return
+        vol_min = self.sidebar.vol_weekly.row_widget.value()
+        self.alert_worker = AlertWorker(self.data, self.ticker_names, vol_min=vol_min)
+        self.alert_worker.finished.connect(self._on_alerts_ready)
+        self.alert_worker.error.connect(self._on_alerts_error)
+        self.alert_worker.start()
+
+    def _on_alerts_ready(self, alerts):
+        n = len(alerts)
+        if n == 0:
+            return
+        logger.info("New weekly KDJ alerts: %d", n)
+        if n <= 3:
+            for r in alerts:
+                name = r.get("name", "")
+                tkr = r.get("ticker", "")
+                price = r.get("close", "?")
+                k, d, j = r.get("kdj_k", "?"), r.get("kdj_d", "?"), r.get("kdj_j", "?")
+                self.tray.notify(f"KDJ Cross: {name}",
+                                 f"{tkr} | Price: {price} | J={j} K={k} D={d} | Weekly KDJ crossed")
+        else:
+            self.tray.notify("🔔 Stock Screener Alerts",
+                             f"{n} stocks with new weekly KDJ golden cross detected")
+        self.tray.set_alert_count(n)
+        self.status_label.setText(f"🔔 {n} new weekly KDJ alert{'s' if n > 1 else ''}")
+
+        def _reset_status():
+            if not self._busy:
+                self.status_label.setText("Ready")
+        QTimer.singleShot(6000, _reset_status)
+
+    def _on_alerts_error(self, msg):
+        logger.warning("Alerts check failed: %s", msg)
+        self.status_label.setText("⚠ Alerts check failed")
+
+        def _reset_status():
+            if not self._busy:
+                self.status_label.setText("Ready")
+        QTimer.singleShot(6000, _reset_status)
+
+    # ── Chart drill-down ──────────────────────────────────────────────────
+
+    def _open_chart(self, ticker):
+        d = self.data.get(ticker)
+        name = self.ticker_names.get(ticker, "")
+        if d is None:
+            self.status_label.setText(f"⚠ No chart data for {ticker}")
+            return
+        try:
+            from ui.chart_view import ChartDialog
+            dlg = ChartDialog(ticker, name, d, self)
+            dlg.exec()
+        except Exception as e:
+            logger.exception("Chart dialog failed for %s", ticker)
+            self._show_error("Chart failed: " + str(e))
+
+    def _on_worker_cancelled(self):
+        self.status_label.setText("Cancelled")
+        self.update_progress(100, "Cancelled")
+        self._set_busy(False)
+
     def _on_screener_error(self, msg):
-        self.status_label.setText("Error: " + msg)
-        QMessageBox.warning(self, "Screener Error",
-                           "Screener failed:\n" + msg)
+        self._show_error("Screener failed: " + msg, self._start_screeners)
 
     def _on_download_error(self, msg):
-        self.status_label.setText("Error: " + msg)
-        QMessageBox.warning(self, "Download Failed",
-                           "Could not download data:\n" + msg)
+        def _retry_download():
+            code = self._last_market_code or self.sidebar.get_params()["market_code"]
+            self._start_download(code, force_refresh=False)
+        self._show_error("Download failed: " + msg, _retry_download)
 
     def _on_market_changed(self, market_code):
+        if self._busy:
+            return
         self.status_label.setText(
             "Market changed to " + market_code + " - re-downloading...")
         self.results_panel.set_all_empty()
         self._start_download(market_code)
 
     def _on_refresh(self):
+        if self._busy:
+            return
         params = self.sidebar.get_params()
         # Refresh Data / F5 / auto-refresh must always fetch fresh data,
         # never serve the day-cache.
@@ -249,6 +425,7 @@ class MainWindow(QMainWindow):
             self._refresh_timer.stop()
 
     def _on_about(self):
+        from PyQt6.QtWidgets import QMessageBox
         QMessageBox.about(
             self, "About Stock Screener Pro",
             "<h3>Stock Screener Pro v1.0.0</h3>"
@@ -273,4 +450,3 @@ class MainWindow(QMainWindow):
             self.progress_bar.setValue(value)
         if text:
             self.status_label.setText(text)
-

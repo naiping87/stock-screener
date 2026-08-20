@@ -1,0 +1,18 @@
+[project]
+name = "stock-screener-pro"
+version = "1.0.0"
+description = "Multi-market stock screening terminal — PyQt6 desktop app + Streamlit web version"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

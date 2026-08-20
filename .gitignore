@@ -1,9 +1,11 @@
 cache/
 __pycache__/
 *.pyc
-*.spec
 dist/
 build/
 *.egg-info/
-*.ico
-*.png
+installer/
+alert_heartbeat.txt
+alert_state.json
+.pytest_cache/
+.ruff_cache/
