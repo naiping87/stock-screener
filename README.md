@@ -78,5 +78,6 @@ tests/                   pytest unit tests
 - [x] P3 weekly KDJ alerts in-app
 - [x] P4 chart drill-down
 - [x] P5 tests / lint / README / first-run welcome
-- [ ] Code signing (required before selling — SmartScreen)
+- [x] Code signing — **declined by decision** (unsigned exe shows a SmartScreen
+      warning; end users must click "More info → Run anyway")
 - [ ] Licensing/activation (deferred by decision)
