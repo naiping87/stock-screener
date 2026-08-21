@@ -1028,43 +1028,47 @@ def _strip_kl(tkr):
     return tkr.replace(".KL", "") if isinstance(tkr, str) else tkr
 
 
-def _check_new_listings(market_code, ticker_names, base_dir=None):
-    """New-stock check for the 🆕 New Listings board (web version).
+def _check_new_picks(market_code, selected_tickers, base_dir=None):
+    """First-time-pick check for the 🆕 New Picks board (web version).
 
-    File-backed (same logic as the desktop app); falls back to per-session
-    in-memory state when the filesystem is read-only (e.g. Streamlit Cloud).
-    Returns (new_codes, entries).
+    `selected_tickers` = the full tickers that passed the current screener
+    conditions this run. File-backed (same logic as the desktop app); falls
+    back to per-session in-memory state when the filesystem is read-only
+    (e.g. Streamlit Cloud). Returns (new_codes, entries).
     """
     from datetime import datetime
 
     from tools.new_stock_monitor import AnnouncementBoard, normalize_code, run_once
 
-    ticker_map = {normalize_code(t): t for t in ticker_names if normalize_code(t)}
+    ticker_map = {normalize_code(t): t for t in selected_tickers
+                  if normalize_code(t) is not None}
     app_dir = base_dir or os.path.dirname(os.path.abspath(__file__))
-    state_file = os.path.join(app_dir, "new_listings_state.json")
-    board_file = os.path.join(app_dir, "new_listings_board.json")
+    state_file = os.path.join(app_dir, "picks_state.json")
+    board_file = os.path.join(app_dir, "picks_board.json")
     try:
         new, ok = run_once(lambda: set(ticker_map.keys()), state_file, market=market_code)
         board = AnnouncementBoard(board_file)
         if ok and new:
+            run_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             board.publish([
                 {"code": c, "ticker": ticker_map.get(c, ""), "market": market_code,
-                 "first_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                 "matched": "", "first_seen": run_at}
                 for c in new
             ])
         return (new if ok else []), board.as_list()
     except OSError:
         # 只读文件系统 → 退化为会话级内存（刷新页面即重置）
-        key = f"_nl_{market_code}"
+        key = f"_np_{market_code}"
         state = st.session_state.get(key, {"ever": [], "last": []})
         ever = set(state.get("ever", []))
         current = set(ticker_map.keys())
         new = sorted(current - ever) if (ever or state.get("last")) else []
         st.session_state[key] = {"ever": sorted(ever | current), "last": sorted(current)}
-        entries = st.session_state.setdefault("_nl_entries", [])
+        entries = st.session_state.setdefault("_np_entries", [])
         if new:
             run_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entries += [{"code": c, "market": market_code, "first_seen": run_at} for c in new]
+            entries += [{"code": c, "market": market_code, "matched": "",
+                         "first_seen": run_at} for c in new]
         return new, entries
 
 
@@ -1485,20 +1489,27 @@ if st.session_state.run_done:
     with r2c:
         st.markdown(_metric_card("metric-accent-score", "tag-score", "Scoring Top", len(results5), "score"), unsafe_allow_html=True)
 
-    # ── 🆕 New Listings 公告栏 ────────────────────────────────────────────
-    nl_new, nl_entries = _check_new_listings(selected_code, ticker_names)
-    with st.expander(f"🆕 New Listings — {len(nl_entries)} accumulated", expanded=True):
-        if nl_new:
-            st.success(f"🆕 {len(nl_new)} new stock(s) detected: {', '.join(nl_new)}")
-        if nl_entries:
-            nl_df = pd.DataFrame(nl_entries)[["code", "market", "first_seen"]]
-            nl_df = nl_df.rename(columns={"code": "Code", "market": "Market", "first_seen": "First Seen"})
-            st.dataframe(nl_df, use_container_width=True, hide_index=True)
-            st.download_button("⬇️ Export CSV", nl_df.to_csv(index=False),
-                               file_name="new_listings.csv", mime="text/csv")
+    # ── 🆕 New Picks 公告栏（第一次被选股条件选出的股票）──────────────────
+    _pick_tickers = set()
+    for _r in (results1, results2, results_weekly_ema, results3, results4, results_daily, results5):
+        if _r:
+            for _item in _r:
+                if isinstance(_item, dict) and _item.get("ticker"):
+                    _pick_tickers.add(_item["ticker"])
+    np_new, np_entries = _check_new_picks(selected_code, _pick_tickers)
+    with st.expander(f"🆕 New Picks — {len(np_entries)} accumulated", expanded=True):
+        if np_new:
+            st.success(f"🆕 {len(np_new)} stock(s) selected for the first time: {', '.join(np_new)}")
+        if np_entries:
+            np_df = pd.DataFrame(np_entries)[["code", "market", "matched", "first_seen"]]
+            np_df = np_df.rename(columns={
+                "code": "Code", "market": "Market", "matched": "Matched", "first_seen": "First Seen"})
+            st.dataframe(np_df, use_container_width=True, hide_index=True)
+            st.download_button("⬇️ Export CSV", np_df.to_csv(index=False),
+                               file_name="new_picks.csv", mime="text/csv")
         else:
-            st.caption("No new listings yet — the baseline is set on the first run; "
-                       "any stock that appears afterwards will be listed here.")
+            st.caption("No new picks yet — stocks that pass the screeners for the "
+                       "first time will be listed here (baseline set on the first run).")
 
     # Detail tables
     tab_score, tab1, tab2, tab_weekly_ema, tab3, tab4, tab_daily, tab_bt = st.tabs([

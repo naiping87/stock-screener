@@ -43,10 +43,10 @@ def _make_empty_widget(title: str = "No results",
 
 # 各 tab 的空态文案
 _EMPTY_STATES = {
-    "new_listings": (
-        "No new listings yet",
-        "New stocks first appear here after a data refresh "
-        "(the baseline is set on the first run)",
+    "new_picks": (
+        "No new picks yet",
+        "Stocks that pass the screeners for the first time appear here — "
+        "the baseline is set on the first run after a data refresh",
     ),
 }
 
@@ -85,7 +85,7 @@ class ResultsPanel(QWidget):
             ("📆 Weekly KDJ", "weekly_kdj"),
             ("📊 Daily KDJ", "daily_kdj"),
             ("⭐ Scoring", "scoring"),
-            ("🆕 New Listings", "new_listings"),
+            ("🆕 New Picks", "new_picks"),
         ]
 
         for tab_label, tab_key in tab_specs:
@@ -122,25 +122,25 @@ class ResultsPanel(QWidget):
             self.tabs.widget(idx).setCurrentIndex(0)
             self.tabs.setTabText(idx, self._base_labels[tab_key])
 
-    def set_new_listings(self, df: pd.DataFrame):
-        """Update the 🆕 New Listings tab (not part of the screener pipeline)."""
-        if "new_listings" not in self.tables:
+    def set_new_picks(self, df: pd.DataFrame):
+        """Update the 🆕 New Picks tab (not part of the screener pipeline)."""
+        if "new_picks" not in self.tables:
             return
-        idx = self._tab_index["new_listings"]
-        base = self._base_labels["new_listings"]
+        idx = self._tab_index["new_picks"]
+        base = self._base_labels["new_picks"]
         if df is not None and not df.empty:
-            self.tables["new_listings"].set_dataframe(df)
+            self.tables["new_picks"].set_dataframe(df)
             self.tabs.widget(idx).setCurrentIndex(1)
             self.tabs.setTabText(idx, f"{base} ({len(df)})")
         else:
-            self.tables["new_listings"].set_dataframe(pd.DataFrame())
+            self.tables["new_picks"].set_dataframe(pd.DataFrame())
             self.tabs.widget(idx).setCurrentIndex(0)
             self.tabs.setTabText(idx, base)
 
     def set_all_empty(self):
-        """Clear screener tabs (e.g. after market switch); keep New Listings."""
+        """Clear screener tabs (e.g. after market switch); keep New Picks."""
         for key in self.tables:
-            if key == "new_listings":
+            if key == "new_picks":
                 continue
             self.set_results(key, pd.DataFrame())
 

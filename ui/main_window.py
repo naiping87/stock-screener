@@ -56,7 +56,7 @@ class MainWindow(QMainWindow):
         self._setup_statusbar()
         self._setup_central()
         self._setup_tray()
-        self._refresh_new_listings()
+        self._refresh_new_picks()
 
     def _setup_menu(self):
         menubar = self.menuBar()
@@ -297,7 +297,7 @@ class MainWindow(QMainWindow):
         self.update_progress(100, "Ready")
         self._set_busy(False)
         self._maybe_run_alerts()
-        self._check_new_listings()
+        self._check_new_picks()
 
     def _apply_sector_filter(self):
         """Re-render the result tables under the current sector filter.
@@ -372,75 +372,89 @@ class MainWindow(QMainWindow):
                 self.status_label.setText("Ready")
         QTimer.singleShot(6000, _reset_status)
 
-    # ── New listings (🆕 公告栏) ──────────────────────────────────────────
+    # ── New picks (🆕 第一次被选股条件选出的股票) ─────────────────────────
 
-    def _new_listings_paths(self):
+    def _new_picks_paths(self):
         """State + board files live next to the day-cache (APPDATA when bundled)."""
         base = cache_dir()
-        return (os.path.join(base, "seen_state.json"),
-                os.path.join(base, "announcements.json"))
+        return (os.path.join(base, "picks_state.json"),
+                os.path.join(base, "picks_board.json"))
 
-    def _refresh_new_listings(self):
-        """Re-render the 🆕 New Listings tab from the announcements file."""
+    def _refresh_new_picks(self):
+        """Re-render the 🆕 New Picks tab from the picks board file."""
         try:
-            _state_file, board_file = self._new_listings_paths()
+            _state_file, board_file = self._new_picks_paths()
             entries = AnnouncementBoard(board_file).as_list()
         except Exception as e:
-            logger.warning("New listings board read failed: %s", e)
+            logger.warning("New picks board read failed: %s", e)
             entries = []
         if not entries:
-            self.results_panel.set_new_listings(pd.DataFrame())
+            self.results_panel.set_new_picks(pd.DataFrame())
             return
         rows = [{
             "ticker": e.get("ticker", ""),
             "Code": e.get("code", ""),
             "Market": e.get("market", ""),
+            "Matched": e.get("matched", ""),
             "First Seen": e.get("first_seen", ""),
         } for e in entries]
-        self.results_panel.set_new_listings(pd.DataFrame(rows))
+        self.results_panel.set_new_picks(pd.DataFrame(rows))
 
-    def _check_new_listings(self):
-        """Compare the current ticker list against history; publish new ones.
+    def _check_new_picks(self):
+        """Detect stocks that pass the current screener conditions for the
+        FIRST time, and append them to the 🆕 New Picks board.
 
-        Runs after each completed data pipeline. First run sets the baseline
-        (no alerts); afterwards every stock that appears for the first time is
-        appended to the announcements board + tray notification.
+        Runs after every completed data pipeline (including the 5-minute
+        auto-refresh): the "current list" is the union of this run's screener
+        results, so a stock only counts when it first gets selected.
         """
-        if not self.ticker_names:
+        # Collect every ticker that passed any screener this run
+        tab_tickers: dict[str, set[str]] = {}
+        for key, df in self._result_dfs.items():
+            if df is None or df.empty or "ticker" not in df.columns:
+                continue
+            for t in df["ticker"]:
+                tab_tickers.setdefault(str(t), set()).add(key)
+        if not tab_tickers:
             return
         market = self._last_market_code or self.sidebar.get_params()["market_code"]
-        ticker_map = {normalize_code(t): t for t in self.ticker_names
+        ticker_map = {normalize_code(t): t for t in tab_tickers
                       if normalize_code(t) is not None}
         if not ticker_map:
             return
-        state_file, board_file = self._new_listings_paths()
+        state_file, board_file = self._new_picks_paths()
         try:
             new, ok = run_once(lambda: set(ticker_map.keys()),
                                state_file, market=market)
         except Exception as e:
-            logger.warning("New listings check failed: %s", e)
+            logger.warning("New picks check failed: %s", e)
             return
         if not ok or not new:
             return
         run_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entries = [{
-            "code": c,
-            "ticker": ticker_map.get(c, ""),
-            "market": market,
-            "first_seen": run_at,
-        } for c in new]
+        entries = []
+        for c in new:
+            full = ticker_map.get(c, "")
+            matched = ", ".join(sorted(tab_tickers.get(full, ())))
+            entries.append({
+                "code": c,
+                "ticker": full,
+                "market": market,
+                "matched": matched,
+                "first_seen": run_at,
+            })
         AnnouncementBoard(board_file).publish(entries)
         preview = ", ".join(new[:6]) + ("…" if len(new) > 6 else "")
-        self.tray.notify("🆕 New listings",
-                         f"{len(new)} new stock(s): {preview}")
-        self.status_label.setText(f"🆕 {len(new)} new listing(s)")
-        logger.info("New listings for %s: %s", market, preview)
+        self.tray.notify("🆕 New picks",
+                         f"{len(new)} stock(s) selected for the first time: {preview}")
+        self.status_label.setText(f"🆕 {len(new)} new pick(s)")
+        logger.info("New picks for %s: %s", market, preview)
 
         def _reset_status():
             if not self._busy:
                 self.status_label.setText("Ready")
         QTimer.singleShot(6000, _reset_status)
-        self._refresh_new_listings()
+        self._refresh_new_picks()
 
     # ── Chart drill-down ──────────────────────────────────────────────────
 
