@@ -394,6 +394,7 @@ class MainWindow(QMainWindow):
         rows = [{
             "ticker": e.get("ticker", ""),
             "Code": e.get("code", ""),
+            "Name": e.get("name", "") or self.ticker_names.get(e.get("ticker", ""), ""),
             "Market": e.get("market", ""),
             "Matched": e.get("matched", ""),
             "First Seen": e.get("first_seen", ""),
@@ -439,6 +440,7 @@ class MainWindow(QMainWindow):
             entries.append({
                 "code": c,
                 "ticker": full,
+                "name": self.ticker_names.get(full, ""),
                 "market": market,
                 "matched": matched,
                 "first_seen": run_at,

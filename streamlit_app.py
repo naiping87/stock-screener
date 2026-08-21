@@ -1028,13 +1028,14 @@ def _strip_kl(tkr):
     return tkr.replace(".KL", "") if isinstance(tkr, str) else tkr
 
 
-def _check_new_picks(market_code, selected_tickers, base_dir=None):
+def _check_new_picks(market_code, selected_tickers, ticker_names=None, base_dir=None):
     """First-time-pick check for the 🆕 New Picks board (web version).
 
     `selected_tickers` = the full tickers that passed the current screener
-    conditions this run. File-backed (same logic as the desktop app); falls
-    back to per-session in-memory state when the filesystem is read-only
-    (e.g. Streamlit Cloud). Returns (new_codes, entries).
+    conditions this run; `ticker_names` (optional) maps full ticker -> name.
+    File-backed (same logic as the desktop app); falls back to per-session
+    in-memory state when the filesystem is read-only (e.g. Streamlit Cloud).
+    Returns (new_codes, entries).
     """
     from datetime import datetime
 
@@ -1042,6 +1043,7 @@ def _check_new_picks(market_code, selected_tickers, base_dir=None):
 
     ticker_map = {normalize_code(t): t for t in selected_tickers
                   if normalize_code(t) is not None}
+    names = ticker_names or {}
     app_dir = base_dir or os.path.dirname(os.path.abspath(__file__))
     state_file = os.path.join(app_dir, "picks_state.json")
     board_file = os.path.join(app_dir, "picks_board.json")
@@ -1051,8 +1053,9 @@ def _check_new_picks(market_code, selected_tickers, base_dir=None):
         if ok and new:
             run_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             board.publish([
-                {"code": c, "ticker": ticker_map.get(c, ""), "market": market_code,
-                 "matched": "", "first_seen": run_at}
+                {"code": c, "ticker": ticker_map.get(c, ""),
+                 "name": names.get(ticker_map.get(c, ""), ""),
+                 "market": market_code, "matched": "", "first_seen": run_at}
                 for c in new
             ])
         return (new if ok else []), board.as_list()
@@ -1067,7 +1070,8 @@ def _check_new_picks(market_code, selected_tickers, base_dir=None):
         entries = st.session_state.setdefault("_np_entries", [])
         if new:
             run_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entries += [{"code": c, "market": market_code, "matched": "",
+            entries += [{"code": c, "name": names.get(ticker_map.get(c, ""), ""),
+                         "market": market_code, "matched": "",
                          "first_seen": run_at} for c in new]
         return new, entries
 
@@ -1496,14 +1500,15 @@ if st.session_state.run_done:
             for _item in _r:
                 if isinstance(_item, dict) and _item.get("ticker"):
                     _pick_tickers.add(_item["ticker"])
-    np_new, np_entries = _check_new_picks(selected_code, _pick_tickers)
+    np_new, np_entries = _check_new_picks(selected_code, _pick_tickers, ticker_names)
     with st.expander(f"🆕 New Picks — {len(np_entries)} accumulated", expanded=True):
         if np_new:
             st.success(f"🆕 {len(np_new)} stock(s) selected for the first time: {', '.join(np_new)}")
         if np_entries:
-            np_df = pd.DataFrame(np_entries)[["code", "market", "matched", "first_seen"]]
+            np_df = pd.DataFrame(np_entries)[["code", "name", "market", "matched", "first_seen"]]
             np_df = np_df.rename(columns={
-                "code": "Code", "market": "Market", "matched": "Matched", "first_seen": "First Seen"})
+                "code": "Code", "name": "Name", "market": "Market",
+                "matched": "Matched", "first_seen": "First Seen"})
             st.dataframe(np_df, use_container_width=True, hide_index=True)
             st.download_button("⬇️ Export CSV", np_df.to_csv(index=False),
                                file_name="new_picks.csv", mime="text/csv")
