@@ -18,7 +18,8 @@ from PyQt6.QtWidgets import (
 from .table_view import TableView
 
 
-def _make_empty_widget() -> QWidget:
+def _make_empty_widget(title: str = "No results",
+                       hint: str = "Run Screeners from the sidebar to start, or adjust parameters and retry") -> QWidget:
     """A friendly empty-state placeholder (styled via styles.py objectNames)."""
     w = QWidget()
     lay = QVBoxLayout(w)
@@ -27,16 +28,27 @@ def _make_empty_widget() -> QWidget:
     icon.setObjectName("emptyStateIcon")
     icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
     lay.addWidget(icon)
-    title = QLabel("No results")
-    title.setObjectName("emptyStateTitle")
-    title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    lay.addWidget(title)
-    hint = QLabel("Run Screeners from the sidebar to start, or adjust parameters and retry")
-    hint.setObjectName("emptyStateHint")
-    hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    lay.addWidget(hint)
+    title_lbl = QLabel(title)
+    title_lbl.setObjectName("emptyStateTitle")
+    title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lay.addWidget(title_lbl)
+    hint_lbl = QLabel(hint)
+    hint_lbl.setObjectName("emptyStateHint")
+    hint_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    hint_lbl.setWordWrap(True)
+    lay.addWidget(hint_lbl)
     lay.addStretch()
     return w
+
+
+# 各 tab 的空态文案
+_EMPTY_STATES = {
+    "new_listings": (
+        "No new listings yet",
+        "New stocks first appear here after a data refresh "
+        "(the baseline is set on the first run)",
+    ),
+}
 
 
 class ResultsPanel(QWidget):
@@ -73,6 +85,7 @@ class ResultsPanel(QWidget):
             ("📆 Weekly KDJ", "weekly_kdj"),
             ("📊 Daily KDJ", "daily_kdj"),
             ("⭐ Scoring", "scoring"),
+            ("🆕 New Listings", "new_listings"),
         ]
 
         for tab_label, tab_key in tab_specs:
@@ -80,9 +93,12 @@ class ResultsPanel(QWidget):
             table.row_activated.connect(self.ticker_activated)
             self.tables[tab_key] = table
 
+            empty_title, empty_hint = _EMPTY_STATES.get(
+                tab_key, ("No results",
+                          "Run Screeners from the sidebar to start, or adjust parameters and retry"))
             stack = QStackedWidget()
-            stack.addWidget(_make_empty_widget())   # index 0: empty state
-            stack.addWidget(table)                  # index 1: results
+            stack.addWidget(_make_empty_widget(empty_title, empty_hint))  # index 0: empty
+            stack.addWidget(table)                                       # index 1: results
             self.tabs.addTab(stack, tab_label)
 
             self._tab_index[tab_key] = self.tabs.count() - 1
@@ -106,9 +122,26 @@ class ResultsPanel(QWidget):
             self.tabs.widget(idx).setCurrentIndex(0)
             self.tabs.setTabText(idx, self._base_labels[tab_key])
 
+    def set_new_listings(self, df: pd.DataFrame):
+        """Update the 🆕 New Listings tab (not part of the screener pipeline)."""
+        if "new_listings" not in self.tables:
+            return
+        idx = self._tab_index["new_listings"]
+        base = self._base_labels["new_listings"]
+        if df is not None and not df.empty:
+            self.tables["new_listings"].set_dataframe(df)
+            self.tabs.widget(idx).setCurrentIndex(1)
+            self.tabs.setTabText(idx, f"{base} ({len(df)})")
+        else:
+            self.tables["new_listings"].set_dataframe(pd.DataFrame())
+            self.tabs.widget(idx).setCurrentIndex(0)
+            self.tabs.setTabText(idx, base)
+
     def set_all_empty(self):
-        """Clear all tabs (e.g. after market switch)."""
+        """Clear screener tabs (e.g. after market switch); keep New Listings."""
         for key in self.tables:
+            if key == "new_listings":
+                continue
             self.set_results(key, pd.DataFrame())
 
     def current_tab_key(self) -> str | None:

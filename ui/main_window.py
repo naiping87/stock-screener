@@ -3,9 +3,11 @@
 import logging
 import os
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pandas as pd
 from PyQt6.QtCore import QSettings, Qt, QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
@@ -17,6 +19,8 @@ from PyQt6.QtWidgets import (
     QStatusBar,
 )
 
+from tools.new_stock_monitor import AnnouncementBoard, normalize_code, run_once
+from utils import cache_dir
 from workers.alert_worker import AlertWorker
 from workers.download_worker import DownloadWorker
 from workers.meta_worker import MetaWorker
@@ -52,6 +56,7 @@ class MainWindow(QMainWindow):
         self._setup_statusbar()
         self._setup_central()
         self._setup_tray()
+        self._refresh_new_listings()
 
     def _setup_menu(self):
         menubar = self.menuBar()
@@ -292,6 +297,7 @@ class MainWindow(QMainWindow):
         self.update_progress(100, "Ready")
         self._set_busy(False)
         self._maybe_run_alerts()
+        self._check_new_listings()
 
     def _apply_sector_filter(self):
         """Re-render the result tables under the current sector filter.
@@ -365,6 +371,76 @@ class MainWindow(QMainWindow):
             if not self._busy:
                 self.status_label.setText("Ready")
         QTimer.singleShot(6000, _reset_status)
+
+    # ── New listings (🆕 公告栏) ──────────────────────────────────────────
+
+    def _new_listings_paths(self):
+        """State + board files live next to the day-cache (APPDATA when bundled)."""
+        base = cache_dir()
+        return (os.path.join(base, "seen_state.json"),
+                os.path.join(base, "announcements.json"))
+
+    def _refresh_new_listings(self):
+        """Re-render the 🆕 New Listings tab from the announcements file."""
+        try:
+            _state_file, board_file = self._new_listings_paths()
+            entries = AnnouncementBoard(board_file).as_list()
+        except Exception as e:
+            logger.warning("New listings board read failed: %s", e)
+            entries = []
+        if not entries:
+            self.results_panel.set_new_listings(pd.DataFrame())
+            return
+        rows = [{
+            "ticker": e.get("ticker", ""),
+            "Code": e.get("code", ""),
+            "Market": e.get("market", ""),
+            "First Seen": e.get("first_seen", ""),
+        } for e in entries]
+        self.results_panel.set_new_listings(pd.DataFrame(rows))
+
+    def _check_new_listings(self):
+        """Compare the current ticker list against history; publish new ones.
+
+        Runs after each completed data pipeline. First run sets the baseline
+        (no alerts); afterwards every stock that appears for the first time is
+        appended to the announcements board + tray notification.
+        """
+        if not self.ticker_names:
+            return
+        market = self._last_market_code or self.sidebar.get_params()["market_code"]
+        ticker_map = {normalize_code(t): t for t in self.ticker_names
+                      if normalize_code(t) is not None}
+        if not ticker_map:
+            return
+        state_file, board_file = self._new_listings_paths()
+        try:
+            new, ok = run_once(lambda: set(ticker_map.keys()),
+                               state_file, market=market)
+        except Exception as e:
+            logger.warning("New listings check failed: %s", e)
+            return
+        if not ok or not new:
+            return
+        run_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entries = [{
+            "code": c,
+            "ticker": ticker_map.get(c, ""),
+            "market": market,
+            "first_seen": run_at,
+        } for c in new]
+        AnnouncementBoard(board_file).publish(entries)
+        preview = ", ".join(new[:6]) + ("…" if len(new) > 6 else "")
+        self.tray.notify("🆕 New listings",
+                         f"{len(new)} new stock(s): {preview}")
+        self.status_label.setText(f"🆕 {len(new)} new listing(s)")
+        logger.info("New listings for %s: %s", market, preview)
+
+        def _reset_status():
+            if not self._busy:
+                self.status_label.setText("Ready")
+        QTimer.singleShot(6000, _reset_status)
+        self._refresh_new_listings()
 
     # ── Chart drill-down ──────────────────────────────────────────────────
 

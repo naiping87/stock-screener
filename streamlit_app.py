@@ -1028,6 +1028,46 @@ def _strip_kl(tkr):
     return tkr.replace(".KL", "") if isinstance(tkr, str) else tkr
 
 
+def _check_new_listings(market_code, ticker_names, base_dir=None):
+    """New-stock check for the 🆕 New Listings board (web version).
+
+    File-backed (same logic as the desktop app); falls back to per-session
+    in-memory state when the filesystem is read-only (e.g. Streamlit Cloud).
+    Returns (new_codes, entries).
+    """
+    from datetime import datetime
+
+    from tools.new_stock_monitor import AnnouncementBoard, normalize_code, run_once
+
+    ticker_map = {normalize_code(t): t for t in ticker_names if normalize_code(t)}
+    app_dir = base_dir or os.path.dirname(os.path.abspath(__file__))
+    state_file = os.path.join(app_dir, "new_listings_state.json")
+    board_file = os.path.join(app_dir, "new_listings_board.json")
+    try:
+        new, ok = run_once(lambda: set(ticker_map.keys()), state_file, market=market_code)
+        board = AnnouncementBoard(board_file)
+        if ok and new:
+            board.publish([
+                {"code": c, "ticker": ticker_map.get(c, ""), "market": market_code,
+                 "first_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                for c in new
+            ])
+        return (new if ok else []), board.as_list()
+    except OSError:
+        # 只读文件系统 → 退化为会话级内存（刷新页面即重置）
+        key = f"_nl_{market_code}"
+        state = st.session_state.get(key, {"ever": [], "last": []})
+        ever = set(state.get("ever", []))
+        current = set(ticker_map.keys())
+        new = sorted(current - ever) if (ever or state.get("last")) else []
+        st.session_state[key] = {"ever": sorted(ever | current), "last": sorted(current)}
+        entries = st.session_state.setdefault("_nl_entries", [])
+        if new:
+            run_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entries += [{"code": c, "market": market_code, "first_seen": run_at} for c in new]
+        return new, entries
+
+
 # AgGrid conditional formatting JS — Institutional grade
 _ROE_CONDITION = JsCode("""
 function(params) {
@@ -1444,6 +1484,21 @@ if st.session_state.run_done:
         st.markdown(_metric_card("metric-accent-kdj", "tag-div", "Daily KDJ", len(results_daily), "dkdj"), unsafe_allow_html=True)
     with r2c:
         st.markdown(_metric_card("metric-accent-score", "tag-score", "Scoring Top", len(results5), "score"), unsafe_allow_html=True)
+
+    # ── 🆕 New Listings 公告栏 ────────────────────────────────────────────
+    nl_new, nl_entries = _check_new_listings(selected_code, ticker_names)
+    with st.expander(f"🆕 New Listings — {len(nl_entries)} accumulated", expanded=True):
+        if nl_new:
+            st.success(f"🆕 {len(nl_new)} new stock(s) detected: {', '.join(nl_new)}")
+        if nl_entries:
+            nl_df = pd.DataFrame(nl_entries)[["code", "market", "first_seen"]]
+            nl_df = nl_df.rename(columns={"code": "Code", "market": "Market", "first_seen": "First Seen"})
+            st.dataframe(nl_df, use_container_width=True, hide_index=True)
+            st.download_button("⬇️ Export CSV", nl_df.to_csv(index=False),
+                               file_name="new_listings.csv", mime="text/csv")
+        else:
+            st.caption("No new listings yet — the baseline is set on the first run; "
+                       "any stock that appears afterwards will be listed here.")
 
     # Detail tables
     tab_score, tab1, tab2, tab_weekly_ema, tab3, tab4, tab_daily, tab_bt = st.tabs([

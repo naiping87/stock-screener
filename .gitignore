@@ -9,3 +9,5 @@ alert_heartbeat.txt
 alert_state.json
 .pytest_cache/
 .ruff_cache/
+new_listings_state.json
+new_listings_board.json

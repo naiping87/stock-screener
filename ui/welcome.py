@@ -1,11 +1,16 @@
 """First-run welcome dialog — quick orientation for new users."""
 
+from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QCheckBox, QPushButton, QHBoxLayout,
+    QCheckBox,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
 )
-from PyQt6.QtCore import Qt, QSettings
 
-from .styles import BG_WINDOW, BG_SURFACE, TEXT, TEXT_SEC, ACCENT, BORDER
+from .styles import ACCENT, BG_SURFACE, BG_WINDOW, BORDER, TEXT, TEXT_SEC
 
 _SETTINGS_ORG = "StockScreenerPro"
 _SETTINGS_APP = "Onboarding"

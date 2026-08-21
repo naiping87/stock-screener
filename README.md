@@ -12,6 +12,7 @@ TradingView-inspired dark theme with candlestick drill-down charts, weekly KDJ g
 | Screeners | EMA Compression (Daily / Hourly / Weekly) · KDJ Divergence · Weekly/Daily KDJ Cross · 11-factor Scoring |
 | Charts | Double-click any result row → candlestick + EMA 20/50/100/200 + volume + KDJ (Daily/Weekly), zoom/pan/crosshair |
 | Alerts | Weekly KDJ golden-cross detection after every run → system tray notifications (once per cross) |
+| New Listings | 🆕 board that accumulates every stock appearing in the ticker list for the first time (per-market baseline, tray notification, no duplicates) |
 | UX | Dark theme, per-market defaults, live search, sector filter, CSV export, cancel/retry, single-instance lock |
 | Web | Streamlit version with password gate, auto-refresh and the same screeners |
 

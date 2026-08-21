@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('markets', 'markets'), ('tickers', 'tickers'), ('tickers.csv', '.'), ('ui', 'ui'), ('workers', 'workers'), ('resources', 'resources')],
+    datas=[('markets', 'markets'), ('tickers', 'tickers'), ('tickers.csv', '.'), ('ui', 'ui'), ('workers', 'workers'), ('resources', 'resources'), ('tools', 'tools')],
     hiddenimports=['PyQt6', 'pandas', 'numpy', 'requests', 'pyqtgraph', 'akshare', 'markets.bursa', 'markets.us', 'markets.shanghai'],
     hookspath=[],
     hooksconfig={},
