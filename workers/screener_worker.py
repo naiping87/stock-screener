@@ -6,6 +6,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from screener import (
     DIVERGENCE_LOOKBACK,
     SCORE_EMA200_SLOPE_BARS,
+    SCORE_MIN,
     SCORE_TOP_N,
     SCORE_TREND_PERIODS,
     SCORE_TREND_THRESHOLD,
@@ -136,6 +137,7 @@ class ScreenerWorker(QThread):
                 vol_ma_bars=p.get("score_vol_ma_b", SCORE_VOL_MA_BARS),
                 vol_ma_threshold=p.get("score_vol_ma_t", SCORE_VOL_MA_THRESHOLD),
                 top_n=p.get("score_top_n", SCORE_TOP_N),
+                min_score=p.get("score_min", SCORE_MIN),
             ))
             self.result.emit("scoring", self._to_df(r5))
             if self._check_cancel():

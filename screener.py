@@ -66,7 +66,8 @@ SCORE_VOL_PERIOD = 60               # days for volatility check
 SCORE_VOL_THRESHOLD = 5.0           # min annualized volatility %
 SCORE_VOL_MA_BARS = 5               # bars for volume MA
 SCORE_VOL_MA_THRESHOLD = 1_000_000  # min volume MA
-SCORE_TOP_N = 50                    # top N results to show
+SCORE_TOP_N = 100                   # top N results to show (max 300)
+SCORE_MIN = 0                       # min total score to show (0 = show top N)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TICKERS_FILE = os.path.join(SCRIPT_DIR, "tickers.csv")
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
@@ -810,10 +811,13 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
                          vol_threshold: float = SCORE_VOL_THRESHOLD,
                          vol_ma_bars: int = SCORE_VOL_MA_BARS,
                          vol_ma_threshold: int = SCORE_VOL_MA_THRESHOLD,
-                         top_n: int = SCORE_TOP_N) -> list[dict[str, Any]]:
+                         top_n: int = SCORE_TOP_N,
+                         min_score: int = SCORE_MIN) -> list[dict[str, Any]]:
     """
     Weighted Scoring Screener — scores every stock on 11 factors.
-    Returns top_n stocks sorted by total score descending.
+    Returns top_n stocks sorted by total score descending. When min_score > 0,
+    every stock with score >= min_score is kept (top_n is then just a cap),
+    so early-stage candidates below the old cutoff are not missed.
     """
     ticker_names = ticker_names or {}
     results = []
@@ -974,6 +978,8 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
 
     results.sort(key=lambda r: r["score"], reverse=True)
     logger.info("  Scored %d stocks, top score: %s", len(results), results[0]["score"] if results else 0)
+    if min_score > 0:
+        results = [r for r in results if r["score"] >= min_score]
     return results[:top_n]
 
 

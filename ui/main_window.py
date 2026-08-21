@@ -11,6 +11,7 @@ import pandas as pd
 from PyQt6.QtCore import QSettings, Qt, QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
+    QApplication,
     QLabel,
     QMainWindow,
     QProgressBar,
@@ -46,6 +47,7 @@ class MainWindow(QMainWindow):
         self._busy = False            # a download / screener run is in flight
         self._last_market_code = None
         self._retry_cb = None         # callback for the status-bar Retry button
+        self._really_quit = False     # set by Quit (tray menu / Ctrl+Q); X button still docks to tray
 
         settings = QSettings("StockScreenerPro", "MainWindow")
         geo = settings.value("geometry")
@@ -75,7 +77,7 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut(QKeySequence("Ctrl+Q"))
-        quit_action.triggered.connect(self.close)
+        quit_action.triggered.connect(self._quit_app)
         file_menu.addAction(quit_action)
 
         help_menu = menubar.addMenu("&Help")
@@ -146,7 +148,7 @@ class MainWindow(QMainWindow):
     def _setup_tray(self):
         self.tray = SystemTray(self)
         self.tray.show_window.connect(self._show_from_tray)
-        self.tray.quit_app.connect(self.close)
+        self.tray.quit_app.connect(self._quit_app)
 
     def _show_from_tray(self):
         self.show()
@@ -527,10 +529,21 @@ class MainWindow(QMainWindow):
             "KDJ Divergence, Scoring</p>"
         )
 
+    def _quit_app(self):
+        """Real quit (tray Quit / File > Quit / Ctrl+Q) — not hide-to-tray."""
+        self._really_quit = True
+        self.tray.hide_icon()
+        self.close()
+
     def closeEvent(self, event):
         settings = QSettings("StockScreenerPro", "MainWindow")
         settings.setValue("geometry", self.saveGeometry())
-        # Minimize to tray instead of closing
+        if self._really_quit:
+            # Quit was explicitly requested → actually close the app
+            event.accept()
+            QApplication.quit()
+            return
+        # X button / window close → minimize to tray instead of closing
         event.ignore()
         self.hide()
 

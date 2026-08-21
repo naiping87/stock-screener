@@ -28,6 +28,7 @@ from screener import (
     KDJ_SIGNAL,
     MIN_COMPRESSION_BARS,
     SCORE_EMA200_SLOPE_BARS,
+    SCORE_MIN,
     SCORE_TOP_N,
     SCORE_TREND_THRESHOLD,
     SCORE_VOL_MA_BARS,
@@ -69,6 +70,7 @@ DEFAULTS = {
     "score_vol_t": SCORE_VOL_THRESHOLD,
     "score_vol_ma_b": SCORE_VOL_MA_BARS,
     "score_vol_ma_t": SCORE_VOL_MA_THRESHOLD,
+    "score_min": SCORE_MIN,
     "score_top_n": SCORE_TOP_N,
 }
 
@@ -845,8 +847,13 @@ with st.sidebar:
                 format="%d", key="cfg_score_vol_ma_t",
             )
             score_top_n = st.slider(
-                "Top N", 10, 200, DEFAULTS["score_top_n"], 10,
+                "Top N", 10, 300, DEFAULTS["score_top_n"], 10,
                 key="cfg_score_top_n",
+            )
+            score_min = st.slider(
+                "Min Score", 0, 11, DEFAULTS["score_min"], 1,
+                help="Only show stocks with score >= this (0 = just top N)",
+                key="cfg_score_min",
             )
 
     with st.expander("🔄 Auto-Refresh", expanded=False):
@@ -1377,6 +1384,7 @@ results5 = run_scoring_screener(
     vol_period=score_vol_p, vol_threshold=score_vol_t,
     vol_ma_bars=score_vol_ma_b, vol_ma_threshold=score_vol_ma_t,
     top_n=score_top_n,
+    min_score=score_min,
 )
 st.info(f"📊 Scoring: {len(results5)} ranked / {len(data)} total")
 

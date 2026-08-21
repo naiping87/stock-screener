@@ -50,6 +50,10 @@ class SystemTray(QObject):
         """Show a Windows toast notification."""
         self._tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 5000)
 
+    def hide_icon(self):
+        """Remove the tray icon (called right before the app really quits)."""
+        self._tray.hide()
+
     def set_alert_count(self, count: int):
         self._alert_count = count
         if count > 0:

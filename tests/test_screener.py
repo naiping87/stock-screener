@@ -122,3 +122,24 @@ def test_run_ema_screener_flat_passes_trend_fails():
     tickers = {r["ticker"] for r in results}
     assert "FLAT.KL" in tickers
     assert "TRND.KL" not in tickers
+
+
+# ── scoring: top_n cap + min_score threshold ──────────────────────────────
+
+def test_scoring_top_n_cap_and_min_score():
+    data = {f"T{i}.KL": make_ohlcv(seed=i) for i in range(10)}
+    names = {k: k for k in data}
+
+    r_all = list(screener.run_scoring_screener(data, names, top_n=300))
+    assert len(r_all) <= 10
+
+    r_cap = list(screener.run_scoring_screener(data, names, top_n=3))
+    assert len(r_cap) == min(3, len(r_all))
+
+    r_min = list(screener.run_scoring_screener(data, names, top_n=300, min_score=8))
+    assert all(r["score"] >= 8 for r in r_min)
+    assert len(r_min) <= len(r_all)
+
+    # min_score=0 keeps the plain top-N behaviour
+    r_zero = list(screener.run_scoring_screener(data, names, top_n=300, min_score=0))
+    assert r_zero == r_all

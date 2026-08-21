@@ -28,6 +28,7 @@ from screener import (
     KDJ_SIGNAL,
     MIN_COMPRESSION_BARS,
     SCORE_EMA200_SLOPE_BARS,
+    SCORE_MIN,
     SCORE_TOP_N,
     SCORE_TREND_PERIODS,
     SCORE_TREND_THRESHOLD,
@@ -283,8 +284,11 @@ class Sidebar(QWidget):
         self.score_vol_ma_t = _sp("Vol MA Threshold", 0, 100_000_000, SCORE_VOL_MA_THRESHOLD, 100_000,
                                  "Min volume SMA value (in shares)")
         sl.addWidget(self.score_vol_ma_t)
-        self.score_top_n = _sp("Top N Results", 5, 100, SCORE_TOP_N, 5,
-                               "Number of top-scoring stocks to show")
+        self.score_min = _sld("Min Score", 0, 11, SCORE_MIN,
+                              hint="Only show stocks with score >= this (0 = just top N)")
+        sl.addWidget(self.score_min)
+        self.score_top_n = _sp("Top N Results", 5, 300, SCORE_TOP_N, 5,
+                               "Max number of top-scoring stocks to show")
         sl.addWidget(self.score_top_n)
         pl.addWidget(score)
 
@@ -417,6 +421,7 @@ class Sidebar(QWidget):
         self.score_trend_div.row_widget.setValue(SCORE_TREND_THRESHOLD)
         self.score_vol_t.row_widget.setValue(SCORE_VOL_THRESHOLD)
         self.score_vol_ma_t.row_widget.setValue(SCORE_VOL_MA_THRESHOLD)
+        self.score_min.slider.setValue(SCORE_MIN)
         self.score_top_n.row_widget.setValue(SCORE_TOP_N)
 
     def _reset_params(self):
@@ -459,6 +464,7 @@ class Sidebar(QWidget):
             "score_vol_t": self.score_vol_t.row_widget.value(),
             "score_vol_ma_b": _sv(self.score_vol_ma_b),
             "score_vol_ma_t": self.score_vol_ma_t.row_widget.value(),
+            "score_min": self.score_min.slider.value(),
             "score_top_n": self.score_top_n.row_widget.value(),
         }
 
