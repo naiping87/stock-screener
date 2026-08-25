@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 from PyQt6.QtCore import QSettings, Qt, QTimer
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtGui import QAction, QActionGroup, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
@@ -85,9 +85,15 @@ class MainWindow(QMainWindow):
 
         # ── Language menu（切换界面语言，重启后生效）────────────────
         lang_menu = menubar.addMenu(i18n.t("Language"))
+        # QActionGroup(exclusive) — the three languages are mutually
+        # exclusive; without it every action is independently checkable and
+        # the user can tick two languages at once.
+        lang_group = QActionGroup(self)
+        lang_group.setExclusive(True)
         for code, label in i18n.SUPPORTED.items():
             act = QAction(label, self)
             act.setCheckable(True)
+            act.setActionGroup(lang_group)
             act.setChecked(i18n.lang() == code)
             act.triggered.connect(lambda _=False, c=code: self._on_language_changed(c))
             lang_menu.addAction(act)
