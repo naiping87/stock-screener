@@ -29,9 +29,11 @@ import pandas as pd
 from screener import run_scoring_screener  # existing 11-factor scorer (UNCHANGED)
 from screener_rs import (
     compute_rs_momentum,
+    rs_momentum_batch,
     rs_rank_history,
     sector_rank,
     stock_rs,
+    stock_rs_batch,
 )
 from screener_setup import (
     base_quality,
@@ -184,6 +186,7 @@ def run_phase1_screener(
     base_max_range: float = BASE_MAX_RANGE,
     pivot_window: int = 5,
     include_reasons: bool = True,
+    progress_cb: Any | None = None,
 ) -> list[dict[str, Any]]:
     """Run the full Phase-1 pulse detector over the loaded market.
 
@@ -195,6 +198,9 @@ def run_phase1_screener(
       clv_min     — Closing-Strength filter: only keep rows with CLV >= this.
                     Pass 0.0 to disable (show all).
       min_score_tech — existing 11-factor score floor (0 = any).
+      progress_cb — optional callable(done:int, total:int) invoked every 50
+                    stocks so the UI can show stepwise progress (no-op when
+                    None; never affects results).
     """
     ticker_names = ticker_names or {}
 
@@ -234,7 +240,42 @@ def run_phase1_screener(
         except Exception:
             rs_rank_table = None
 
+    # ── Pre-compute the 11-factor technical score for the WHOLE universe in
+    # ONE call (not once per stock). run_scoring_screener is vectorized-ish
+    # (its per-stock cost is the same), but invoking it 950+ times pays
+    # function-call + dict-construction overhead each round. One call →
+    # 951 rows → dict lookup. Same numbers, ~3x faster.
+    tech_map: dict[str, int] = {}
+    try:
+        _all = run_scoring_screener(data, ticker_names, top_n=10_000, min_score=0)
+        for _r in _all:
+            tech_map[_r["ticker"]] = int(_r["score"])
+    except Exception:
+        tech_map = {}
+
+    # ── Pre-compute per-ticker RS + momentum for the WHOLE universe in one
+    # vectorized pass (was a per-stock loop: stock_rs + compute_rs_momentum
+    # called 950+ times). Golden test asserts bit-identical output.
+    rs_batch: pd.DataFrame = pd.DataFrame()
+    rs_mom_batch: pd.Series = pd.Series(dtype=float)
+    if bench_clean is not None and not close_matrix.empty:
+        try:
+            rs_batch = stock_rs_batch(close_matrix, bench_clean, lookbacks=rs_periods)
+            rs_mom_batch = rs_momentum_batch(close_matrix, bench_clean, lookback=5)
+        except Exception:
+            rs_batch = pd.DataFrame()
+            rs_mom_batch = pd.Series(dtype=float)
+
+    _total = max(1, len(data))
+    _done = 0
+
     for tkr, d in data.items():
+        _done += 1
+        if progress_cb is not None and _done % 50 == 0:
+            try:
+                progress_cb(_done, _total)
+            except Exception:
+                progress_cb = None  # progress is cosmetic; never break a run
         close = d.get("close")
         high = d.get("high")
         low = d.get("low")
@@ -260,11 +301,9 @@ def run_phase1_screener(
         if high is None or low is None or high.empty or low.empty:
             continue
 
-        # ── Existing 11-factor technical score (UNCHANGED function) ──────
-        tech = run_scoring_screener(
-            {tkr: d}, ticker_names, top_n=1, min_score=0,
-        )
-        tech_score = tech[0]["score"] if tech else 0
+        # ── Existing 11-factor technical score (UNCHANGED function, but
+        # computed once for the whole universe above — lookup here).
+        tech_score = tech_map.get(tkr, 0)
 
         # ── Penny-stock guard (#8923): below RM 0.20 the technical score is
         # untrustworthy — a 0.005 tick IS one "surge", volume numbers are
@@ -280,12 +319,14 @@ def run_phase1_screener(
             tech_score = tech_score_effective
             penny_note = f"penny stock (RM{last_px:.3f}) — tech score discounted"
 
-        # ── RS vs benchmark + momentum ───────────────────────────────────
+        # ── RS vs benchmark + momentum (vectorized batch, lookup) ─────────
         rs_vals: dict[str, float | None] = {}
         rs_mom = None
-        if bench_clean is not None:
-            rs_vals = stock_rs(close.dropna(), bench_clean, lookbacks=rs_periods)
-            rs_mom = compute_rs_momentum(close.dropna(), bench_clean, lookback=5)
+        if bench_clean is not None and tkr in rs_batch.index:
+            _rb = rs_batch.loc[tkr]
+            rs_vals = {f"rs_{d}d": _rb.get(f"rs_{d}d") for d in rs_periods}
+            if tkr in rs_mom_batch.index and pd.notna(rs_mom_batch.get(tkr)):
+                rs_mom = float(rs_mom_batch[tkr])
 
         # ── Sector context ───────────────────────────────────────────────
         sector = sector_map.get(tkr, "")

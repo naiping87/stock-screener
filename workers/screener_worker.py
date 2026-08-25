@@ -159,6 +159,12 @@ class ScreenerWorker(QThread):
                     p1_set_lang(i18n.current())
                 except Exception:
                     p1_set_lang("en")
+
+                def _p1_progress(done, total):
+                    # 95%→99% window for the Phase-1 step
+                    self.progress.emit(95 + int(4 * done / max(1, total)),
+                                       f"Ignition: {done}/{total}")
+
                 r6 = run_phase1_screener(
                     self.data,
                     getattr(self, "bench_close", None),
@@ -166,6 +172,7 @@ class ScreenerWorker(QThread):
                     ticker_names=self.ticker_names,
                     top_n=p.get("score_top_n", SCORE_TOP_N),
                     clv_min=p.get("clv_min", 0.8),
+                    progress_cb=_p1_progress,
                 )
                 self.result.emit("phase1", self._to_df(r6))
             except Exception as e:

@@ -95,6 +95,110 @@ def stock_rs(close: pd.Series, bench: pd.Series,
     return out
 
 
+def _ret_at(s: pd.Series, window: int) -> float | None:
+    """% change over `window` bars from the LAST TWO VALID prices.
+
+    Identical semantics to _pct_change (used by stock_rs).
+    NOTE: unlike _pct_change this takes an ALREADY-ALIGNED series — the
+    batched path pre-aligns every column to the benchmark's calendar (see
+    stock_rs_batch), so a NaN gap that _aligned() would have removed has
+    already been handled.
+    """
+    v = s.astype(float).dropna()
+    if len(v) < window + 1:
+        return None
+    try:
+        e = float(v.iloc[-1])
+        p = float(v.iloc[-(window + 1)])
+    except IndexError:
+        return None
+    if not (np.isfinite(e) and np.isfinite(p)) or p <= 0:
+        return None
+    return (e / p - 1) * 100.0
+
+
+def _aligned_matrix(close_matrix: pd.DataFrame, bench: pd.Series) -> pd.DataFrame:
+    """Pre-align every column to the benchmark calendar (same as _aligned).
+
+    Each stock's close is reindexed onto the common index (intersection of
+    the stock's dates and the bench's dates) with NaN dropped — exactly what
+    the per-ticker path does via _aligned(close, bench). This makes the
+    vectorized batch and the per-ticker loop see the SAME price series, so
+    their returns match to the last bit.
+    """
+    bench_clean = bench.astype(float).dropna()
+    if bench_clean.empty:
+        return close_matrix
+    out: dict[str, pd.Series] = {}
+    for col in close_matrix.columns:
+        c = close_matrix[col].astype(float).dropna()
+        idx = c.index.intersection(bench_clean.index)
+        if len(idx) == 0:
+            out[col] = c
+        else:
+            out[col] = c.loc[idx]
+    return pd.DataFrame(out)
+
+
+def stock_rs_batch(close_matrix: pd.DataFrame, bench: pd.Series,
+                   lookbacks: tuple[int, ...] = RS_LOOKBACKS) -> pd.DataFrame:
+    """Vectorized-ish equivalent of calling stock_rs() per column.
+
+    IMPORTANT (golden-tested): the per-ticker stock_rs aligns EACH column to
+    the benchmark on that column's OWN calendar (a suspended stock has fewer
+    common dates). A single "canonical bench window" breaks exactness for
+    those names, so this batch re-derives each column's aligned bench the
+    same way _aligned does — same result, fewer per-call dict allocations.
+    """
+    bench_clean = bench.astype(float).dropna()
+    if bench_clean.empty:
+        return pd.DataFrame()
+    rows: dict[str, dict[str, float | None]] = {}
+    for col in close_matrix.columns:
+        c = close_matrix[col].astype(float).dropna()
+        # same as _aligned(close, bench) inside stock_rs
+        idx = c.index.intersection(bench_clean.index)
+        c_al = c.loc[idx]
+        b_al = bench_clean.loc[idx]
+        row: dict[str, float | None] = {}
+        for d in lookbacks:
+            rc = _pct_change(c_al, d)
+            rb = _pct_change(b_al, d)
+            row[f"rs_{d}d"] = None if (rc is None or rb is None) else round(rc - rb, 2)
+        rows[col] = row
+    return pd.DataFrame.from_dict(rows, orient="index")
+
+
+def rs_momentum_batch(close_matrix: pd.DataFrame, bench: pd.Series,
+                      lookback: int = 5, window: int = MOMENTUM_WINDOW) -> pd.Series:
+    """Batch equivalent of compute_rs_momentum() per column.
+
+    Same per-column _aligned semantics (a suspended stock's bench window is
+    its own), same slicing — bit-identical to the per-ticker loop.
+    """
+    bench_clean = bench.astype(float).dropna()
+    if bench_clean.empty:
+        return pd.Series(dtype=float)
+    out: dict[str, float | None] = {}
+    for col in close_matrix.columns:
+        c = close_matrix[col].astype(float).dropna()
+        idx = c.index.intersection(bench_clean.index)
+        c_al = c.loc[idx]
+        b_al = bench_clean.loc[idx]
+        if len(c_al) < window + lookback + 3:
+            out[col] = None
+            continue
+        s_then = _pct_change(c_al.iloc[: -window], lookback) if len(c_al) > window else None
+        s_now = _pct_change(c_al, lookback)
+        b_then = _pct_change(b_al.iloc[: -window], lookback) if len(b_al) > window else None
+        b_now = _pct_change(b_al, lookback)
+        if None in (s_then, s_now, b_then, b_now):
+            out[col] = None
+            continue
+        out[col] = round((s_now - b_now) - (s_then - b_then), 2)
+    return pd.Series(out)
+
+
 def rs_percentile(df: pd.DataFrame, rs_col: str) -> pd.Series:
     """Cross-sectional percentile rank (0-100) of one RS column at the LAST date.
 
