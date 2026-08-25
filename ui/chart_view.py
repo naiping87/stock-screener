@@ -23,40 +23,59 @@ DOWN = "#f23645"
 GRID = (255, 255, 255, 40)
 EMA_COLORS = {20: "#2962FF", 50: "#f7c600", 100: "#b18cff", 200: "#787b86"}
 KDJ_COLORS = {"K": "#2962FF", "D": "#f7c600", "J": "#b18cff"}
-BAR_WIDTH = {"Daily": 60_000, "Weekly": 400_000}  # px-less: seconds per bar
+BAR_WIDTH = {"Daily": 60_000 * 0.7, "Weekly": 400_000 * 0.7}  # seconds per bar (xs is epoch seconds)
 
 pg.setConfigOptions(background=BG, foreground=TEXT, antialias=True)
 
 
 class CandlestickItem(pg.GraphicsObject):
-    """Fast candlestick renderer (classic pyqtgraph recipe, TV colors)."""
+    """Fast candlestick renderer (classic pyqtgraph recipe, TV colors).
+
+    QPicture-based painting broke under PyQt6 (the item painted in device
+    pixels instead of data coordinates, so the candles rendered as a single
+    smeared block and the X axis collapsed to 0-2). Draw directly in
+    paint() with the view's transform instead — correct in every Qt.
+    """
 
     def __init__(self, xs, opens, highs, lows, closes):
         super().__init__()
-        self._picture = None
-        self._make_picture(xs, opens, highs, lows, closes)
+        self.xs = np.asarray(xs, dtype=float)
+        self.opens = np.asarray(opens, dtype=float)
+        self.highs = np.asarray(highs, dtype=float)
+        self.lows = np.asarray(lows, dtype=float)
+        self.closes = np.asarray(closes, dtype=float)
+        # Cache bounds so boundingRect() doesn't scan the arrays every paint
+        self._bounds = pg.QtCore.QRectF(
+            float(self.xs.min() - 0.6),
+            float(np.nanmin(self.lows)),
+            float(self.xs.max() - self.xs.min() + 1.2),
+            float(np.nanmax(self.highs) - np.nanmin(self.lows) + 0.1),
+        )
+        self._w = 0.5
 
-    def _make_picture(self, xs, opens, highs, lows, closes):
-        self._picture = pg.QtGui.QPicture()
-        p = pg.QtGui.QPainter(self._picture)
-        w = 0.5
-        for x, o, h, lo, c in zip(xs, opens, highs, lows, closes, strict=True):
-            if np.isnan(o) or np.isnan(h) or np.isnan(lo) or np.isnan(c):
+    def paint(self, painter, *args, **kwargs):
+        painter.setRenderHint(pg.QtGui.QPainter.RenderHint.Antialiasing, False)
+        for x, o, h, lo, c in zip(self.xs, self.opens, self.highs,
+                                  self.lows, self.closes, strict=True):
+            if not (np.isfinite(o) and np.isfinite(h) and np.isfinite(lo)
+                    and np.isfinite(c)):
                 continue
             up = c >= o
             color = UP if up else DOWN
-            p.setPen(pg.mkPen(color))
-            p.drawLine(pg.QtCore.QPointF(x, lo), pg.QtCore.QPointF(x, h))
-            p.setBrush(pg.mkBrush(color))
-            body_top, body_bottom = (o, c) if up else (c, o)
-            p.drawRect(pg.QtCore.QRectF(x - w, body_top, w * 2, max(body_bottom - body_top, 0.01)))
-        p.end()
-
-    def paint(self, painter, *args):
-        painter.drawPicture(0, 0, self._picture)
+            pen = pg.mkPen(color, width=1)
+            painter.setPen(pen)
+            painter.setBrush(pg.mkBrush(color))
+            # wick
+            painter.drawLine(pg.QtCore.QPointF(x, lo), pg.QtCore.QPointF(x, h))
+            # body (min height so flat bars are visible)
+            top = o if up else c
+            bottom = c if up else o
+            hgt = max(bottom - top, (h - lo) * 0.003, 0.01)
+            painter.drawRect(pg.QtCore.QRectF(x - self._w, top,
+                                              self._w * 2, hgt))
 
     def boundingRect(self):
-        return pg.QtCore.QRectF(self._picture.boundingRect())
+        return self._bounds
 
 
 def _series(data: dict, key: str, index: pd.Index, default=None) -> pd.Series | None:
@@ -125,7 +144,13 @@ class ChartWidget(pg.GraphicsLayoutWidget):
             return
 
         close = d["close"]
-        xs = (close.index.astype("int64") // 10**9).to_numpy(dtype="float64")
+        # Epoch seconds for the date axis, robust across datetime resolution
+        # and timezones. pandas 3.0 may give datetime64[s] or [us]; a tz-aware
+        # index cannot astype() directly (tz-convert first), and a [s] index
+        # divided by 1e9 collapsed every bar to x=1.0. Using UTC microseconds
+        # then /1e6 gives true epoch seconds for every variant.
+        _idx_utc = close.index.tz_convert("UTC").tz_localize(None)
+        xs = (_idx_utc.astype("datetime64[us]").astype("int64") / 1e6).to_numpy(dtype="float64")
         opens = d["open"].to_numpy(dtype="float64")
         highs = d["high"].to_numpy(dtype="float64")
         lows = d["low"].to_numpy(dtype="float64")
@@ -133,7 +158,10 @@ class ChartWidget(pg.GraphicsLayoutWidget):
         volume = d.get("volume")
 
         # ── Panes ──────────────────────────────────────────────────────
-        date_axis = pg.DateAxisItem(orientation="bottom")
+        # DateAxisItem with the market's UTC offset (Bursa is UTC+8) so the
+        # axis labels read local dates, not UTC. Reused for every pane whose
+        # bottom may become visible (volume/KDJ panes hide theirs).
+        date_axis = pg.DateAxisItem(orientation="bottom", utcOffset=8 * 3600)
         self.price = self.addPlot(row=0, col=0, axisItems={"bottom": date_axis})
         self.price.setMenuEnabled(False)
         self.price.showGrid(x=True, y=True, alpha=0.15)
@@ -143,7 +171,8 @@ class ChartWidget(pg.GraphicsLayoutWidget):
 
         n_rows = 1
         if volume is not None and len(volume) > 0:
-            self.volume = self.addPlot(row=1, col=0)
+            self.volume = self.addPlot(row=1, col=0,
+                                       axisItems={"bottom": pg.DateAxisItem(orientation="bottom")})
             self.volume.setMenuEnabled(False)
             self.volume.setXLink(self.price)
             self.volume.hideAxis("bottom")
@@ -151,7 +180,8 @@ class ChartWidget(pg.GraphicsLayoutWidget):
             self.volume.setMouseEnabled(x=True, y=False)
             n_rows = 2
 
-        self.kdj = self.addPlot(row=n_rows, col=0)
+        self.kdj = self.addPlot(row=n_rows, col=0,
+                                axisItems={"bottom": pg.DateAxisItem(orientation="bottom", utcOffset=8 * 3600)})
         self.kdj.setMenuEnabled(False)
         self.kdj.setXLink(self.price)
         self.kdj.showGrid(x=True, y=True, alpha=0.15)
