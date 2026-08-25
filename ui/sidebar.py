@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 
 from markets import get as get_market
 from markets import list_all
+import i18n
 from screener import (
     DAILY_VOL_MIN,
     DAILY_VOL_RATIO,
@@ -60,7 +61,7 @@ def _row(label_text, widget, hint=None):
     w = QWidget()
     lay = QHBoxLayout(w)
     lay.setContentsMargins(0, 3, 0, 3)
-    lbl = QLabel(label_text)
+    lbl = QLabel(i18n.t(label_text))
     lbl.setMinimumWidth(130)
     lbl.setStyleSheet(LABEL_STYLE)
     lay.addWidget(lbl)
@@ -100,7 +101,7 @@ def _sld(label_text, min_v, max_v, default, step=1, hint=None):
     layout = QVBoxLayout(w)
     layout.setContentsMargins(0, 2, 0, 6)
     top = QHBoxLayout()
-    lbl = QLabel(label_text)
+    lbl = QLabel(i18n.t(label_text))
     lbl.setStyleSheet(LABEL_STYLE)
     top.addWidget(lbl)
     val_lbl = QLabel(str(default))
@@ -134,7 +135,7 @@ def _multi(label_text, options, defaults, hint=None):
     w = QWidget()
     layout = QVBoxLayout(w)
     layout.setContentsMargins(0, 2, 0, 6)
-    lbl = QLabel(label_text)
+    lbl = QLabel(i18n.t(label_text))
     lbl.setStyleSheet(LABEL_STYLE)
     layout.addWidget(lbl)
     row = QHBoxLayout()
@@ -175,7 +176,7 @@ class Sidebar(QWidget):
         layout.setSpacing(10)
 
         # ── Header ────────────────────────────────────────────────────
-        title = QLabel("Parameters")
+        title = QLabel(i18n.t("Parameters"))
         title.setFont(QFont("SF Pro Display, Segoe UI", 20, QFont.Weight.Bold))
         title.setStyleSheet(f"color:{TEXT}; background:transparent;")
         layout.addWidget(title)
@@ -190,11 +191,11 @@ class Sidebar(QWidget):
         self.market_combo = market
 
         # Sector filter
-        sector_lbl = QLabel("Sector")
+        sector_lbl = QLabel(i18n.t("Sector"))
         sector_lbl.setStyleSheet(f"color:{TEXT_SEC}; font-size:12px; font-weight:600; background:transparent; margin-top:8px;")
         layout.addWidget(sector_lbl)
         self.sector_combo = QComboBox()
-        self.sector_combo.addItem("All Sectors", "")
+        self.sector_combo.addItem(i18n.t("All Sectors"), "")
         self.sector_combo.setMinimumHeight(32)
         layout.addWidget(self.sector_combo)
 
@@ -211,7 +212,7 @@ class Sidebar(QWidget):
         pl.setSpacing(2)
 
         # --- EMA Compression ---
-        ema = QGroupBox("EMA Compression")
+        ema = QGroupBox(i18n.t("EMA Compression"))
         el = QVBoxLayout(ema)
         self.ema_periods = _multi("Trend Periods", [10, 20, 50, 100, 200],
                                   [20, 50, 100, 200],
@@ -226,7 +227,7 @@ class Sidebar(QWidget):
         pl.addWidget(ema)
 
         # --- Volume ---
-        vol = QGroupBox("Volume Filters")
+        vol = QGroupBox(i18n.t("Volume Filters"))
         vl = QVBoxLayout(vol)
         self.vol_daily = _sp("Daily Min Vol", 0, 100_000_000, VOL_MIN, 100_000,
                              "Min daily volume MA for EMA/Divergence screeners")
@@ -246,7 +247,7 @@ class Sidebar(QWidget):
         pl.addWidget(vol)
 
         # --- KDJ ---
-        kdj = QGroupBox("KDJ Parameters")
+        kdj = QGroupBox(i18n.t("KDJ Parameters"))
         kl = QVBoxLayout(kdj)
         self.kdj_period = _sld("Period (RSV)", 3, 30, KDJ_PERIOD,
                                hint="Highest/lowest lookback bars")
@@ -260,7 +261,7 @@ class Sidebar(QWidget):
         pl.addWidget(kdj)
 
         # --- Scoring ---
-        score = QGroupBox("Scoring System")
+        score = QGroupBox(i18n.t("Scoring System"))
         sl = QVBoxLayout(score)
         self.score_trend_p = _multi("Trend Periods", [10, 20, 50, 100, 200],
                                     SCORE_TREND_PERIODS,
@@ -290,6 +291,11 @@ class Sidebar(QWidget):
         self.score_top_n = _sp("Top N Results", 5, 300, SCORE_TOP_N, 5,
                                "Max number of top-scoring stocks to show")
         sl.addWidget(self.score_top_n)
+        self.clv_min = _sld(i18n.t("Min Closing Strength"), 0.0, 1.0, 0.8, 0.05,
+                            "Ignition filter: only keep stocks whose close is in the "
+                            "top X% of today's range (CLV). 0.8 = close near day high. "
+                            "0.0 = show all.")
+        sl.addWidget(self.clv_min)
         pl.addWidget(score)
 
         pl.addStretch()
@@ -298,7 +304,7 @@ class Sidebar(QWidget):
 
         # ── Reset + Run ──────────────────────────────────────────────
         reset_row = QHBoxLayout()
-        self.reset_btn = QPushButton("↺  Reset")
+        self.reset_btn = QPushButton("↺  " + i18n.t("Reset"))
         self.reset_btn.setMinimumHeight(36)
         self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.reset_btn.setStyleSheet(f"""
@@ -331,7 +337,7 @@ class Sidebar(QWidget):
         run_layout = QVBoxLayout(run_container)
         run_layout.setContentsMargins(6, 6, 6, 6)
 
-        self.run_btn = QPushButton("▶  Run Screeners")
+        self.run_btn = QPushButton("▶  " + i18n.t("Run Screeners"))
         self.run_btn.setObjectName("runBtn")
         self.run_btn.clicked.connect(self.run_clicked.emit)
         self.run_btn.setMinimumHeight(56)
@@ -363,7 +369,7 @@ class Sidebar(QWidget):
 
         # Auto-refresh
         ar = QHBoxLayout()
-        self.auto_refresh = QCheckBox("Auto-refresh every 5 min")
+        self.auto_refresh = QCheckBox(i18n.t("Auto-refresh every 5 min"))
         self.auto_refresh.setStyleSheet(f"color:{TEXT_SEC}; font-size:12px;")
         ar.addWidget(self.auto_refresh)
         ar.addStretch()
@@ -371,7 +377,7 @@ class Sidebar(QWidget):
 
         # Weekly KDJ golden-cross alerts
         al = QHBoxLayout()
-        self.alerts_checkbox = QCheckBox("🔔 Weekly KDJ alerts")
+        self.alerts_checkbox = QCheckBox("🔔 " + i18n.t("Weekly KDJ alerts"))
         self.alerts_checkbox.setStyleSheet(f"color:{TEXT_SEC}; font-size:12px;")
         self.alerts_checkbox.setToolTip(
             "After each screening run, checks for fresh weekly KDJ golden crosses in the "
@@ -423,6 +429,7 @@ class Sidebar(QWidget):
         self.score_vol_ma_t.row_widget.setValue(SCORE_VOL_MA_THRESHOLD)
         self.score_min.slider.setValue(SCORE_MIN)
         self.score_top_n.row_widget.setValue(SCORE_TOP_N)
+        self.clv_min.slider.setValue(int(0.8 / 0.05))
 
     def _reset_params(self):
         self._apply_market_defaults(self.market_combo.currentData())
@@ -466,5 +473,6 @@ class Sidebar(QWidget):
             "score_vol_ma_t": self.score_vol_ma_t.row_widget.value(),
             "score_min": self.score_min.slider.value(),
             "score_top_n": self.score_top_n.row_widget.value(),
+            "clv_min": _sv(self.clv_min),
         }
 

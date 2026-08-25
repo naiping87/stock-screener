@@ -9,6 +9,7 @@ TradingView-inspired dark theme with candlestick drill-down charts, weekly KDJ g
 | Feature | Description |
 |---|---|
 | Markets | 🇲🇾 Bursa Malaysia · 🇺🇸 NYSE/NASDAQ/AMEX · 🇨🇳 Shanghai A-Shares |
+| Top Movers | 🔺 instant day board of top gainers / losers / actives when data loads |
 | Screeners | EMA Compression (Daily / Hourly / Weekly) · KDJ Divergence · Weekly/Daily KDJ Cross · 11-factor Scoring |
 | Charts | Double-click any result row → candlestick + EMA 20/50/100/200 + volume + KDJ (Daily/Weekly), zoom/pan/crosshair |
 | Alerts | Weekly KDJ golden-cross detection after every run → system tray notifications (once per cross) |
@@ -19,7 +20,7 @@ TradingView-inspired dark theme with candlestick drill-down charts, weekly KDJ g
 ## Data sources
 
 - **Yahoo Finance** (default): Bursa, US markets.
-- **AkShare**: Shanghai A-Shares (set `data_provider="akshare"` in `markets/shanghai.py`).
+- **AkShare**: Shanghai A-Shares — now bundled in the desktop build, so the China feature works out of the box.
 
 > Data is for reference only — not investment advice.
 
@@ -71,6 +72,27 @@ tools/make_icon.py       regenerates resources/icon.ico
 tests/                   pytest unit tests
 ```
 
+## Licensing / activation
+
+The desktop app is gated by an **offline signed-key activation** (no server needed). A valid activation code is required on first launch; without it the app won't start. After activation the license binds to the machine (configurable) and stays active (perpetual).
+
+**How it works:** your private `Ed25519` key signs each buyer's activation code; the app verifies it with an embedded public key, so nothing can be forged by modifying the client.
+
+Seller setup (do this yourself, keep the private key secret):
+```bash
+# 1) 生成密钥对(只跑一次)
+pip install cryptography
+python seller_tools/gen_keys.py        # 会打印 PUBLIC_KEY_B64，填到 licensing/license_manager.py
+
+# 2) 每卖一单生成一个激活码
+#    pre 模式(当前默认, 一码一机, 防共享):必须带买家机器码
+python seller_tools/create_license.py --name "买家A" --order 12345 --machine "<买家激活框里的机器码>"
+```
+
+- `private.pem`（卖家私钥）已 `gitignore`，**严禁提交/外发**；丢失则无法再为老买家出码。
+- `licensing/license_manager.py` 的 `BIND_MODE`：`pre`（当前默认，激活码绑定单机、一码一机、防转卖/共享）、`self`（首次激活自绑定本机、买家粘码即用，但同码可在另一台电脑再激活）、`none`（不绑机器）。
+- 开发时可用 `SCREENER_SKIP_LICENSE=1` **仅**在非打包运行下跳过激活（打包版无效，避免当后门）。
+
 ## Roadmap status
 
 - [x] P0 correctness (single instance, per-market defaults, A-share source)
@@ -81,4 +103,4 @@ tests/                   pytest unit tests
 - [x] P5 tests / lint / README / first-run welcome
 - [x] Code signing — **declined by decision** (unsigned exe shows a SmartScreen
       warning; end users must click "More info → Run anyway")
-- [ ] Licensing/activation (deferred by decision)
+- [x] Licensing/activation — offline Ed25519 signed key, machine binding, perpetual

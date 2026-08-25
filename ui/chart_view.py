@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QLabel, QTabWidget, QVBoxLayout
 
 from screener import KDJ_PERIOD, KDJ_SIGNAL, _calc_kdj
+from screener_setup import nearest_pivot, closing_strength
 
 # ── TradingView palette ──────────────────────────────────────────────────
 BG = "#131722"
@@ -168,6 +169,43 @@ class ChartWidget(pg.GraphicsLayoutWidget):
             if len(close) >= period:
                 ema = close.ewm(span=period, adjust=False).mean().to_numpy(dtype="float64")
                 self.price.plot(xs, ema, pen=pg.mkPen(color, width=1.2))
+
+        # ── Phase-1 annotations: nearest confirmed pivot (resistance) ───
+        try:
+            pv = nearest_pivot(d["high"], d["low"], close)
+            if pv is not None:
+                line = pg.InfiniteLine(pos=pv["price"], angle=0,
+                                        pen=pg.mkPen("#f7c600", width=1.4,
+                                                     style=pg.QtCore.Qt.PenStyle.DashLine))
+                self.price.addItem(line)
+                lbl = pg.TextItem(html=f"<span style='color:#f7c600;font-weight:600'>"
+                                       f"Pivot {pv['price']:,.2f} (−{pv['distance_pct']:.1f}%)</span>",
+                                  anchor=(1, 1), color="#f7c600", fill=pg.mkBrush("#1e222d"))
+                lbl.setZValue(45)
+                self.price.addItem(lbl, ignoreBounds=True)
+                lbl.setPos(xs[-1], pv["price"])
+            sup = nearest_support(d["low"], d["high"], close)
+            if sup is not None:
+                line2 = pg.InfiniteLine(pos=sup["price"], angle=0,
+                                        pen=pg.mkPen("#c8a4ff", width=1.0,
+                                                     style=pg.QtCore.Qt.PenStyle.DotLine))
+                self.price.addItem(line2)
+        except Exception:
+            pass  # annotation is a bonus; never break the chart
+
+        # ── Phase-1: closing strength chip (top-right header line) ─────-
+        try:
+            clv = closing_strength(d["high"], d["low"], close)
+            if clv is not None:
+                clv_color = UP if clv >= 0.8 else (TEXT_SEC if clv >= 0.6 else DOWN)
+                clv_lbl = pg.TextItem(
+                    html=f"<span style='color:{clv_color};font-size:12px'>"
+                         f"CLV {clv:.2f}</span>", anchor=(1, 0), color=clv_color)
+                clv_lbl.setZValue(45)
+                self.price.addItem(clv_lbl, ignoreBounds=True)
+                clv_lbl.setPos(xs[-1], closes[-1])
+        except Exception:
+            pass
 
         # ── Volume ─────────────────────────────────────────────────────
         if volume is not None and len(volume) > 0:

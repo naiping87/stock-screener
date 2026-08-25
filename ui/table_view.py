@@ -51,6 +51,19 @@ def score_colour(val) -> str | None:
         return None
 
 
+def chg_colour(val) -> str | None:
+    """Green if change is positive, red if negative."""
+    try:
+        v = float(val)
+        if v > 0:
+            return GREEN
+        elif v < 0:
+            return RED
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 DEFAULT_COLOUR_MAP = {
     "ROE%": roe_colour,
     "ROE": roe_colour,
@@ -58,6 +71,13 @@ DEFAULT_COLOUR_MAP = {
     "KDJ": signal_colour,
     "WKDJ": signal_colour,
     "Score": score_colour,
+    "Chg%": chg_colour,
+    # Phase-1 sub-scores: same gradient as Score
+    "master_score": score_colour,
+    "strength_score": score_colour,
+    "setup_score": score_colour,
+    "trigger_score": score_colour,
+    "breakout_score": score_colour,
 }
 
 

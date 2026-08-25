@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+import i18n
 from .styles import ACCENT, BG_SURFACE, BG_WINDOW, BORDER, TEXT, TEXT_SEC
 
 _SETTINGS_ORG = "StockScreenerPro"
@@ -42,7 +43,7 @@ class WelcomeDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Welcome to Stock Screener Pro")
+        self.setWindowTitle(i18n.t("Welcome to Stock Screener Pro"))
         self.setModal(True)
         self.resize(560, 460)
         self.setStyleSheet(
@@ -55,11 +56,11 @@ class WelcomeDialog(QDialog):
         layout.setContentsMargins(28, 24, 28, 20)
         layout.setSpacing(10)
 
-        title = QLabel("Welcome to Stock Screener Pro")
+        title = QLabel(i18n.t("Welcome to Stock Screener Pro"))
         title.setStyleSheet(f"color:{TEXT}; font-size:22px; font-weight:700;")
         layout.addWidget(title)
 
-        sub = QLabel("A multi-market screening terminal — here's how to get the most out of it:")
+        sub = QLabel(i18n.t("A multi-market screening terminal — here's how to get the most out of it:"))
         sub.setStyleSheet(f"color:{TEXT_SEC}; font-size:13px;")
         sub.setWordWrap(True)
         layout.addWidget(sub)
@@ -76,12 +77,12 @@ class WelcomeDialog(QDialog):
 
         layout.addStretch(1)
 
-        self.dont_show = QCheckBox("Don't show this again")
+        self.dont_show = QCheckBox(i18n.t("Don't show this again"))
         layout.addWidget(self.dont_show)
 
         row = QHBoxLayout()
         row.addStretch(1)
-        get_started = QPushButton("Get Started")
+        get_started = QPushButton(i18n.t("Get Started"))
         get_started.setStyleSheet(
             f"QPushButton {{ background:{ACCENT}; color:#fff; border:none; border-radius:8px;"
             f" padding:10px 28px; font-size:14px; font-weight:600; }}"

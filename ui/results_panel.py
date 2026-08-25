@@ -16,11 +16,14 @@ from PyQt6.QtWidgets import (
 )
 
 from .table_view import TableView
+import i18n
 
 
 def _make_empty_widget(title: str = "No results",
                        hint: str = "Run Screeners from the sidebar to start, or adjust parameters and retry") -> QWidget:
     """A friendly empty-state placeholder (styled via styles.py objectNames)."""
+    title = i18n.t(title)
+    hint = i18n.t(hint)
     w = QWidget()
     lay = QVBoxLayout(w)
     lay.addStretch()
@@ -43,6 +46,10 @@ def _make_empty_widget(title: str = "No results",
 
 # 各 tab 的空态文案
 _EMPTY_STATES = {
+    "top_movers": (
+        "No movers yet",
+        "Run Screeners to load market data — today's top gainers, losers and actives appear here",
+    ),
     "new_picks": (
         "No new picks yet",
         "Stocks that pass the screeners for the first time appear here — "
@@ -68,7 +75,7 @@ class ResultsPanel(QWidget):
 
         # ── Search box (applies to the current tab) ─────────────────────
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("🔍 Search code / name / signal…")
+        self.search_box.setPlaceholderText("🔍 " + i18n.t("Search code / name / signal…"))
         self.search_box.setClearButtonEnabled(True)
         self.search_box.textChanged.connect(self._on_search)
         layout.addWidget(self.search_box)
@@ -78,18 +85,24 @@ class ResultsPanel(QWidget):
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         tab_specs = [
-            ("📅 Daily EMA", "daily_ema"),
-            ("⏱ Hourly EMA", "hourly_ema"),
-            ("🗓 Weekly EMA", "weekly_ema"),
-            ("📉 KDJ Divergence", "kdj_div"),
-            ("📆 Weekly KDJ", "weekly_kdj"),
-            ("📊 Daily KDJ", "daily_kdj"),
-            ("⭐ Scoring", "scoring"),
-            ("🆕 New Picks", "new_picks"),
+            ("🔺 " + i18n.t("Top Movers"), "top_movers"),
+            ("📅 " + i18n.t("Daily EMA"), "daily_ema"),
+            ("⏱ " + i18n.t("Hourly EMA"), "hourly_ema"),
+            ("🗓 " + i18n.t("Weekly EMA"), "weekly_ema"),
+            ("📉 " + i18n.t("KDJ Divergence"), "kdj_div"),
+            ("📆 " + i18n.t("Weekly KDJ"), "weekly_kdj"),
+            ("📊 " + i18n.t("Daily KDJ"), "daily_kdj"),
+            ("⭐ " + i18n.t("Scoring"), "scoring"),
+            ("🚀 " + i18n.t("Ignition"), "phase1"),
+            ("🆕 " + i18n.t("New Picks"), "new_picks"),
         ]
 
         for tab_label, tab_key in tab_specs:
             table = TableView()
+            if tab_key == "top_movers":
+                # Don't stretch the last column (Volume) to fill the window —
+                # keep it compact so the movers table reads cleanly.
+                table.horizontalHeader().setStretchLastSection(False)
             table.row_activated.connect(self.ticker_activated)
             self.tables[tab_key] = table
 

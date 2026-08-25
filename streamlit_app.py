@@ -856,6 +856,17 @@ with st.sidebar:
                 key="cfg_score_min",
             )
 
+    with st.expander("🚀 Ignition", expanded=False):
+        st.markdown('<div style="margin-bottom:0.25rem;font-size:0.7rem;color:#6e7681;">'
+                     'Closing-Strength filter: keep only stocks that closed in the top X% '
+                     'of today\'s range (CLV). 0.8 = close near day high · 0 = show all.</div>',
+                    unsafe_allow_html=True)
+        clv_min = st.slider(
+            "Min Closing Strength (CLV)", 0.0, 1.0, 0.8, 0.05,
+            help="0.8 = only stocks that closed near the day's high",
+            key="cfg_clv_min",
+        )
+
     with st.expander("🔄 Auto-Refresh", expanded=False):
         st.markdown('<div style="margin-bottom:0.25rem;font-size:0.7rem;color:#6e7681;display:flex;align-items:center;gap:0.25rem;">'
                      'Enable automatic data reload '
@@ -924,7 +935,7 @@ with st.sidebar:
 
 # ── ROE fetcher ────────────────────────────────────────────────────────────
 def _fetch_one_roe(tkr, crumb, cookies):
-    """Fetch ROE for a single ticker using shared crumb + cookies."""
+    """Fetch ROE + sector for a single ticker using shared crumb + cookies."""
     sess = requests.Session()
     sess.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -935,15 +946,20 @@ def _fetch_one_roe(tkr, crumb, cookies):
     try:
         r = sess.get(
             f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{tkr}",
-            params={"modules": "financialData", "crumb": crumb},
+            params={"modules": "financialData,assetProfile", "crumb": crumb},
             timeout=10,
         )
         if r.status_code == 200:
             j = r.json()
-            fd = j.get("quoteSummary", {}).get("result", [{}])[0].get("financialData", {})
+            res = j.get("quoteSummary", {}).get("result", [{}])[0]
+            fd = res.get("financialData", {})
             roe = fd.get("returnOnEquity", {})
-            if isinstance(roe, dict) and roe.get("raw") is not None:
-                return roe["raw"]
+            ap = res.get("assetProfile", {})
+            sector = ap.get("sector") if isinstance(ap.get("sector"), str) else None
+            out = {"roe": (roe["raw"] if isinstance(roe, dict) and roe.get("raw") is not None else None)}
+            if sector:
+                out["sector"] = sector
+            return out
     except Exception:
         pass
     return None
@@ -977,9 +993,9 @@ def fetch_roe_batch(tickers, workers=4):
             for f in as_completed(futs):
                 tkr = futs[f]
                 try:
-                    roe = f.result()
-                    if roe is not None:
-                        results[tkr] = round(roe * 100, 2)
+                    meta = f.result()
+                    if meta is not None:
+                        results[tkr] = meta  # dict {roe, sector?}
                 except Exception:
                     pass
         return results
@@ -990,16 +1006,18 @@ def fetch_roe_batch(tickers, workers=4):
         for f in as_completed(futs):
             tkr = futs[f]
             try:
-                roe = f.result()
-                if roe is not None:
-                    results[tkr] = round(roe * 100, 2)
+                meta = f.result()
+                if meta is not None:
+                    # meta is a dict {roe, sector?} — keep 'roe' numeric for the
+                    # existing ROE-column machinery; sector rides along.
+                    results[tkr] = meta
             except Exception:
                 pass
     return results
 
 
 def _fetch_one_roe_fallback(tkr):
-    """Fallback: fetch ROE with own session + crumb (used when shared crumb fails)."""
+    """Fallback: fetch ROE + sector with own session + crumb (shared crumb failed)."""
     sess = requests.Session()
     sess.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -1012,15 +1030,20 @@ def _fetch_one_roe_fallback(tkr):
         crumb = r.text.strip()
         r = sess.get(
             f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{tkr}",
-            params={"modules": "financialData", "crumb": crumb},
+            params={"modules": "financialData,assetProfile", "crumb": crumb},
             timeout=10,
         )
         if r.status_code == 200:
             j = r.json()
-            fd = j.get("quoteSummary", {}).get("result", [{}])[0].get("financialData", {})
+            res = j.get("quoteSummary", {}).get("result", [{}])[0]
+            fd = res.get("financialData", {})
             roe = fd.get("returnOnEquity", {})
-            if isinstance(roe, dict) and roe.get("raw") is not None:
-                return roe["raw"]
+            ap = res.get("assetProfile", {})
+            sector = ap.get("sector") if isinstance(ap.get("sector"), str) else None
+            out = {"roe": (roe["raw"] if isinstance(roe, dict) and roe.get("raw") is not None else None)}
+            if sector:
+                out["sector"] = sector
+            return out
     except Exception:
         pass
     return None
@@ -1254,6 +1277,38 @@ def get_data():
     return data, ticker_names
 
 
+# ── KLCI benchmark (Phase-1 RS reference) — cached, 1h TTL ──────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_benchmark(_market="my", _v=1):
+    """Fetch the market benchmark index close (Bursa: ^KLSE). Single call per
+    hour, so the RS engine has its reference without hitting Yahoo 1000x."""
+    from screener import _build_session, _fetch_chart
+    import time
+    m = get_market(_market)
+    sess = _build_session()
+    end = int(time.time())
+    start = end - 2400 * 86400  # ~6.5y
+    if _market == "my":
+        d, _ = _fetch_chart(sess, "^KLSE", start, end, "1d", 30)
+    elif _market == "us":
+        d, _ = _fetch_chart(sess, "^GSPC", start, end, "1d", 30)
+    elif _market == "cn":
+        d, _ = _fetch_chart(sess, "000001.SS", start, end, "1d", 30)
+    else:
+        d, _ = None, ""
+    if d is None:
+        return None
+    return d["close"].dropna()
+
+
+def get_benchmark(code="my"):
+    """Benchmark series or None (never throws)."""
+    try:
+        return _cached_benchmark(code)
+    except Exception:
+        return None
+
+
 # ── Run screeners (auto if cached data exists) ──────────────────────────────
 import screener as scr  # noqa: E402  (module-level import after st() calls)
 
@@ -1431,9 +1486,24 @@ if new_tickers:
     st.session_state._roe_cache = roe_cache
 
 # Merge ROE and sort
+def _meta_val(meta, key):
+    """Return ROE number or 'sector' string from the meta cache entry.
+    Backward-compatible: older cached entries are plain floats (ROE only)."""
+    if isinstance(meta, dict):
+        v = meta.get(key)
+        return v
+    if key == "roe" and isinstance(meta, (int, float)):
+        return meta
+    return None
+
+
 def _attach_roe(results, roe_map):
     for r in results:
-        r["ROE"] = roe_map.get(r["ticker"])
+        meta = roe_map.get(r["ticker"])
+        r["ROE"] = _meta_val(meta, "roe")
+        sec = _meta_val(meta, "sector")
+        if sec:
+            r["Sector"] = sec
     results.sort(key=lambda r: (
         r["ROE"] is None,
         -(r["ROE"] or 0),
@@ -1446,6 +1516,33 @@ _attach_roe(results3, roe_map)
 _attach_roe(results4, roe_map)
 _attach_roe(results_daily, roe_map)
 _attach_roe(results5, roe_map)
+
+# ── Phase 1: RS + Sector + Setup pulse detector (new, incremental) ──────────
+bench = get_benchmark(selected_code)
+sector_map = {}
+for t, v in roe_cache.items():
+    s = _meta_val(v, "sector")
+    if s:
+        sector_map[t] = s
+results_p1: list = []
+try:
+    from screener_phase1 import run_phase1_screener, set_lang as p1_set_lang
+    p1_set_lang("en")  # Streamlit builds are English; desktop owns 3-lang UI
+    _clv = st.session_state.get("cfg_clv_min", 0.8)  # default: closing-strong lens
+    _p1_params = getattr(st.session_state, "_p1_params", None)
+    _fp_clv = st.session_state.get("_p1_fp", None)
+    _cur_fp = (selected_code, str(bench is not None), sector_map and len(sector_map), _clv)
+    if _fp_clv != _cur_fp or "results_phase1" not in st.session_state:
+        results_p1 = run_phase1_screener(
+            data, bench, sector_map, ticker_names=ticker_names,
+            top_n=score_top_n, clv_min=_clv,
+        )
+        st.session_state.results_phase1 = results_p1
+        st.session_state._p1_fp = _cur_fp
+    else:
+        results_p1 = st.session_state.results_phase1
+except Exception as _e:
+    st.sidebar.caption(f"Ignition unavailable: {_e}")
 
 screener_progress.progress(100, text="Done")
 screener_progress.empty()
@@ -1525,7 +1622,7 @@ if st.session_state.run_done:
                        "first time will be listed here (baseline set on the first run).")
 
     # Detail tables
-    tab_score, tab1, tab2, tab_weekly_ema, tab3, tab4, tab_daily, tab_bt = st.tabs([
+    tab_score, tab1, tab2, tab_weekly_ema, tab3, tab4, tab_daily, tab_p1, tab_bt = st.tabs([
         f"⭐ Scoring ({len(results5)})",
         f"📅 Daily EMA ({len(results1)})",
         f"⏱ Hourly EMA ({len(results2)})",
@@ -1533,8 +1630,94 @@ if st.session_state.run_done:
         f"📉 KDJ Divergence ({len(results3)})",
         f"📆 Weekly KDJ ({len(results4)})",
         f"📊 Daily KDJ ({len(results_daily)})",
+        f"🚀 Ignition ({len(results_p1)})",
         "🧪 Backtest",
     ])
+
+    # ── Phase 1: RS / Sector / Setup / Closing-Strength pulse detector ─────
+    with tab_p1:
+        if results_p1:
+            _CLASS_BADGE = {
+                "BREAKOUT": ("🚀", "#3fb950"),
+                "EXPANSION": ("📈", "#38a900"),
+                "TRIGGER WATCH": ("🎯", "#f7c600"),
+                "SETUP": ("🧲", "#58a6ff"),
+                "EMERGING LEADER": ("🌟", "#b18cff"),
+                "LEADER": ("👑", "#ffd740"),
+                "STRONG BUT EXTENDED": ("⚠️", "#f0883e"),
+                "BASE": ("🏗", "#8b949e"),
+                "WEAKENING": ("🔻", "#f85149"),
+                "LAGGARD": ("⚪", "#6e7681"),
+            }
+
+            def _badge(c):
+                icon, color = _CLASS_BADGE.get(c, ("#", "#8b949e"))
+                return f"<span style='color:{color};font-weight:700'>[{icon} {c}]</span>"
+
+            def _fmt(v, suffix="", na="—"):
+                return f"{v:,.2f}{suffix}" if isinstance(v, (int, float)) else na
+
+            # summary metrics
+            m1, m2, m3, m4 = st.columns(4)
+            n_breakout = sum(1 for r in results_p1 if r["classification"] == "BREAKOUT")
+            n_trigger = sum(1 for r in results_p1 if r["classification"] == "TRIGGER WATCH")
+            n_setup = sum(1 for r in results_p1 if r["classification"] == "SETUP")
+            n_emerg = sum(1 for r in results_p1 if r["classification"] == "EMERGING LEADER")
+            m1.metric("🚀 Breakout", n_breakout)
+            m2.metric("🎯 Trigger Watch", n_trigger)
+            m3.metric("🧲 Setup", n_setup)
+            m4.metric("🌟 Emerging Leader", n_emerg)
+
+            # data table
+            rows = []
+            for r in results_p1:
+                rows.append({
+                    "Code": _strip_kl(r["ticker"]),
+                    "Name": r.get("name", ""),
+                    "Price": r.get("close"),
+                    "Type": _badge(r.get("classification", "")),
+                    "Master": r.get("master_score"),
+                    "Strength": r.get("strength_score"),
+                    "Setup": r.get("setup_score"),
+                    "Trigger": r.get("trigger_score"),
+                    "Brk": r.get("breakout_score"),
+                    "CLV": _fmt(r.get("clv")),
+                    "RS Rank": _fmt(r.get("rs_rank")),
+                    "RS↑20d": _fmt(r.get("rs_rank_chg20")),
+                    "RS5": _fmt(r.get("rs_5d"), "%"),
+                    "RS20": _fmt(r.get("rs_20d"), "%"),
+                    "RS60": _fmt(r.get("rs_60d"), "%"),
+                    "RS Mom": _fmt(r.get("rs_momentum")),
+                    "Sector": r.get("sector", ""),
+                    "SecStr": _fmt(r.get("sector_strength"), "", ""),
+                    "Pivot": _fmt(r.get("pivot_price")),
+                    "Dist%": _fmt(r.get("pivot_distance_pct"), "%"),
+                    "Target": _fmt(r.get("target_price")),
+                    "Sup": _fmt(r.get("support_price")),
+                    "R:R": _fmt(r.get("rr")),
+                    "Ext%": _fmt(r.get("extension_pct"), "%"),
+                    "Base%": _fmt(r.get("base_range_pct"), "%"),
+                    "DryUp": "✓" if r.get("base_vol_dryup") else "",
+                    "Shake": "✓" if r.get("shakeout") else "",
+                    "Why": " · ".join(r.get("reasons", [])[:5]) or "—",
+                })
+            p1_df = pd.DataFrame(rows)
+            st.caption("💡 Strength ≠ Setup ≠ Trigger — Master is the blend. "
+                       "RS Rank = percentile vs ALL stocks · RS Rank Chg = 20d change (+ = gaining) · "
+                       "CLV ≥ 0.8 = strong close · R:R < 1.5 = pass.")
+            _render_aggrid(p1_df, height=520, default_sort={"Type": "asc"})
+            st.download_button("⬇️ Export Ignition CSV",
+                               pd.DataFrame([{k: v for k, v in r.items() if k != "reasons"}
+                                             for r in results_p1]).to_csv(index=False),
+                               file_name="ignition_pulse.csv", mime="text/csv",
+                               key="p1_export")
+        else:
+            st.warning("Ignition pulse detector: no stocks qualified this run "
+                       "(adjust score filters or refresh data).")
+
+    with tab_bt:
+        st.markdown("#### 🔬 Backtest Scoring System")
+        st.markdown('<div class="backtest-card">', unsafe_allow_html=True)
 
     with tab1:
         if results1:

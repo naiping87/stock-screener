@@ -4,6 +4,9 @@ numpy>=1.24.0
 requests>=2.31.0
 pyqtgraph>=0.13.0
 
+# 依赖:离线激活的 Ed25519 验签(cryptography)
+cryptography>=41.0.0
+
 # 可选:A股备用数据源(screener.py data_provider="akshare" 路径,默认使用 Yahoo)
 akshare>=1.0.0
 # Streamlit Cloud 部署依赖(https://stock-screener-*.streamlit.app)

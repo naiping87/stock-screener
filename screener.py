@@ -202,7 +202,7 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars, timezone="Asia
     return None, ""
 
 
-def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w, timezone="Asia/Kuala_Lumpur"):
+def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w, timezone="Asia/Kuala_Lumpur", daily_only=False):
     """Download daily + hourly + weekly(1wk) data for one ticker."""
     d_data, name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d, timezone)
     if d_data is None:
@@ -221,6 +221,22 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_
         "volume": d_vol.loc[di],
         "name": name,
     }
+
+    # A-shares load fast: daily only, weekly derived from daily (no hourly).
+    if daily_only:
+        try:
+            w_close = result["close"].resample("W").last()
+            w_high = result["high"].resample("W").max()
+            w_low = result["low"].resample("W").min()
+            w_vol = result["volume"].resample("W").sum()
+            wk_idx = w_close.index.intersection(w_high.index).intersection(w_low.index).intersection(w_vol.index)
+            result["close_weekly"] = w_close.loc[wk_idx]
+            result["high_weekly"] = w_high.loc[wk_idx]
+            result["low_weekly"] = w_low.loc[wk_idx]
+            result["volume_weekly"] = w_vol.loc[wk_idx]
+        except Exception:
+            pass
+        return tkr, result
 
     # Hourly data — non-blocking, no retries (fast fail)
     try:
@@ -263,7 +279,28 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
     the next check so the caller can abort without treating it as an error.
     """
     if data_provider == "akshare":
-        return _download_akshare(tickers, timezone, progress_cb, cancel_event)
+        # AkShare (East Money) is frequently blocked / rate-limited (each call
+        # wastes ~1s failing on 1700 tickers, which is very slow).  So prefer a
+        # fast daily-only Yahoo pull; only fall back to AkShare if Yahoo itself
+        # is unavailable (e.g. a buyer's network where Yahoo is blocked).
+        data = _download_yahoo(tickers, timezone, progress_cb, cancel_event, daily_only=True)
+        min_ok = max(1, int(len(tickers) * 0.2))
+        if len(data) < min_ok:
+            logger.warning("[YAHOO] only %d/%d tickers returned; trying AkShare",
+                           len(data), len(tickers))
+            data = _download_akshare(tickers, timezone, progress_cb, cancel_event)
+        return data
+    return _download_yahoo(tickers, timezone, progress_cb, cancel_event)
+
+
+def _download_yahoo(tickers: dict[str, str], timezone: str, progress_cb=None, cancel_event=None, daily_only: bool = False) -> dict[str, dict[str, Any]]:
+    """Download daily + hourly + weekly data concurrently via Yahoo chart API.
+
+    `cancel_event` (optional): when set, the loop raises DownloadCancelled at
+    the next check so the caller can abort without treating it as an error.
+    `daily_only` (option): skip hourly/weekly network calls and derive weekly
+    from daily — much faster, used for large A-share universes.
+    """
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
     h_start = end_date - timedelta(days=HOURLY_DAYS)
@@ -280,8 +317,9 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
     all_data = {}
     session = _build_session()
 
-    logger.info("[DOWNLOAD] Fetching %dd daily + %dd hourly + %dd weekly for %d tickers (workers=%d)",
-                DAILY_DAYS, HOURLY_DAYS, WEEKLY_DAYS, len(ticker_list), MAX_WORKERS)
+    n_fetch = "1d" if daily_only else "1d + 1h + 1w"
+    logger.info("[DOWNLOAD] Fetching %s for %d tickers (workers=%d)",
+                n_fetch, len(ticker_list), MAX_WORKERS)
 
     pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
     try:
@@ -290,6 +328,7 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
                 _fetch_ticker, session, tkr,
                 dp1, dp2, hp1, hp2, wp1, wp2,
                 min_bars_d, min_bars_h, min_bars_w, timezone,
+                daily_only,
             ): tkr
             for tkr in ticker_list
         }

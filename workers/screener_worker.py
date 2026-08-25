@@ -1,7 +1,11 @@
 """Background worker for running all screeners on loaded data."""
 
+import logging
+
 import pandas as pd
 from PyQt6.QtCore import QThread, pyqtSignal
+
+logger = logging.getLogger(__name__)
 
 from screener import (
     DIVERGENCE_LOOKBACK,
@@ -33,11 +37,14 @@ class ScreenerWorker(QThread):
     error = pyqtSignal(str)
     cancelled = pyqtSignal()
 
-    def __init__(self, data, ticker_names, params, parent=None):
+    def __init__(self, data, ticker_names, params, parent=None,
+                 bench_close=None, sector_map=None):
         super().__init__(parent)
         self.data = data
         self.ticker_names = ticker_names
         self.params = params
+        self.bench_close = bench_close      # KLCI close series (RS reference)
+        self.sector_map = sector_map or {}  # {ticker: sector} for sector strength
 
     def cancel(self):
         """Request cancellation; checked between screeners."""
@@ -143,6 +150,30 @@ class ScreenerWorker(QThread):
             if self._check_cancel():
                 return
 
+            # Screen 8: Phase-1 pulse detector (RS / Sector / Setup / CLV)
+            self.progress.emit(95, "Phase-1 pulse detector...")
+            try:
+                from screener_phase1 import run_phase1_screener, set_lang as p1_set_lang
+                try:
+                    import i18n
+                    p1_set_lang(i18n.current())
+                except Exception:
+                    p1_set_lang("en")
+                r6 = run_phase1_screener(
+                    self.data,
+                    getattr(self, "bench_close", None),
+                    getattr(self, "sector_map", None) or {},
+                    ticker_names=self.ticker_names,
+                    top_n=p.get("score_top_n", SCORE_TOP_N),
+                    clv_min=p.get("clv_min", 0.8),
+                )
+                self.result.emit("phase1", self._to_df(r6))
+            except Exception as e:
+                logger.warning("Phase-1 detector skipped: %s", e)
+                self.result.emit("phase1", pd.DataFrame())
+            if self._check_cancel():
+                return
+
             self.progress.emit(100, "All screeners complete")
             self.finished.emit()
 
@@ -156,6 +187,10 @@ class ScreenerWorker(QThread):
         # Keep original ticker for internal lookup, add stripped Code for display
         if "ticker" in df.columns:
             df["Code"] = df["ticker"].apply(_strip_kl)
+        # Reason lists (explainability) → semicolon string for the table cell
+        if "reasons" in df.columns:
+            df["reasons"] = df["reasons"].apply(
+                lambda v: (" · ".join(str(x) for x in v)) if isinstance(v, (list, tuple)) else str(v))
         # Rename other columns for display
         rename = {
             "name": "Name", "close": "Price",

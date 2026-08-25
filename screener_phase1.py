@@ -1,0 +1,498 @@
+"""
+Phase 1 pulse-detector screener: relative strength + sector strength +
+setup/structure + closing strength + breakout quality + risk/reward,
+integrated on TOP of the existing 11-factor technical score WITHOUT touching
+`run_scoring_screener` — that function keeps its exact behavior (tests that
+depend on it stay green).
+
+Every result row is EXPLAINABLE: it carries `reasons` (a list of human-
+readable strings) so the UI can show not just "score 88" but WHY.
+
+Views:
+  - strength_score  0-100 : is it strong? (RS level + sector + trend alignment)
+  - setup_score     0-100 : is it SET UP? (base quality + volume dry-up + ATR)
+  - trigger_score   0-100 : is it FIRING? (close strength, breakout, reclaim)
+  - breakout_score  0-100 : pivot-break quality (volume, CLV, RS confirmation)
+  - master_score    0-100 : weighted combination (see weights below)
+  - classification  one of the 12 setup labels (see classify()).
+
+The benchmark (KLCI) close series must be supplied — fetched once per run by
+the caller and passed in, so no lookahead and no per-stock network calls.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from screener import run_scoring_screener  # existing 11-factor scorer (UNCHANGED)
+from screener_rs import (
+    compute_rs_momentum,
+    rs_rank_history,
+    sector_rank,
+    stock_rs,
+)
+from screener_setup import (
+    base_quality,
+    breakout_quality,
+    closing_strength,
+    effort_vs_result,
+    nearest_pivot,
+    nearest_support,
+    next_resistance,
+    price_extension,
+    risk_reward,
+    shakeout_check,
+)
+
+# Master-score weights (fixed, simple, explainable — NOT tuned against the
+# backtest; per the audit: no parameter optimization).
+W_STRENGTH = 0.30
+W_SETUP = 0.25
+W_TRIGGER = 0.25
+W_BREAKOUT = 0.20
+
+# ── Language support for the explainability strings ─────────────────────────
+# The engine returns human-readable `reasons` in the requested language.
+# Templates are ENGLISH (canonical); zh/ms override via the dictionaries.
+_L = "en"
+
+
+def set_lang(code: str) -> None:
+    """Set the language used for reason strings (called by the UI layer)."""
+    global _L
+    _L = code if code in ("en", "ms", "zh") else "en"
+
+
+# English template text → zh / ms. English is the fallback for everything.
+_T_ZH = {
+    "RS rank #{rank}/100": "RS 排名 #{rank}/100",
+    "RS rank +{chg} in 20d": "RS 排名 20 日上升 +{chg}",
+    "RS rank falling {chg} in 20d": "⚠ RS 排名回落 {chg}",
+    "RS beats market ({chg}%)": "RS 跑赢大盘 (+{chg}%)",
+    "RS accelerating (+{chg})": "RS 加速 (+{chg})",
+    "Strong sector ({sector} #{rank})": "板块强 ({sector} #{rank})",
+    "Technical score {score}/11": "技术分 {score}/11",
+    "Base tight ({pct}% range)": "Base 紧凑 ({pct}% 区间)",
+    "Higher Low": "Higher Low",
+    "Volume Dry-up": "缩量蓄势 (Volume Dry-up)",
+    "Volatility contraction": "波动收敛",
+    "Only {pct}% off EMA20": "距 EMA20 仅 {pct}%",
+    "Strong close CLV={clv}": "收盘强势 CLV={clv}",
+    "Shakeout {bars}d": "洗盘回踩 (Shakeout {bars}天)",
+    "Near Pivot ({pct}%)": "逼近 Pivot ({pct}%)",
+    "Volume expansion": "放量收涨",
+    "Potential Supply (high vol, no gain)": "⚠ 放量滞涨 (Potential Supply)",
+    "R:R low ({rr})": "R:R 偏低 ({rr})",
+}
+_T_MS = {
+    # Bahasa Melayu (best-effort; falls back to English when a string is new)
+    "RS rank #{rank}/100": "Kedudukan RS #{rank}/100",
+    "Volume Dry-up": "Kering Volum",
+    "Near Pivot ({pct}%)": "Hampir Pivot ({pct}%)",
+}
+
+
+def _t(template: str, **kwargs: Any) -> str:
+    """Format `template` with kwargs in the active language.
+
+    1. Look up the template in the active language table (zh/ms).
+    2. Missing → use the English template itself.
+    3. Apply kwargs. Unknown language → English.
+    """
+    if _L == "zh":
+        out = _T_ZH.get(template, template)
+    elif _L == "ms":
+        out = _T_MS.get(template, template)
+    else:
+        out = template
+    return out.format(**kwargs)
+
+# Classification thresholds (generous defaults; avoid overfitting).
+EXTENDED_PCT = 15.0          # % above EMA20 → "strong but extended"
+NEAR_PIVOT_PCT = 5.0         # % below pivot → "trigger watch"
+BASE_MAX_RANGE = 12.0        # max base range_pct to call it a base
+
+
+def classify(strength: float, setup: float, trigger: float,
+             breakout: dict[str, Any], extension: float | None,
+             pivot_distance: float | None, base: dict[str, Any],
+             rs_momentum: float | None, rr: float | None = None,
+             rs_rank: float | None = None,
+             rs_rank_chg20: float | None = None) -> str:
+    """Map sub-scores to one of the 12 setup labels.
+
+    Priority order matters: breakout > trigger-watch > setup > extended >
+    emerging-leader > leader > weakening > laggard.
+    Risk/reward gate: a TRIGGER WATCH without acceptable R:R is downgraded to
+    SETUP (the setup is there, the trade risk is not) — "good stock ≠ good
+    trade" (#spec). R:R < 1.0 always caps the classification below trigger.
+
+    LEADERSHIP axis (rs_rank / rs_rank_chg20) is the cross-sectional RS
+    percentile and its 20-day change, both computed against the WHOLE market
+    at the same date. That is the ONLY thing that decides Leader /
+    Emerging Leader / Weakening — technical score and setup never override it.
+      LEADER           — rank >= 80 AND holding (chg20 > -5)
+      EMERGING LEADER  — rank in [55, 85) AND climbing (chg20 >= +10)
+      WEAKENING        — any rank AND rolling over (chg20 <= -10)
+    """
+    if breakout.get("attempt") and breakout.get("score", 0) >= 60:
+        return "BREAKOUT" if breakout["score"] >= 75 else "EXPANSION"
+    rr_ok = rr is None or rr >= 1.0
+    if trigger >= 80 and setup >= 50 and pivot_distance is not None \
+            and pivot_distance <= NEAR_PIVOT_PCT:
+        if rr_ok:
+            return "TRIGGER WATCH"
+        # R:R unacceptable — the trigger is firing but the trade is not;
+        # downgrade so the user sees "setup present, risk unconfirmed".
+        return "SETUP"
+    if setup >= 60 and strength >= 50:
+        return "SETUP"
+    if extension is not None and extension >= EXTENDED_PCT and strength >= 70:
+        return "STRONG BUT EXTENDED"
+    # ── Leadership axis: rs_rank only ────────────────────────────────────
+    if rs_rank is not None:
+        if rs_rank_chg20 is not None and rs_rank_chg20 <= -10:
+            return "WEAKENING"          # was strong, now rolling over (A: 95→90)
+        if rs_rank >= 80 and (rs_rank_chg20 is None or rs_rank_chg20 > -5):
+            return "LEADER"             # high rank AND holding
+        if 55 <= rs_rank < 85 and rs_rank_chg20 is not None and rs_rank_chg20 >= 10:
+            return "EMERGING LEADER"    # mid-high rank AND climbing fast (B)
+    # fall through to structure-based labels (no RS info or inconclusive)
+    if rs_momentum is not None and rs_momentum > 0 and strength >= 70:
+        return "EMERGING LEADER"
+    if strength >= 80:
+        return "LEADER"
+    if strength >= 45:
+        return "BASE"
+    if strength >= 30:
+        return "WEAKENING"
+    return "LAGGARD"
+
+
+def run_phase1_screener(
+    data: dict[str, dict[str, Any]],
+    bench_close: pd.Series | None,
+    sector_map: dict[str, str],
+    ticker_names: dict[str, str] | None = None,
+    rs_periods: tuple[int, ...] = (5, 20, 60, 120),
+    top_n: int = 200,
+    min_score_tech: int = 0,
+    clv_min: float = 0.0,
+    ext_pct: float = EXTENDED_PCT,
+    base_max_range: float = BASE_MAX_RANGE,
+    pivot_window: int = 5,
+    include_reasons: bool = True,
+) -> list[dict[str, Any]]:
+    """Run the full Phase-1 pulse detector over the loaded market.
+
+    Args:
+      data        — {ticker: {close, high, low, volume, name, ...}} (as-loaded).
+      bench_close — KLCI (or any index) close series. When None, RS/sector
+                    vs-market numbers degrade to None (still returns structure).
+      sector_map  — {ticker: sector} from the meta worker; may be empty.
+      clv_min     — Closing-Strength filter: only keep rows with CLV >= this.
+                    Pass 0.0 to disable (show all).
+      min_score_tech — existing 11-factor score floor (0 = any).
+    """
+    ticker_names = ticker_names or {}
+
+    # ── Build the close matrix for cross-sectional RS / sector ranks ─────
+    closes: dict[str, pd.Series] = {}
+    for tkr, d in data.items():
+        s = d.get("close")
+        if s is not None and len(s) >= 30:
+            closes[tkr] = s
+    close_matrix = pd.DataFrame(closes)
+
+    # Sector strength table (per-sector, vs benchmark) — computed once.
+    strength_table = None
+    if bench_close is not None and not close_matrix.empty:
+        try:
+            strength_table = sector_rank(close_matrix, sector_map, bench_close)
+        except Exception:
+            strength_table = None
+    sector_strength: dict[str, float] = {}
+    if strength_table is not None and not strength_table.empty:
+        for _, row in strength_table.iterrows():
+            sector_strength[row["sector"]] = float(row["strength"])
+
+    results: list[dict[str, Any]] = []
+    bench_clean = bench_close.dropna() if bench_close is not None else None
+
+    # ── Cross-sectional RS RANKING (the Leader axis): percentile of every
+    # stock vs every OTHER stock (not vs the index only), at the last date and
+    # 20/40/60 days before it. This is what separates "Leader" (high rank,
+    # holding) from "Emerging Leader" (rank climbing fast) from "Weakening"
+    # (rank rolling over). Computed ONCE for the whole universe — no per-ticker
+    # lookahead, pure snapshots under each date.
+    rs_rank_table = None
+    if bench_clean is not None and not close_matrix.empty:
+        try:
+            rs_rank_table = rs_rank_history(close_matrix, bench_clean, lookback=20)
+        except Exception:
+            rs_rank_table = None
+
+    for tkr, d in data.items():
+        close = d.get("close")
+        high = d.get("high")
+        low = d.get("low")
+        vol = d.get("volume")
+        if close is None or len(close) < 30:
+            continue
+
+        # ── Data robustness: Bursa/Yahoo series commonly end with a NaN bar
+        # (unclosed session or a data hole). Truncate to the LAST VALID bar
+        # for every series BEFORE any detector runs, so "today" means the
+        # last day with real data — never NaN-poisoned.
+        close = close.dropna()
+        if len(close) < 30:
+            continue
+        last_ts = close.index[-1]
+        if high is not None:
+            high = high.loc[:last_ts].dropna()
+        if low is not None:
+            low = low.loc[:last_ts].dropna()
+        if vol is not None:
+            vol = vol.loc[:last_ts].fillna(0)
+        d = {**d, "close": close, "high": high, "low": low, "volume": vol}
+        if high is None or low is None or high.empty or low.empty:
+            continue
+
+        # ── Existing 11-factor technical score (UNCHANGED function) ──────
+        tech = run_scoring_screener(
+            {tkr: d}, ticker_names, top_n=1, min_score=0,
+        )
+        tech_score = tech[0]["score"] if tech else 0
+
+        # ── RS vs benchmark + momentum ───────────────────────────────────
+        rs_vals: dict[str, float | None] = {}
+        rs_mom = None
+        if bench_clean is not None:
+            rs_vals = stock_rs(close.dropna(), bench_clean, lookbacks=rs_periods)
+            rs_mom = compute_rs_momentum(close.dropna(), bench_clean, lookback=5)
+
+        # ── Sector context ───────────────────────────────────────────────
+        sector = sector_map.get(tkr, "")
+        sec_str = sector_strength.get(sector)
+
+        # ── Cross-sectional RS rank (Leader axis) for this stock ─────────
+        rs_rank = None
+        rs_rank_chg20 = None
+        rs_rank_chg60 = None
+        if rs_rank_table is not None and tkr in rs_rank_table.index:
+            _r = rs_rank_table.loc[tkr]
+            rs_rank = float(_r["rs_rank"]) if pd.notna(_r.get("rs_rank")) else None
+            rs_rank_chg20 = float(_r["rs_rank_chg20"]) if pd.notna(_r.get("rs_rank_chg20")) else None
+            rs_rank_chg60 = float(_r["rs_rank_chg60"]) if pd.notna(_r.get("rs_rank_chg60")) else None
+
+        # ── Closing strength / extension / effort ────────────────────────
+        clv = closing_strength(high, low, close)
+        ext = price_extension(close, window=20)
+        effort = effort_vs_result(high, low, close, vol)
+
+        # ── Structure: base + pivot/support + shakeout ───────────────────
+        base = base_quality(high, low, close, vol, lookback=40)
+        pv = nearest_pivot(high, low, close, window=pivot_window)
+        sup = nearest_support(low, high, close, window=pivot_window)
+        payout_support = sup["price"] if sup else None
+        shake = shakeout_check(high, low, close, vol, payout_support)
+
+        # ── Breakout quality (vs nearest pivot) ──────────────────────────
+        bq = breakout_quality(
+            high, low, close, vol,
+            pivot_price=pv["price"] if pv else None,
+            clv=clv,
+            rs_20d=rs_vals.get("rs_20d"),
+            sector_rel_20d=None,  # filled below when sector table available
+        )
+        if strength_table is not None and not strength_table.empty and sector:
+            row = strength_table[strength_table["sector"] == sector]
+            if not row.empty:
+                bq_20 = float(row.iloc[0].get("rel_20d") or 0)
+                bq["score"] = min(100.0, bq["score"] + max(0.0, min(10.0, bq_20 * 0.2)))
+                bq["sector_rel"] = round(bq_20, 2)
+
+        # ── Sub-scores (0-100, each explainable) ─────────────────────────
+        # STRENGTH = the LEADERSHIP axis: dominated by the cross-sectional
+        # RS percentile (vs the whole market at the same date), with the
+        # 20-day rank CHANGE as the "getting stronger" signal. Technical
+        # score and sector are secondary (small weight) so the score speaks
+        # the same language as the Leader / Emerging Leader classification.
+        strength_score = 0.0
+        parts_s: list[str] = []
+        rs_avg = np.nanmean([rs_vals.get(f"rs_{d}d") for d in rs_periods])
+        rs_avg_f = float(rs_avg) if np.isfinite(rs_avg) else 0.0
+        if rs_rank is not None and np.isfinite(rs_rank):
+            # rank percentile → 0-50 points (rank 50 ≈ 25 pts)
+            strength_score += rs_rank * 0.5
+            parts_s.append(_t("RS rank #{rank}/100", rank=round(rs_rank)))
+        else:
+            strength_score += min(35.0, max(0.0, 35 + rs_avg_f))       # fallback
+        if rs_rank_chg20 is not None and np.isfinite(rs_rank_chg20):
+            if rs_rank_chg20 > 0:
+                strength_score += min(20.0, 10 + rs_rank_chg20 * 0.4)
+                parts_s.append(_t("RS rank +{chg} in 20d", chg=round(rs_rank_chg20)))
+            elif rs_rank_chg20 < -5:
+                parts_s.append(_t("RS rank falling {chg} in 20d", chg=round(rs_rank_chg20)))
+        elif rs_mom is not None and rs_mom > 0:
+            strength_score += min(15.0, 5 + rs_mom)
+            parts_s.append(_t("RS accelerating (+{chg})", chg=f"{rs_mom:.2f}"))
+        if rs_avg_f > 0 and rs_rank is None:
+            parts_s.append(_t("RS beats market ({chg}%)", chg=f"{rs_avg_f:.1f}"))
+        if sec_str is not None and sec_str > 55:
+            strength_score += min(15.0, (sec_str - 50) * 0.5)
+            parts_s.append(_t("Strong sector ({sector} #{rank})", sector=sector, rank=round(sec_str)))
+        if tech_score >= 6:
+            strength_score += min(10.0, tech_score * 1.2)
+            parts_s.append(_t("Technical score {score}/11", score=tech_score))
+        strength_score = min(100.0, strength_score)
+
+        setup_score = 0.0
+        parts_u: list[str] = []
+        if base.get("valid"):
+            if base["range_pct"] <= base_max_range:
+                setup_score += 30.0
+                parts_u.append(_t("Base tight ({pct}% range)", pct=f"{base['range_pct']:.1f}"))
+            if base.get("higher_low"):
+                setup_score += 20.0
+                parts_u.append(_t("Higher Low"))
+            if base.get("vol_dryup"):
+                setup_score += 20.0
+                parts_u.append(_t("Volume Dry-up"))
+            if base.get("atr_slope", 0) <= 0:
+                setup_score += 10.0
+                parts_u.append(_t("Volatility contraction"))
+        if ext is not None and 0 < ext <= ext_pct:
+            setup_score += 10.0
+            parts_u.append(_t("Only {pct}% off EMA20", pct=f"{ext:.1f}"))
+        setup_score = min(100.0, setup_score)
+
+        trigger_score = 0.0
+        parts_t: list[str] = []
+        if clv is not None and clv >= 0.8:
+            trigger_score += 30.0
+            parts_t.append(_t("Strong close CLV={clv}", clv=f"{clv:.2f}"))
+        elif clv is not None and clv >= 0.6:
+            trigger_score += 15.0
+        if shake.get("detected"):
+            trigger_score += 25.0
+            parts_t.append(_t("Shakeout {bars}d", bars=shake["bars_ago"]))
+        if pv is not None and pv["distance_pct"] is not None and pv["distance_pct"] <= NEAR_PIVOT_PCT:
+            trigger_score += 25.0
+            parts_t.append(_t("Near Pivot ({pct}%)", pct=f"{pv['distance_pct']:.1f}"))
+        if effort.get("verdict") == "accumulation":
+            trigger_score += 15.0
+            parts_t.append(_t("Volume expansion"))
+        if effort.get("verdict") == "potential_supply":
+            trigger_score -= 20.0
+            parts_t.append(_t("Potential Supply (high vol, no gain)"))
+        trigger_score = float(np.clip(trigger_score, 0, 100))
+
+        # ── Risk/reward from structure ───────────────────────────────────
+        # ENTRY    = last close
+        # STOP     = 1.5% below nearest support (invalidation)
+        # TARGET   = the resistance AFTER a breakout (next confirmed pivot
+        #            above the nearest pivot, or a measured-move projection).
+        #            NOT the pivot itself — the pivot is the trigger, not the
+        #            goal, so using it as target produced R:R ≈ 0 (the bug).
+        entry = float(close.iloc[-1]) if np.isfinite(float(close.iloc[-1])) else None
+        target = None
+        target_kind = None
+        base_low = None
+        if low is not None and len(low) >= 40:
+            base_low = float(low.iloc[-40:].min())
+        # base-target width (measured move: how tall the base under the pivot
+        # is = the projected move above it). Fallback 3% of pivot.
+        base_target = None
+        if base_low is not None and pv is not None:
+            base_target = max(pv["price"] - base_low, pv["price"] * 0.03)
+        nr = next_resistance(high, low, close, base_target=base_target,
+                             max_pivots=12)
+        if nr is not None:
+            target = nr["price"]
+            target_kind = nr.get("kind")
+        stop = None
+        if sup is not None:
+            # conservative: 1.5% below support as invalidation
+            stop = sup["price"] * 0.985
+        rr = risk_reward(entry, stop, target)
+        if rr.get("valid") and rr["rr"] < 1.5:
+            parts_t.append(_t("R:R low ({rr})", rr=f"{rr['rr']:.1f}"))
+
+        master = (strength_score * W_STRENGTH + setup_score * W_SETUP
+                  + trigger_score * W_TRIGGER + bq["score"] * W_BREAKOUT)
+
+        reasons: list[str] = []
+        if include_reasons:
+            reasons = parts_s + parts_u + parts_t
+
+        row: dict[str, Any] = {
+            "ticker": tkr,
+            "name": d.get("name", "") or ticker_names.get(tkr, ""),
+            "close": round(float(close.iloc[-1]), 2),
+            # legacy technical
+            "score": tech_score,
+            # RS block
+            "rs_5d": rs_vals.get("rs_5d"),
+            "rs_20d": rs_vals.get("rs_20d"),
+            "rs_60d": rs_vals.get("rs_60d"),
+            "rs_120d": rs_vals.get("rs_120d"),
+            "rs_momentum": rs_mom,
+            # RS cross-sectional rank (Leader axis)
+            "rs_rank": round(rs_rank, 1) if rs_rank is not None else None,
+            "rs_rank_chg20": round(rs_rank_chg20, 1) if rs_rank_chg20 is not None else None,
+            "rs_rank_chg60": round(rs_rank_chg60, 1) if rs_rank_chg60 is not None else None,
+            # sector
+            "sector": sector,
+            "sector_strength": round(sec_str, 1) if sec_str is not None else None,
+            # closing strength + extension
+            "clv": clv,
+            "extension_pct": ext,
+            # structure
+            "pivot_price": pv["price"] if pv else None,
+            "pivot_distance_pct": pv["distance_pct"] if pv else None,
+            "support_price": sup["price"] if sup else None,
+            "base_range_pct": base.get("range_pct"),
+            "base_vol_dryup": base.get("vol_dryup"),
+            "shakeout": shake.get("detected") or False,
+            "effort_verdict": effort.get("verdict"),
+            # scores
+            "strength_score": round(strength_score, 1),
+            "setup_score": round(setup_score, 1),
+            "trigger_score": round(trigger_score, 1),
+            "breakout_score": bq["score"],
+            "master_score": round(master, 1),
+            "rr": rr.get("rr") if rr.get("valid") else None,
+            "target_price": target,
+            "target_kind": target_kind,
+            # explainability + classification
+            "classification": classify(
+                strength_score, setup_score, trigger_score,
+                bq, ext, pv["distance_pct"] if pv else None, base, rs_mom,
+                rr=rr.get("rr") if rr.get("valid") else None,
+                rs_rank=rs_rank,
+                rs_rank_chg20=rs_rank_chg20,
+            ),
+            "reasons": reasons,
+        }
+
+        # Closing-Strength filter (user-adjustable; 0 = disabled)
+        if clv_min > 0 and (clv is None or clv < clv_min):
+            continue
+        if tech_score < min_score_tech:
+            continue
+
+        results.append(row)
+
+    results.sort(key=lambda r: (
+        r["classification"] == "BREAKOUT" and 0 or
+        r["classification"] == "TRIGGER WATCH" and 1 or
+        r["classification"] == "EXPANSION" and 2 or
+        r["classification"] == "SETUP" and 3 or
+        r["classification"] == "EMERGING LEADER" and 4 or
+        r["classification"] == "LEADER" and 5 or 6,
+        -r["master_score"],
+    ))
+    return results[:top_n]

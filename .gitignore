@@ -13,3 +13,12 @@ picks_state.json
 picks_board.json
 new_listings_state.json
 new_listings_board.json
+output/
+
+# 许可证私钥/授权数据（严禁提交；私钥是防盗版的命根子，只留本地）
+*.pem
+*.dat
+licensing_private.pem
+licensing_public.pem
+seller_tools/private.pem
+seller_tools/public.pem

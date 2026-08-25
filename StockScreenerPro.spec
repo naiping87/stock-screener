@@ -1,12 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
+
+datas = [('markets', 'markets'), ('tickers', 'tickers'), ('tickers.csv', '.'), ('ui', 'ui'), ('workers', 'workers'), ('resources', 'resources'), ('licensing', 'licensing')]
+binaries = []
+hiddenimports = ['PyQt6', 'pandas', 'numpy', 'requests', 'markets.bursa', 'markets.us', 'markets.shanghai', 'licensing.license_manager', 'screener_phase1', 'screener_rs', 'screener_setup']
+tmp_ret = collect_all('cryptography')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret2 = collect_all('akshare')
+datas += tmp_ret2[0]; binaries += tmp_ret2[1]; hiddenimports += tmp_ret2[2]
 
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
-    datas=[('markets', 'markets'), ('tickers', 'tickers'), ('tickers.csv', '.'), ('ui', 'ui'), ('workers', 'workers'), ('resources', 'resources'), ('tools', 'tools')],
-    hiddenimports=['PyQt6', 'pandas', 'numpy', 'requests', 'pyqtgraph', 'akshare', 'markets.bursa', 'markets.us', 'markets.shanghai'],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -35,5 +44,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['resources\\icon.ico'],
+    icon=['resources/icon.ico'],
 )

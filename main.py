@@ -12,10 +12,13 @@ import sys
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import i18n
 from PyQt6.QtCore import QLockFile, QTimer
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 
+from licensing.license_manager import LicenseManager
+from ui.activation import ActivationDialog
 from ui.main_window import MainWindow
 from ui.splash_screen import create_splash
 from ui.styles import STYLESHEET
@@ -71,10 +74,20 @@ def main():
     if not _acquire_single_instance_lock():
         QMessageBox.information(
             None, "Stock Screener Pro",
-            "Stock Screener Pro is already running.\n\n"
-            "Only one instance can run at a time — check the system tray.",
+            i18n.t("Stock Screener Pro is already running.\n\nOnly one instance can run at a time — check the system tray."),
         )
         sys.exit(0)
+
+    # ── License check (block launch until activated) ─────────────────
+    license_manager = LicenseManager()
+    if not license_manager.is_activated():
+        activation_dialog = ActivationDialog(license_manager)
+        if activation_dialog.exec() != QDialog.DialogCode.Accepted:
+            QMessageBox.information(
+                None, "Stock Screener Pro",
+                i18n.t("This software requires a valid activation code to run.\n\nPlease contact the seller to obtain one."),
+            )
+            sys.exit(0)
 
     # ── Splash screen ──────────────────────────────────────────────────
     no_splash = "--no-splash" in sys.argv

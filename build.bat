@@ -2,10 +2,10 @@
 echo === Stock Screener Pro — Build Installer ===
 echo.
 echo Step 1: Installing PyInstaller...
-pip install pyinstaller -q
+python -m pip install pyinstaller -q
 
 echo Step 2: Building exe...
-pyinstaller --onefile --windowed ^
+python -m PyInstaller --onefile --windowed ^
     --name="StockScreenerPro" ^
     --add-data="markets;markets" ^
     --add-data="tickers;tickers" ^
@@ -13,14 +13,17 @@ pyinstaller --onefile --windowed ^
     --add-data="ui;ui" ^
     --add-data="workers;workers" ^
     --add-data="resources;resources" ^
+    --add-data="licensing;licensing" ^
+    --collect-all=cryptography ^
+    --collect-all=akshare ^
     --hidden-import="PyQt6" ^
     --hidden-import="pandas" ^
     --hidden-import="numpy" ^
     --hidden-import="requests" ^
-    --hidden-import="akshare" ^
     --hidden-import="markets.bursa" ^
     --hidden-import="markets.us" ^
     --hidden-import="markets.shanghai" ^
+    --hidden-import="licensing.license_manager" ^
     --icon="resources/icon.ico" ^
     main.py
 

@@ -38,7 +38,15 @@ def _load_cache(path: str):
 
 
 def _save_cache(path: str, data, ticker_names) -> None:
-    """Best-effort write; a failed cache write must never break the app."""
+    """Best-effort write; a failed cache write must never break the app.
+
+    Never persist an empty/zero-ticker result — otherwise a failed download
+    (e.g. a rate-limited provider) poisons the day-cache and the app keeps
+    loading an empty result on every subsequent Run.
+    """
+    if not data:
+        logger.warning("Skipping cache write: no data for %s", path)
+        return
     try:
         with open(path, "wb") as f:
             pickle.dump((data, ticker_names), f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -78,8 +86,10 @@ class DownloadWorker(QThread):
             cache_p = _cache_path(self.market_code)
 
             # ── Fast path: reuse today's cache (unless force_refresh) ───
+            # Only reuse a cache that actually holds data; an empty cache from
+            # a blocked/failed download is ignored so it re-downloads fresh.
             cached = _load_cache(cache_p)
-            if cached is not None and not self.force_refresh:
+            if cached is not None and cached[0] and not self.force_refresh:
                 data, ticker_names = cached
                 self.progress.emit(95, f"Loaded {len(data)} tickers from cache")
                 self.progress.emit(100, "Ready")

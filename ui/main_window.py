@@ -21,6 +21,9 @@ from PyQt6.QtWidgets import (
 )
 
 from tools.new_stock_monitor import AnnouncementBoard, normalize_code, run_once
+import i18n
+from markets import get as get_market
+from licensing.license_manager import LicenseManager
 from utils import cache_dir
 from workers.alert_worker import AlertWorker
 from workers.download_worker import DownloadWorker
@@ -62,33 +65,73 @@ class MainWindow(QMainWindow):
 
     def _setup_menu(self):
         menubar = self.menuBar()
-        file_menu = menubar.addMenu("&File")
+        file_menu = menubar.addMenu(i18n.t("File"))
 
-        refresh_action = QAction("&Refresh Data", self)
+        refresh_action = QAction(i18n.t("Refresh Data"), self)
         refresh_action.setShortcut(QKeySequence("F5"))
         refresh_action.triggered.connect(self._on_refresh)
         file_menu.addAction(refresh_action)
 
-        export_action = QAction("&Export CSV...", self)
+        export_action = QAction(i18n.t("Export CSV..."), self)
         export_action.setShortcut(QKeySequence("Ctrl+E"))
         export_action.triggered.connect(self._on_export)
         file_menu.addAction(export_action)
 
         file_menu.addSeparator()
-        quit_action = QAction("&Quit", self)
+        quit_action = QAction(i18n.t("Quit"), self)
         quit_action.setShortcut(QKeySequence("Ctrl+Q"))
         quit_action.triggered.connect(self._quit_app)
         file_menu.addAction(quit_action)
 
-        help_menu = menubar.addMenu("&Help")
-        about_action = QAction("&About", self)
+        # ── Language menu（切换界面语言，重启后生效）────────────────
+        lang_menu = menubar.addMenu(i18n.t("Language"))
+        for code, label in i18n.SUPPORTED.items():
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.setChecked(i18n.lang() == code)
+            act.triggered.connect(lambda _=False, c=code: self._on_language_changed(c))
+            lang_menu.addAction(act)
+
+        help_menu = menubar.addMenu(i18n.t("Help"))
+        license_action = QAction(i18n.t("License Info"), self)
+        license_action.triggered.connect(self._on_license_info)
+        help_menu.addAction(license_action)
+        about_action = QAction(i18n.t("About"), self)
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
+
+    def _on_language_changed(self, code):
+        i18n.set_lang(code)
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.information(
+            self, i18n.t("Language"),
+            "Language saved. Please restart the app to apply it.\n\n"
+            "Bahasa disimpan. Sila mulakan semula aplikasi untuk menggunakannya.\n\n"
+            "语言已保存，请重启软件以生效。")
+
+    def _on_license_info(self):
+        """Show the current license status (trial expiry / perpetual)."""
+        from PyQt6.QtWidgets import QMessageBox
+        info = LicenseManager().get_license_info()
+        if not info.get("activated"):
+            QMessageBox.about(
+                self, i18n.t("License Info"),
+                "<h3>Stock Screener Pro — License</h3>"
+                "<p><b>Status:</b> " + i18n.t("Not activated") + "</p>"
+                "<p>This installation is not licensed yet. Please enter a valid activation code.</p>")
+            return
+        body = ("<h3>Stock Screener Pro — License</h3>"
+                "<p><b>Status:</b> Activated</p>"
+                "<p><b>%s</b> %s</p>"
+                "<p>%s</p>" % (i18n.t("Type:"), info["type"], info["detail"]))
+        if info.get("name"):
+            body += "<p><b>" + i18n.t("Licensed to:") + "</b> %s</p>" % info["name"]
+        QMessageBox.about(self, i18n.t("License Info"), body)
 
     def _setup_statusbar(self):
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
-        self.status_label = QLabel("Ready")
+        self.status_label = QLabel(i18n.t("Ready"))
         self.statusbar.addWidget(self.status_label, 1)
         self.progress_bar = QProgressBar()
         self.progress_bar.setMaximumWidth(200)
@@ -169,7 +212,7 @@ class MainWindow(QMainWindow):
             if text:
                 self.status_label.setText(text)
         else:
-            self.sidebar.run_btn.setText("▶  Run Screeners")
+            self.sidebar.run_btn.setText(i18n.t("Run Screeners"))
             self._hide_error()
 
     def _show_error(self, msg: str, retry_cb=None):
@@ -228,22 +271,109 @@ class MainWindow(QMainWindow):
     def _on_data_loaded(self, data, ticker_names):
         self.data = data
         self.ticker_names = ticker_names
+        self._populate_top_movers()
         self.status_label.setText("Loaded " + str(len(data)) + " tickers - running screeners...")
         # Internal chain: busy flag stays set, so bypass the guard.
         self._start_screeners()
+
+    def _populate_top_movers(self):
+        """Show the market's top gainers / losers / actives for the day.
+
+        Computed instantly from the already-downloaded data (no extra network
+        call), so the 🏆 Top Movers tab appears as soon as data loads.
+        """
+        if not self.data:
+            self.results_panel.set_results("top_movers", pd.DataFrame())
+            return
+        market = self._last_market_code or ""
+        m = get_market(market) if market else None
+        rows = []
+        for tkr, data in self.data.items():
+            try:
+                if data is None:
+                    continue
+                close = data["close"].dropna()
+                if close.empty or len(close) < 2:
+                    continue
+                last = float(close.iloc[-1])
+                prev = float(close.iloc[-2])
+                if prev <= 0:
+                    continue
+                chg = (last - prev) / prev * 100.0
+                vol = 0.0
+                if "volume" in data and data["volume"] is not None:
+                    vol_series = data["volume"].dropna()
+                    if not vol_series.empty:
+                        vol = float(vol_series.iloc[-1])
+                rows.append({
+                    "ticker": tkr,
+                    "Code": m.display_ticker(tkr) if m else tkr,
+                    "Name": self.ticker_names.get(tkr, ""),
+                    "Price": last,
+                    "Chg%": chg,
+                    "Volume": vol,
+                })
+            except Exception:
+                continue
+        if not rows:
+            self.results_panel.set_results("top_movers", pd.DataFrame())
+            return
+        df = pd.DataFrame(rows)
+        df = df.sort_values("Chg%", ascending=False).head(40).reset_index(drop=True)
+        self.results_panel.set_results("top_movers", df)
 
     def _start_screeners(self):
         """Start the screener pipeline (busy is already set by the caller)."""
         params = self.sidebar.get_params()
         self._result_dfs = {}
         self._set_busy(True, "Running screeners...")
-        self.screener_worker = ScreenerWorker(self.data, self.ticker_names, params)
+        self.screener_worker = ScreenerWorker(
+            self.data, self.ticker_names, params,
+            bench_close=self._get_benchmark(),
+            sector_map=self._sector_map(),
+        )
         self.screener_worker.progress.connect(self.update_progress)
         self.screener_worker.result.connect(self._store_result)
         self.screener_worker.finished.connect(self._on_screeners_done)
         self.screener_worker.error.connect(self._on_screener_error)
         self.screener_worker.cancelled.connect(self._on_worker_cancelled)
         self.screener_worker.start()
+
+    def _get_benchmark(self):
+        """KLCI (or market index) close series for RS calculations — cached
+        per market? Fetched once per run; never throws (None degrades RS)."""
+        import threading
+        import time
+        try:
+            from screener import _build_session, _fetch_chart
+            m = get_market(self._last_market_code or "") if self._last_market_code else None
+            if m is None:
+                return None
+            if self._last_market_code == "my":
+                symbol = "^KLSE"
+            elif self._last_market_code == "us":
+                symbol = "^GSPC"
+            elif self._last_market_code == "cn":
+                symbol = "000001.SS"
+            else:
+                return None
+            sess = _build_session()
+            end = int(time.time())
+            start = end - 2400 * 86400
+            d, _ = _fetch_chart(sess, symbol, start, end, "1d", 30)
+            return d["close"].dropna() if d else None
+        except Exception:
+            return None
+
+    def _sector_map(self):
+        """{ticker: sector} from the meta cache (already fetched per run)."""
+        out = {}
+        for t, meta in self._meta_cache.items():
+            if isinstance(meta, dict):
+                s = meta.get("sector")
+                if s:
+                    out[t] = s
+        return out
 
     def _store_result(self, tab_key, df):
         self._result_dfs[tab_key] = df
@@ -390,9 +520,24 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.warning("New picks board read failed: %s", e)
             entries = []
+        # 只显示当前所选市场的发现板（board 是跨市场累积的，必须按市场过滤）
+        market = self._last_market_code
+        if not market:
+            market = self.sidebar.get_params().get("market_code")
+        if market:
+            entries = [e for e in entries if e.get("market") == market]
         if not entries:
             self.results_panel.set_new_picks(pd.DataFrame())
             return
+        # Daily summary hook: on launch, gently remind the user how many new
+        # picks are on the board (once per session).
+        if not getattr(self, "_daily_summary_shown", False):
+            self._daily_summary_shown = True
+            try:
+                self.tray.notify("📌 Stock Screener Pro",
+                                 f"Welcome back — {len(entries)} new pick(s) on the board today.")
+            except Exception:
+                pass
         rows = [{
             "ticker": e.get("ticker", ""),
             "Code": e.get("code", ""),
@@ -496,6 +641,8 @@ class MainWindow(QMainWindow):
         self.status_label.setText(
             "Market changed to " + market_code + " - re-downloading...")
         self.results_panel.set_all_empty()
+        self._last_market_code = market_code
+        self._refresh_new_picks()   # New Picks board filters to the chosen market
         self._start_download(market_code)
 
     def _on_refresh(self):
