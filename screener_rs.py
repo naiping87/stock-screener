@@ -30,6 +30,20 @@ MOMENTUM_WINDOW = 20          # days for RS-Momentum slope
 SECTOR_LOOKBACKS = (5, 20, 60, 120)
 
 
+def _tick_size(price: float) -> float | None:
+    """Bursa tick ladder: the minimum price increment at `price`.
+
+    RM0.005 (0.5 sen) for prices below RM0.20, RM0.01 above — per Bursa
+    Malaysia's tick-size rules. US uses 0.01 universally; A-shares 0.01.
+    Returns None for invalid prices (caller keeps the stock).
+    """
+    if not np.isfinite(price) or price <= 0:
+        return None
+    if price < 0.20:
+        return 0.005
+    return 0.01
+
+
 def _aligned(close: pd.Series, bench: pd.Series) -> tuple[pd.Series, pd.Series]:
     """Align two price series on their common index, dropping NaNs.
 
@@ -158,7 +172,25 @@ def _rank_snapshot(close_matrix: pd.DataFrame, bench_clean: pd.Series,
         p = float(s.iloc[-(lookback + 1)])
         if not (np.isfinite(e) and np.isfinite(p)) or p <= 0:
             continue
-        out[col] = (e / p - 1) * 100.0
+        ret = (e / p - 1) * 100.0
+        # Penny-stock guard (#8923): Bursa stocks below RM0.20 tick in RM0.005,
+        # so a 10% daily "move" is ONE tick. Even multi-tick cumulative gains
+        # on RM0.05 names are dominated by the tick grid and PNO (paper
+        # quotes) rather than real demand — their RS rank is not comparable
+        # to RM2+ names. Three guards:
+        #   1. Hard floor: price < RM0.20 → excluded from the rank table.
+        #   2. Tick-dominance: single tick >= half the return AND the return
+        #      is tiny (<2%) — these are flat/1-tick names, no signal.
+        #   3. Anything with real movement (>2% over 20d) stays regardless,
+        #      since a multi-tick gain is a genuine move even at RM0.20+.
+        if p < 0.20:
+            continue
+        tick = _tick_size(p)
+        if tick is not None and abs(ret) < 2.0:
+            tick_pct = (tick / p) * 100.0  # % move from one tick
+            if tick_pct >= 0.5 * abs(ret):
+                continue
+        out[col] = ret
     if not out:
         return pd.Series(dtype=float)
     stock_rets = pd.Series(out)

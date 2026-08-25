@@ -266,6 +266,20 @@ def run_phase1_screener(
         )
         tech_score = tech[0]["score"] if tech else 0
 
+        # ── Penny-stock guard (#8923): below RM 0.20 the technical score is
+        # untrustworthy — a 0.005 tick IS one "surge", volume numbers are
+        # inflated by low prices, and BB width is trivially squeezed. Cap the
+        # score contribution so a RM0.05 stock can never outrank a RM5 one.
+        last_px = float(close.iloc[-1]) if len(close) else 0.0
+        penny_penalty = 0.0
+        penny_note = None
+        if 0 < last_px < 0.20:
+            # score implies 11 factors; penny stocks get at most 60% of it
+            tech_score_effective = int(round(tech_score * 0.6))
+            penny_penalty = tech_score - tech_score_effective
+            tech_score = tech_score_effective
+            penny_note = f"penny stock (RM{last_px:.3f}) — tech score discounted"
+
         # ── RS vs benchmark + momentum ───────────────────────────────────
         rs_vals: dict[str, float | None] = {}
         rs_mom = None
@@ -339,7 +353,10 @@ def run_phase1_screener(
         elif rs_mom is not None and rs_mom > 0:
             strength_score += min(15.0, 5 + rs_mom)
             parts_s.append(_t("RS accelerating (+{chg})", chg=f"{rs_mom:.2f}"))
-        if rs_avg_f > 0 and rs_rank is None:
+        if rs_avg_f > 0 and rs_rank is None and not penny_penalty:
+            # only credit "beats market" when the stock actually has a valid
+            # rank — a penny stock whose rank was excluded by the tick guard
+            # must not fall back to a tick-inflated return either (#8923)
             parts_s.append(_t("RS beats market ({chg}%)", chg=f"{rs_avg_f:.1f}"))
         if sec_str is not None and sec_str > 55:
             strength_score += min(15.0, (sec_str - 50) * 0.5)
@@ -351,17 +368,22 @@ def run_phase1_screener(
 
         setup_score = 0.0
         parts_u: list[str] = []
+        base_tight = False
         if base.get("valid"):
-            if base["range_pct"] <= base_max_range:
+            base_tight = base["range_pct"] <= base_max_range
+            if base_tight:
                 setup_score += 30.0
                 parts_u.append(_t("Base tight ({pct}% range)", pct=f"{base['range_pct']:.1f}"))
-            if base.get("higher_low"):
+            # Higher Low only counts inside a TIGHT base: a penny stock moving
+            # 0.005 (its whole tick) can print "higher low" while the range is
+            # 54% — that is noise, not accumulation. Gate it on base_tight.
+            if base.get("higher_low") and base_tight:
                 setup_score += 20.0
                 parts_u.append(_t("Higher Low"))
-            if base.get("vol_dryup"):
+            if base.get("vol_dryup") and base_tight:
                 setup_score += 20.0
                 parts_u.append(_t("Volume Dry-up"))
-            if base.get("atr_slope", 0) <= 0:
+            if base.get("atr_slope", 0) <= 0 and base_tight:
                 setup_score += 10.0
                 parts_u.append(_t("Volatility contraction"))
         if ext is not None and 0 < ext <= ext_pct:
@@ -467,6 +489,9 @@ def run_phase1_screener(
             "rr": rr.get("rr") if rr.get("valid") else None,
             "target_price": target,
             "target_kind": target_kind,
+            # penny-stock guard annotation
+            "penny_flag": penny_note,
+            "tech_score_raw": tech_score + penny_penalty,
             # explainability + classification
             "classification": classify(
                 strength_score, setup_score, trigger_score,
@@ -477,6 +502,8 @@ def run_phase1_screener(
             ),
             "reasons": reasons,
         }
+        if penny_note:
+            reasons.append("⚠ " + penny_note)
 
         # Closing-Strength filter (user-adjustable; 0 = disabled)
         if clv_min > 0 and (clv is None or clv < clv_min):
