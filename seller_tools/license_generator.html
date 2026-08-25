@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Screener Pro — License Generator</title>
+<style>
+  :root{--bg:#0b0e14;--card:#151a23;--line:#2a2e39;--txt:#d1d4dc;--sec:#9aa0ab;--acc:#2962ff;--warn:#f7c600;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,"Segoe UI","Microsoft YaHei",Roboto,sans-serif;padding:20px 16px 60px;max-width:640px;margin:0 auto;font-size:15px;line-height:1.5;}
+  h1{font-size:22px;color:#fff;margin-bottom:6px;}
+  .sub{color:var(--sec);font-size:13px;margin-bottom:14px;}
+  .warn{background:rgba(247,198,0,.12);border:1px solid rgba(247,198,0,.4);color:#ffe08a;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:14px;}
+  label{display:block;color:var(--sec);font-size:12.5px;margin:12px 0 5px;font-weight:600;}
+  input,textarea,select{width:100%;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px 12px;font-size:14px;}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc);}
+  textarea{font-family:Consolas,monospace;font-size:12px;resize:vertical;}
+  button{width:100%;background:var(--acc);color:#fff;border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:700;margin-top:16px;cursor:pointer;}
+  button:disabled{opacity:.5;}
+  #outBox{display:none;margin-top:16px;background:#0d1a12;border:1px solid rgba(10,143,78,.45);border-radius:10px;padding:12px;font-family:Consolas,monospace;font-size:12px;word-break:break-all;color:#9ce8b8;white-space:pre-wrap;}
+  #meta{display:none;margin-top:8px;color:var(--sec);font-size:12.5px;}
+  #copy{display:none;background:var(--card);color:var(--txt);border:1px solid var(--acc);margin-top:8px;padding:11px;}
+  #err{display:none;color:#f23645;margin-top:10px;font-size:13px;}
+  .save{display:flex;align-items:center;gap:8px;color:var(--sec);font-size:12.5px;margin-top:10px;}
+  .save input{width:auto;}
+</style>
+</head>
+<body>
+<h1>Stock Screener Pro — 激活码生成器</h1>
+<div class="sub">卖家专用 · 试用码 / 终生码 · 手机/电脑可用</div>
+<div class="warn">⚠️ 私钥<strong>只在你本机浏览器里签名，绝不上传</strong>。请勿把私钥、本页链接发给别人；页面可托管在任何地方（没有你的私钥，别人也生成不了合法码）。</div>
+
+<label>私钥（private.pem 全文粘贴）</label>
+<textarea id="privKey" rows="5" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
+
+<label>买家名字（备注，可留空）</label>
+<input id="name" placeholder="张三 / leia">
+
+<label>订单号（备注，可留空）</label>
+<input id="order" placeholder="ORDER-001">
+
+<label>机器码（买家激活窗里复制的）</label>
+<input id="machine" placeholder="64位机器码">
+
+<label>授权类型</label>
+<select id="type">
+  <option value="lifetime">终生（买断）</option>
+  <option value="trial">试用（N 天后到期）</option>
+</select>
+
+<div id="daysWrap" style="display:none;">
+  <label>试用天数</label>
+  <input id="days" type="number" value="7" min="1" max="365">
+</div>
+
+<label>产品名</label>
+<input id="product" value="StockScreenerPro">
+
+<label class="save"><input type="checkbox" id="saveKey"> 在本机浏览器保存私钥（下次免粘贴；仅存于本机，请确保设备安全）</label>
+
+<button id="gen">生成激活码</button>
+<div id="err"></div>
+<pre id="outBox"></pre>
+<div id="meta"></div>
+<button id="copy">复制激活码</button>
+
+<script src="nacl.min.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const b64url = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+
+  function pemToSeed(pem){
+    const body = pem.replace(/-----BEGIN PRIVATE KEY-----/,'').replace(/-----END PRIVATE KEY-----/,'').replace(/\s+/g,'');
+    const der = Uint8Array.from(atob(body), c => c.charCodeAt(0));
+    return der.slice(-32); // Ed25519 PKCS8 私钥种子 = DER 最后 32 字节
+  }
+  function randHex(n){ let s=''; for(let i=0;i<n;i++) s += Math.floor(Math.random()*16).toString(16); return s; }
+
+  $('type').addEventListener('change', () => { $('daysWrap').style.display = $('type').value === 'trial' ? 'block' : 'none'; });
+  try { const k = localStorage.getItem('ssp_privkey'); if (k) $('privKey').value = k; } catch(e){}
+
+  $('gen').addEventListener('click', () => {
+    $('err').style.display = 'none';
+    try {
+      const pem = $('privKey').value.trim();
+      if (!pem) throw '请先粘贴私钥（private.pem 内容）';
+      const seed = pemToSeed(pem);
+      const kp = nacl.sign.keyPair.fromSeed(seed);
+      const isTrial = $('type').value === 'trial';
+      const iat = Math.floor(Date.now()/1000);
+      const days = Math.max(1, parseInt($('days').value || '7', 10));
+      const exp = isTrial ? (iat + days*86400) : 0;
+      const payload = {
+        sub: 'ln_' + ($('order').value || 'x') + '_' + randHex(3),
+        name: $('name').value,
+        product: $('product').value || 'StockScreenerPro',
+        iat: iat,
+        exp: exp,
+        machine: $('machine').value.trim(),
+        perpetual: !isTrial
+      };
+      const payload_b64 = b64url(new TextEncoder().encode(JSON.stringify(payload)));
+      const sig = nacl.sign.detached(new TextEncoder().encode(payload_b64), kp.secretKey);
+      const token = payload_b64 + '.' + b64url(sig);
+      $('outBox').style.display = 'block';
+      $('outBox').textContent = token;
+      const meta = isTrial
+        ? 'Type: ' + days + '-day TRIAL | Expires: ' + new Date(exp*1000).toLocaleString()
+        : 'Type: Perpetual (Lifetime) | No expiry';
+      $('meta').textContent = meta + ' | Machine: ' + ($('machine').value.trim() ? 'bound' : 'MISSING!');
+      $('meta').style.display = 'block';
+      $('copy').style.display = 'block';
+      if ($('saveKey').checked) { try { localStorage.setItem('ssp_privkey', pem); } catch(e){} }
+    } catch(e){
+      $('err').style.display = 'block';
+      $('err').textContent = '生成失败：' + (e && e.message ? e.message : e);
+    }
+  });
+
+  $('copy').addEventListener('click', () => {
+    try { navigator.clipboard.writeText($('outBox').textContent); $('copy').textContent = '✔ 已复制'; }
+    catch(e){ $('copy').textContent = '复制失败，请长按复制'; }
+  });
+</script>
+</body>
+</html>
