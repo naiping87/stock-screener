@@ -74,6 +74,8 @@ DEFAULT_COLOUR_MAP = {
     "Chg%": chg_colour,
     # Phase-1 sub-scores: same gradient as Score
     "master_score": score_colour,
+    "master_rr": score_colour,
+    "tech_weighted": score_colour,
     "strength_score": score_colour,
     "setup_score": score_colour,
     "trigger_score": score_colour,

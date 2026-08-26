@@ -1498,10 +1498,16 @@ def _meta_val(meta, key):
 
 
 def _attach_roe(results, roe_map):
+    try:
+        from screener_rs import load_sector_override
+        over = load_sector_override()
+    except Exception:
+        over = {}
     for r in results:
         meta = roe_map.get(r["ticker"])
         r["ROE"] = _meta_val(meta, "roe")
-        sec = _meta_val(meta, "sector")
+        raw = str(r["ticker"]).split(".")[0].upper()
+        sec = over.get(raw) or _meta_val(meta, "sector")
         if sec:
             r["Sector"] = sec
     results.sort(key=lambda r: (
@@ -1524,6 +1530,13 @@ for t, v in roe_cache.items():
     s = _meta_val(v, "sector")
     if s:
         sector_map[t] = s
+# Optional Bursa-native sector override (tickers/sector_map.csv) — wins over
+# Yahoo's broad GICS sector grouping.
+try:
+    from screener_rs import apply_sector_override
+    sector_map = apply_sector_override(sector_map)
+except Exception:
+    pass
 results_p1: list = []
 try:
     from screener_phase1 import run_phase1_screener, set_lang as p1_set_lang
@@ -1640,6 +1653,7 @@ if st.session_state.run_done:
             _CLASS_BADGE = {
                 "BREAKOUT": ("🚀", "#3fb950"),
                 "EXPANSION": ("📈", "#38a900"),
+                "EMA RECLAIM": ("🔁", "#58a6ff"),
                 "TRIGGER WATCH": ("🎯", "#f7c600"),
                 "SETUP": ("🧲", "#58a6ff"),
                 "EMERGING LEADER": ("🌟", "#b18cff"),
@@ -1656,6 +1670,16 @@ if st.session_state.run_done:
 
             def _fmt(v, suffix="", na="—"):
                 return f"{v:,.2f}{suffix}" if isinstance(v, (int, float)) else na
+
+            _regime = results_p1[0].get("market_regime")
+            if _regime:
+                if _regime == "RISK_ON":
+                    _regime_txt = "🟢 RISK ON — trend + breadth confirm, look for early leaders"
+                elif _regime == "RISK_OFF":
+                    _regime_txt = "🔴 RISK OFF — market weakening, raise cash / cut size"
+                else:
+                    _regime_txt = "🟡 NEUTRAL — mixed market, be selective"
+                st.caption(f"🌍 Market Regime: **{_regime}** — {_regime_txt}")
 
             # summary metrics
             m1, m2, m3, m4 = st.columns(4)
@@ -1676,12 +1700,17 @@ if st.session_state.run_done:
                     "Name": r.get("name", ""),
                     "Price": r.get("close"),
                     "Type": _badge(r.get("classification", "")),
+                    "Value": r.get("master_rr"),
                     "Master": r.get("master_score"),
                     "Strength": r.get("strength_score"),
                     "Setup": r.get("setup_score"),
                     "Trigger": r.get("trigger_score"),
                     "Brk": r.get("breakout_score"),
+                    "Regime": r.get("market_regime") or "",
                     "CLV": _fmt(r.get("clv")),
+                    "EMA↺": "✓" if r.get("ema_reclaim") else "",
+                    "SecRS": _fmt(r.get("sector_rs_20d"), "%"),
+                    "Wtd%": _fmt(r.get("tech_weighted"), "", ""),
                     "RS Rank": _fmt(r.get("rs_rank")),
                     "RS↑20d": _fmt(r.get("rs_rank_chg20")),
                     "RS5": _fmt(r.get("rs_5d"), "%"),
@@ -1699,13 +1728,16 @@ if st.session_state.run_done:
                     "Base%": _fmt(r.get("base_range_pct"), "%"),
                     "DryUp": "✓" if r.get("base_vol_dryup") else "",
                     "Shake": "✓" if r.get("shakeout") else "",
+                    "FBO": "✓" if r.get("failed_breakout") else "",
+                    "FBD": "✓" if r.get("failed_breakdown") else "",
                     "Why": " · ".join(r.get("reasons", [])[:5]) or "—",
                 })
             p1_df = pd.DataFrame(rows)
-            st.caption("💡 Strength ≠ Setup ≠ Trigger — Master is the blend. "
-                       "RS Rank = percentile vs ALL stocks · RS Rank Chg = 20d change (+ = gaining) · "
-                       "CLV ≥ 0.8 = strong close · R:R < 1.5 = pass.")
-            _render_aggrid(p1_df, height=520, default_sort={"Type": "asc"})
+            st.caption("💡 Strength ≠ Setup ≠ Trigger — Value (R:R-adjusted Master) is ranked first. "
+                       "Regime = whole-market RISK_ON/NEUTRAL/RISK_OFF · EMA↺ = pullback+reclaim at EMA60 · "
+                       "SecRS = stock vs its own sector · RS Rank = percentile vs ALL stocks · "
+                       "RS Rank Chg = 20d change (+ = gaining) · CLV ≥ 0.8 = strong close · R:R < 1.5 = pass.")
+            _render_aggrid(p1_df, height=520, default_sort={"Value": "desc"})
             st.download_button("⬇️ Export Ignition CSV",
                                pd.DataFrame([{k: v for k, v in r.items() if k != "reasons"}
                                              for r in results_p1]).to_csv(index=False),

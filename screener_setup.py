@@ -447,6 +447,216 @@ def breakout_quality(high: pd.Series, low: pd.Series, close: pd.Series,
             "vol_ratio": vol_ratio}
 
 
+# ── EMA pullback + reclaim (dynamic-support / healthy-pullback setup) ──────
+
+def _ema_slope(ema: pd.Series, bars: int = 10) -> float | None:
+    """Slope of an EMA series over the last `bars` bars (per-bar units).
+    None when insufficient data. Positive = rising trend line."""
+    if ema is None or len(ema) < bars:
+        return None
+    y = ema.iloc[-bars:].values.astype(float)
+    if np.isnan(y).any():
+        return None
+    return float(np.polyfit(np.arange(bars, dtype=float), y, 1)[0])
+
+
+def ema_pullback_reclaim(close: pd.Series, high: pd.Series, low: pd.Series,
+                         volume: pd.Series | None, ema_fast: int = 20,
+                         ema_slow: int = 60, runup_window: int = 60,
+                         min_extension: float = 5.0, lookback: int = 40,
+                         slope_bars: int = 10, pullback_max_pct: float = 4.0,
+                         reclaim_lookback: int = 15, dryup_ratio: float = 0.9,
+                         touch_tol: float = 1.005) -> dict[str, Any]:
+    """Detect the "strong uptrend → pullback to EMA(slow) → reclaim" setup.
+
+    Causal: reads bars up to and including the last bar only (no lookahead).
+    This is deliberately NOT "price ≈ EMA(slow) => buy". It requires, together:
+      - a prior run-up where price held above EMA(fast) above EMA(slow);
+      - EMA(slow) still rising (slope > 0);
+      - a pullback that came within `pullback_max_pct` of EMA(slow) (or dipped
+        to it) over the lookback window;
+      - volume drying up during the pullback (supply contracting);
+      - a reclaim bar: it touched EMA(slow) and closed back above it, closing in
+        the upper half of the day's range (no distribution).
+
+    Returns a dict (always, never raises):
+      detected, pullback_pct, slope_ok, vol_dryup, reclaim_bars_ago,
+      ran_up, no_distribution
+    """
+    empty = {"detected": False, "pullback_pct": None, "slope_ok": False,
+             "vol_dryup": None, "reclaim_bars_ago": None,
+             "ran_up": False, "no_distribution": None}
+    need = ema_slow + max(runup_window, lookback, reclaim_lookback) + slope_bars
+    if close is None or len(close) < need:
+        return empty
+    c = close.astype(float).dropna()
+    if len(c) < need:
+        return empty
+    # Align high/low/volume to the close's (last-valid) calendar.
+    last_ts = c.index[-1]
+    h = high.loc[:last_ts].astype(float) if high is not None else None
+    lo = low.loc[:last_ts].astype(float) if low is not None else None
+    v = volume.loc[:last_ts].astype(float) if volume is not None else None
+    if h is None or lo is None or len(h) < lookback + 3:
+        return empty
+
+    fast = c.ewm(span=ema_fast, adjust=False).mean()
+    slow = c.ewm(span=ema_slow, adjust=False).mean()
+    if len(slow.dropna()) < slope_bars:
+        return empty
+
+    slope_ok = (_ema_slope(slow, slope_bars) or 0.0) > 0
+    if not slope_ok:
+        return empty
+
+    # ── run-up: price ran meaningfully ABOVE EMA(slow) at some point recently.
+    # We measure PEAK extension (not a live EMA20>EMA60 state) because the
+    # pullback itself is expected to break close>EMA(fast) — that is the very
+    # setup. peak_ext >= min_extension means there WAS a real run-up.
+    run_win = c.iloc[-runup_window:]
+    slow_run = slow.iloc[-runup_window:]
+    ext_run = (run_win.values / slow_run.values - 1.0) * 100.0
+    ext_run = ext_run[np.isfinite(ext_run)]
+    peak_ext = float(np.nanmax(ext_run)) if ext_run.size else None
+    ran_up = peak_ext is not None and peak_ext >= min_extension
+
+    # ── pullback depth: how close the low got to EMA(slow) ────────────────
+    lo_win = lo.iloc[-lookback:]
+    slow_pull = slow.iloc[-lookback:]
+    low_vs_slow = (lo_win.values / slow_pull.values - 1.0) * 100.0
+    low_vs_slow = low_vs_slow[np.isfinite(low_vs_slow)]
+    pullback_pct = round(float(np.min(low_vs_slow)), 2) if low_vs_slow.size else None
+    near_slow = pullback_pct is not None and pullback_pct <= pullback_max_pct
+
+    # ── volume dry-up during the pullback (bars where close fell under fast) ─
+    vol_dryup = None
+    if v is not None and len(v) >= lookback:
+        vwin = v.iloc[-lookback:].values.astype(float)
+        fast_pull = fast.iloc[-lookback:]
+        below = (c.iloc[-lookback:].values < fast_pull.values)
+        pull = vwin[below] if below.any() else np.array([])
+        run_up = vwin[~below] if (~below).any() else np.array([])
+        if pull.size and run_up.size:
+            pull_avg = float(np.nanmean(pull))
+            run_avg = float(np.nanmean(run_up))
+            if run_avg > 0:
+                vol_dryup = pull_avg < run_avg * dryup_ratio
+
+    # ── reclaim: touched EMA(slow) then closed back above, upper half of range
+    reclaim_bars_ago = None
+    no_distribution = None
+    for back in range(1, reclaim_lookback + 1):
+        i = len(c) - back
+        if i < 1:
+            break
+        if not np.isfinite(float(slow.iloc[i])):
+            continue
+        touched = float(lo.iloc[i]) <= float(slow.iloc[i]) * touch_tol
+        closed_above = float(c.iloc[i]) > float(slow.iloc[i])
+        if touched and closed_above:
+            reclaim_bars_ago = back
+            day_low = float(lo.iloc[i]); day_high = float(h.iloc[i])
+            day_mid = day_low + 0.5 * (day_high - day_low)
+            no_distribution = float(c.iloc[i]) >= day_mid
+            break
+    if no_distribution is None:
+        # fall back: current bar itself closed in the upper half
+        day_low = float(lo.iloc[-1]); day_high = float(h.iloc[-1])
+        if np.isfinite(day_low) and np.isfinite(day_high) and day_high > day_low:
+            no_distribution = float(c.iloc[-1]) >= day_low + 0.5 * (day_high - day_low)
+    if reclaim_bars_ago is None:
+        # The reclaim bar may already be outside the scan window; accept a
+        # "just reclaimed" state: price is above EMA(slow) now AND the low of
+        # the pullback window touched EMA(slow).
+        touched = (lo_win.values <= slow_pull.values * touch_tol).any()
+        if touched and float(c.iloc[-1]) > float(slow.iloc[-1]):
+            reclaim_bars_ago = 0
+            day_low = float(lo.iloc[-1]); day_high = float(h.iloc[-1])
+            if np.isfinite(day_low) and np.isfinite(day_high) and day_high > day_low:
+                no_distribution = float(c.iloc[-1]) >= day_low + 0.5 * (day_high - day_low)
+
+    detected = bool(slope_ok and ran_up and near_slow
+                    and reclaim_bars_ago is not None
+                    and (vol_dryup is None or vol_dryup)
+                    and (no_distribution is None or no_distribution))
+    return {"detected": detected, "pullback_pct": pullback_pct, "slope_ok": slope_ok,
+            "vol_dryup": vol_dryup, "reclaim_bars_ago": reclaim_bars_ago,
+            "ran_up": ran_up, "no_distribution": no_distribution}
+
+
+# ── Failed breakdown / failed breakout (explicit labels) ───────────────────
+
+def failed_breakdown(high: pd.Series, low: pd.Series, close: pd.Series,
+                     volume: pd.Series | None, support_price: float | None,
+                     lookback: int = 8, vol_multiple: float = 1.5) -> dict[str, Any]:
+    """A support level was undercut with volume, then the price reclaimed it and
+    closed in the upper half of the day's range. "Potential failed breakdown /
+    shakeout / absorption" — NEVER called accumulation (per the spec).
+
+    support_price must be a pre-existing level (no lookahead).
+    """
+    empty = {"detected": False, "bars_ago": None, "reclaim_clv": None,
+             "support": support_price, "vol_ok": None}
+    if support_price is None or high is None or low is None or close is None:
+        return empty
+    c = close.values.astype(float); lo = low.values.astype(float)
+    hi = high.values.astype(float)
+    v = volume.values.astype(float) if volume is not None and len(volume) == len(close) else None
+    for back in range(1, lookback + 1):
+        i = len(c) - back
+        if i < 1:
+            break
+        undercut = lo[i] < support_price <= hi[i]
+        reclaim = c[i] > support_price
+        rng = hi[i] - lo[i]
+        # close in the upper 50% of the range (strong reclaim) else it is a
+        # lower-half close / real breakdown signal, not a shakeout.
+        close_strength = (c[i] - lo[i]) / rng if rng > 0 else 0.0
+        vol_ok = True
+        if v is not None and v[i - 1] > 0:
+            vol_ok = v[i] > v[i - 1] * vol_multiple
+        if undercut and reclaim and close_strength >= 0.5:
+            return {"detected": True, "bars_ago": back,
+                    "reclaim_clv": round(float(close_strength), 3),
+                    "support": support_price, "vol_ok": vol_ok}
+    return empty
+
+
+def failed_breakout(high: pd.Series, low: pd.Series, close: pd.Series,
+                    volume: pd.Series | None, pivot_price: float | None,
+                    lookback: int = 6, vol_multiple: float = 1.5) -> dict[str, Any]:
+    """Traded above the pivot with volume but CLOSED back below it — the
+    classic "potential failed breakout". Distinct from breakout_quality which
+    only scores a successful hold above the pivot.
+
+    pivot_price must be a pre-existing level (no lookahead).
+    """
+    empty = {"failed": False, "bars_ago": None, "close_vs_pivot_pct": None,
+             "vol_ratio": None}
+    if pivot_price is None or high is None or close is None or pivot_price <= 0:
+        return empty
+    c = close.values.astype(float); hi = high.values.astype(float)
+    v = volume.values.astype(float) if volume is not None and len(volume) == len(close) else None
+    for back in range(1, lookback + 1):
+        i = len(c) - back
+        if i < 1:
+            break
+        before = c[i - 1] if i > 0 else None
+        # only a "breakout attempt" if price was BELOW pivot just before
+        if before is None or not np.isfinite(before) or before >= pivot_price:
+            continue
+        traded_above = hi[i] >= pivot_price
+        closed_below = c[i] < pivot_price
+        vol_ratio = None
+        if v is not None and i >= 20 and v[i - 20:i].mean() > 0:
+            vol_ratio = round(v[i] / v[i - 20:i].mean(), 2)
+        if traded_above and closed_below:
+            return {"failed": True, "bars_ago": back,
+                    "close_vs_pivot_pct": round((c[i] / pivot_price - 1) * 100, 2),
+                    "vol_ratio": vol_ratio}
+    return empty
+
+
 # ── Risk / reward ───────────────────────────────────────────────────────────
 
 def risk_reward(entry: float | None, stop: float | None,

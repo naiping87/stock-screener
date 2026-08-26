@@ -851,7 +851,8 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
                          vol_ma_bars: int = SCORE_VOL_MA_BARS,
                          vol_ma_threshold: int = SCORE_VOL_MA_THRESHOLD,
                          top_n: int = SCORE_TOP_N,
-                         min_score: int = SCORE_MIN) -> list[dict[str, Any]]:
+                         min_score: int = SCORE_MIN,
+                         components: bool = False) -> list[dict[str, Any]]:
     """
     Weighted Scoring Screener — scores every stock on 11 factors.
     Returns top_n stocks sorted by total score descending. When min_score > 0,
@@ -997,7 +998,7 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
         details["vol_spike"] = vol_spike
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
-        results.append({
+        row = {
             "ticker": tkr,
             "name": name,
             "close": round(close.iloc[-1], 2),
@@ -1013,7 +1014,26 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
             "aligned": "Y" if aligned else "",
             "bb_squeeze": "Y" if bb_squeeze else "",
             "vol_spike": "Y" if vol_spike else "",
-        })
+        }
+        if components:
+            # De-redundant breakdown: cluster the 11 booleans into 5 themes so
+            # the score is explainable and not double-counting one idea.
+            row["score_components"] = {
+                "trend": int(above_200) + int(slope_up) + int(aligned),
+                "compression": int(trend_tight) + int(bb_squeeze),
+                "momentum": int(kdj_ok) + int(wkdj_ok),
+                "volume": int(vol_expand) + int(vol_spike),
+                "activity": int(vol_ok) + int(vol_ma_ok),
+            }
+            # Fixed, explainable weights (NOT tuned vs the backtest). Sums to 100.
+            row["score_weighted"] = sum(
+                _w for _flag, _w in (
+                    (above_200, 10), (slope_up, 8), (trend_tight, 12),
+                    (kdj_ok, 9), (wkdj_ok, 9), (vol_ok, 4),
+                    (vol_ma_ok, 5), (vol_expand, 8), (aligned, 8),
+                    (bb_squeeze, 12), (vol_spike, 15),
+                ) if _flag)
+        results.append(row)
 
     results.sort(key=lambda r: r["score"], reverse=True)
     logger.info("  Scored %d stocks, top score: %s", len(results), results[0]["score"] if results else 0)

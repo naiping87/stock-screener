@@ -16,6 +16,7 @@ python -m PyInstaller --onefile --windowed ^
     --add-data="licensing;licensing" ^
     --collect-all=cryptography ^
     --collect-all=akshare ^
+    --collect-all=pyqtgraph ^
     --hidden-import="PyQt6" ^
     --hidden-import="pandas" ^
     --hidden-import="numpy" ^

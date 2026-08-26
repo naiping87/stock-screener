@@ -20,6 +20,7 @@ existing screeners and tests are untouched.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import numpy as np
@@ -28,6 +29,58 @@ import pandas as pd
 RS_LOOKBACKS = (5, 20, 60, 120)
 MOMENTUM_WINDOW = 20          # days for RS-Momentum slope
 SECTOR_LOOKBACKS = (5, 20, 60, 120)
+
+# Optional hand-authored sector override so Bursa names can be grouped by
+# Bursa's native taxonomy (e.g. Plantation / Technology / Financial Services)
+# rather than Yahoo's broad GICS sector. File: {code},{sector}, one per line.
+SECTOR_OVERRIDE_CSV = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "tickers", "sector_map.csv"
+)
+
+
+def load_sector_override(path: str | None = None) -> dict[str, str]:
+    """Read a {code,sector} CSV into {raw_code: sector}.
+
+    Keys are normalised to UPPER and stripped of a trailing '.KL'/'.SS'/'.HK'/'.SZ'
+    suffix so the same file works for any market. Missing file / bad rows are
+    ignored. Never raises.
+    """
+    path = path or SECTOR_OVERRIDE_CSV
+    out: dict[str, str] = {}
+    if not path or not os.path.exists(path):
+        return out
+    try:
+        import csv
+        with open(path, "r", encoding="utf-8-sig") as f:
+            for row in csv.reader(f):
+                if not row or len(row) < 2:
+                    continue
+                code = row[0].strip().upper()
+                sector = row[1].strip()
+                if code == "CODE" or not sector:
+                    continue
+                for suf in (".KL", ".SS", ".HK", ".SZ"):
+                    if code.endswith(suf):
+                        code = code[: -len(suf)]
+                        break
+                out[code] = sector
+    except Exception:
+        return out
+    return out
+
+
+def apply_sector_override(sector_map: dict[str, str],
+                          override: dict[str, str] | None = None) -> dict[str, str]:
+    """Return sector_map with {raw_code: sector} overrides applied by ticker raw code."""
+    out = dict(sector_map or {})
+    over = override if override is not None else load_sector_override()
+    if not over:
+        return out
+    for tkr in list(out):
+        raw = tkr.split(".")[0].upper()
+        if raw in over:
+            out[tkr] = over[raw]
+    return out
 
 
 def _tick_size(price: float) -> float | None:
@@ -420,3 +473,49 @@ def _group_by_sector(close_matrix: pd.DataFrame, sector_map: dict[str, str]) -> 
         if s:
             groups.setdefault(s, []).append(tkr)
     return [(s, members) for s, members in groups.items()]
+
+
+# ── Stock vs its OWN sector (the "stock vs sector" RS axis) ──────────────
+
+def stock_vs_sector_rs(close_matrix: pd.DataFrame, sector_map: dict[str, str],
+                       lookbacks: tuple[int, ...] = RS_LOOKBACKS) -> pd.DataFrame:
+    """Per-stock return MINUS the equal-weight average return of its sector peers.
+
+    This is the "Stock vs Sector" relative-strength axis the spec calls for
+    (e.g. FCPO -2%, Sector -0.7%, stock 0% => stock is strong). Each member's
+    return is computed on its OWN aligned calendar (same as stock_rs / the
+    sector_performances path), so NaN gaps / suspensions never poison a number.
+
+    Returns DataFrame indexed by ticker with columns rel_{d}d for each lookback.
+    """
+    groups = _group_by_sector(close_matrix, sector_map)
+    # sector -> {d: avg return} (equal weight across members).
+    sector_rets: dict[str, dict[int, float | None]] = {}
+    for sector, members in groups:
+        if not members:
+            continue
+        per: dict[int, list[float]] = {d: [] for d in lookbacks}
+        for tkr in members:
+            s = close_matrix[tkr].astype(float)
+            for d in lookbacks:
+                r = _pct_change(s, d)
+                if r is not None:
+                    per[d].append(r)
+        sector_rets[sector] = {
+            d: (float(np.mean(per[d])) if per[d] else None) for d in lookbacks
+        }
+
+    rows: dict[str, dict[str, float | None]] = {}
+    for tkr in close_matrix.columns:
+        sector = sector_map.get(tkr)
+        s = close_matrix[tkr].astype(float)
+        row: dict[str, float | None] = {}
+        for d in lookbacks:
+            rc = _pct_change(s, d)
+            sec_avg = sector_rets.get(sector, {}).get(d) if sector else None
+            if rc is None or sec_avg is None:
+                row[f"rel_{d}d"] = None
+            else:
+                row[f"rel_{d}d"] = round(rc - sec_avg, 2)
+        rows[tkr] = row
+    return pd.DataFrame.from_dict(rows, orient="index")

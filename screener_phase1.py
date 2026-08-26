@@ -39,7 +39,10 @@ from screener_setup import (
     base_quality,
     breakout_quality,
     closing_strength,
+    ema_pullback_reclaim,
     effort_vs_result,
+    failed_breakdown,
+    failed_breakout,
     intraday_position,
     nearest_pivot,
     nearest_support,
@@ -49,6 +52,11 @@ from screener_setup import (
     shakeout_check,
     yesterday_clv,
 )
+from screener_rs import stock_vs_sector_rs  # stock vs own-sector RS axis
+try:
+    from market_regime import market_regime as _market_regime
+except Exception:  # optional module — regime degrades to a safe NEUTRAL default
+    _market_regime = None
 
 # Master-score weights (fixed, simple, explainable — NOT tuned against the
 # backtest; per the audit: no parameter optimization).
@@ -83,6 +91,10 @@ _T_ZH = {
     "Volume Dry-up": "缩量蓄势 (Volume Dry-up)",
     "Volatility contraction": "波动收敛",
     "Only {pct}% off EMA20": "距 EMA20 仅 {pct}%",
+    "Beats sector ({chg}%)": "跑赢板块 (+{chg}%)",
+    "Failed breakdown {bars}d": "假跌破/洗盘 (Failed Breakdown {bars}天)",
+    "Failed breakout {bars}d": "⚠ 假突破 (Failed Breakout {bars}天)",
+    "EMA reclaim near EMA{slow} ({pct}%)": "EMA{slow} 回踩+收复 ({pct}%)",
     "Strong close CLV={clv}": "收盘强势 CLV={clv}",
     "Shakeout {bars}d": "洗盘回踩 (Shakeout {bars}天)",
     "Near Pivot ({pct}%)": "逼近 Pivot ({pct}%)",
@@ -124,7 +136,8 @@ def classify(strength: float, setup: float, trigger: float,
              pivot_distance: float | None, base: dict[str, Any],
              rs_momentum: float | None, rr: float | None = None,
              rs_rank: float | None = None,
-             rs_rank_chg20: float | None = None) -> str:
+             rs_rank_chg20: float | None = None,
+             ema_reclaim: dict[str, Any] | None = None) -> str:
     """Map sub-scores to one of the 12 setup labels.
 
     Priority order matters: breakout > trigger-watch > setup > extended >
@@ -143,6 +156,10 @@ def classify(strength: float, setup: float, trigger: float,
     """
     if breakout.get("attempt") and breakout.get("score", 0) >= 60:
         return "BREAKOUT" if breakout["score"] >= 75 else "EXPANSION"
+    # An EMA-reclaim at the dynamic support is a high-value LOW-risk setup:
+    # rank it just under a genuine breakout, above a plain trigger-watch.
+    if ema_reclaim is not None and ema_reclaim.get("detected") and strength >= 40:
+        return "EMA RECLAIM"
     rr_ok = rr is None or rr >= 1.0
     if trigger >= 80 and setup >= 50 and pivot_distance is not None \
             and pivot_distance <= NEAR_PIVOT_PCT:
@@ -212,6 +229,14 @@ def run_phase1_screener(
                     Passed by the caller (market_session.session_mode).
     """
     ticker_names = ticker_names or {}
+    # Optional hand-authored sector map (Bursa taxonomy) — overrides Yahoo meta
+    # by raw ticker code. Missing file => no-op, so this is safe everywhere.
+    try:
+        from screener_rs import apply_sector_override
+        _primed = {tkr: sector_map.get(tkr, "") for tkr in data}
+        sector_map = apply_sector_override(_primed)
+    except Exception:
+        pass
 
     # ── Build the close matrix for cross-sectional RS / sector ranks ─────
     closes: dict[str, pd.Series] = {}
@@ -232,6 +257,22 @@ def run_phase1_screener(
     if strength_table is not None and not strength_table.empty:
         for _, row in strength_table.iterrows():
             sector_strength[row["sector"]] = float(row["strength"])
+
+    # ── Market regime (whole-market health): RISK_ON / NEUTRAL / RISK_OFF ──
+    market_regime_now: dict[str, Any] | None = None
+    if _market_regime is not None and not close_matrix.empty:
+        try:
+            market_regime_now = _market_regime(close_matrix, bench_close)
+        except Exception:
+            market_regime_now = None
+
+    # ── Stock vs its own sector RS (the "stock vs sector" axis) — once. ──
+    sector_rs_table: pd.DataFrame | None = None
+    if sector_map and not close_matrix.empty:
+        try:
+            sector_rs_table = stock_vs_sector_rs(close_matrix, sector_map)
+        except Exception:
+            sector_rs_table = None
 
     results: list[dict[str, Any]] = []
     bench_clean = bench_close.dropna() if bench_close is not None else None
@@ -255,10 +296,16 @@ def run_phase1_screener(
     # function-call + dict-construction overhead each round. One call →
     # 951 rows → dict lookup. Same numbers, ~3x faster.
     tech_map: dict[str, int] = {}
+    tech_detail: dict[str, dict[str, Any]] = {}
     try:
-        _all = run_scoring_screener(data, ticker_names, top_n=10_000, min_score=0)
+        _all = run_scoring_screener(data, ticker_names, top_n=10_000, min_score=0,
+                                    components=True)
         for _r in _all:
             tech_map[_r["ticker"]] = int(_r["score"])
+            tech_detail[_r["ticker"]] = {
+                "weighted": _r.get("score_weighted"),
+                "components": _r.get("score_components"),
+            }
     except Exception:
         tech_map = {}
 
@@ -340,6 +387,13 @@ def run_phase1_screener(
         # ── Sector context ───────────────────────────────────────────────
         sector = sector_map.get(tkr, "")
         sec_str = sector_strength.get(sector)
+        # stock vs its OWN sector RS (relative strength axis)
+        sector_rs_20d = None
+        sector_rs_60d = None
+        if sector_rs_table is not None and tkr in sector_rs_table.index:
+            _sr = sector_rs_table.loc[tkr]
+            sector_rs_20d = float(_sr.get("rel_20d")) if pd.notna(_sr.get("rel_20d")) else None
+            sector_rs_60d = float(_sr.get("rel_60d")) if pd.notna(_sr.get("rel_60d")) else None
 
         # ── Cross-sectional RS rank (Leader axis) for this stock ─────────
         rs_rank = None
@@ -378,6 +432,10 @@ def run_phase1_screener(
         sup = nearest_support(low, high, close, window=pivot_window)
         payout_support = sup["price"] if sup else None
         shake = shakeout_check(high, low, close, vol, payout_support)
+        # ── EMA pullback + reclaim / failed breakdown / failed breakout ──
+        ema_reclaim = ema_pullback_reclaim(close, high, low, vol)
+        fbd = failed_breakdown(high, low, close, vol, payout_support)
+        fbo = failed_breakout(high, low, close, vol, pv["price"] if pv else None)
 
         # ── Breakout quality (vs nearest pivot) ──────────────────────────
         bq = breakout_quality(
@@ -427,6 +485,10 @@ def run_phase1_screener(
         if sec_str is not None and sec_str > 55:
             strength_score += min(15.0, (sec_str - 50) * 0.5)
             parts_s.append(_t("Strong sector ({sector} #{rank})", sector=sector, rank=round(sec_str)))
+        if sector_rs_20d is not None and sector_rs_20d > 0:
+            # stock is outperforming its OWN sector — the "stock vs sector" RS axis
+            strength_score += min(10.0, sector_rs_20d * 0.4)
+            parts_s.append(_t("Beats sector ({chg}%)", chg=f"{sector_rs_20d:.1f}"))
         if tech_score >= 6:
             strength_score += min(10.0, tech_score * 1.2)
             parts_s.append(_t("Technical score {score}/11", score=tech_score))
@@ -471,6 +533,16 @@ def run_phase1_screener(
         if shake.get("detected"):
             trigger_score += 25.0
             parts_t.append(_t("Shakeout {bars}d", bars=shake["bars_ago"]))
+        if fbd.get("detected"):
+            # potential failed breakdown / shakeout / absorption — bullish setup
+            trigger_score += 20.0
+            parts_t.append(_t("Failed breakdown {bars}d", bars=fbd["bars_ago"]))
+        if ema_reclaim.get("detected"):
+            trigger_score += 15.0
+            parts_t.append(_t(
+                "EMA reclaim near EMA{slow} ({pct}%)",
+                slow=60, pct=ema_reclaim.get("pullback_pct", 0.0),
+            ))
         if pv is not None and pv["distance_pct"] is not None and pv["distance_pct"] <= NEAR_PIVOT_PCT:
             trigger_score += 25.0
             parts_t.append(_t("Near Pivot ({pct}%)", pct=f"{pv['distance_pct']:.1f}"))
@@ -480,6 +552,10 @@ def run_phase1_screener(
         if effort.get("verdict") == "potential_supply":
             trigger_score -= 20.0
             parts_t.append(_t("Potential Supply (high vol, no gain)"))
+        if fbo.get("failed"):
+            # broke above the pivot on volume but closed back below it
+            trigger_score -= 20.0
+            parts_t.append(_t("Failed breakout {bars}d", bars=fbo["bars_ago"]))
         trigger_score = float(np.clip(trigger_score, 0, 100))
 
         # ── Risk/reward from structure ───────────────────────────────────
@@ -516,16 +592,30 @@ def run_phase1_screener(
         master = (strength_score * W_STRENGTH + setup_score * W_SETUP
                   + trigger_score * W_TRIGGER + bq["score"] * W_BREAKOUT)
 
+        # ── R:R-aware master: "strong but bad R:R" is not a high-value buy ──
+        rr_val = rr.get("rr") if rr.get("valid") else None
+        rr_mult = 1.0
+        if rr_val is not None:
+            if rr_val < 1.0:
+                rr_mult = 0.6      # risk > reward → heavily discounted
+            elif rr_val < 1.5:
+                rr_mult = 0.9      # borderline → lightly discounted
+        master_rr = round(master * rr_mult, 1)
+
         reasons: list[str] = []
         if include_reasons:
             reasons = parts_s + parts_u + parts_t
 
+        failure_type = ("failed_breakout" if fbo.get("failed")
+                        else ("failed_breakdown" if fbd.get("detected") else ""))
         row: dict[str, Any] = {
             "ticker": tkr,
             "name": d.get("name", "") or ticker_names.get(tkr, ""),
             "close": round(float(close.iloc[-1]), 2),
             # legacy technical
             "score": tech_score,
+            "tech_weighted": (tech_detail.get(tkr) or {}).get("weighted"),
+            "tech_components": (tech_detail.get(tkr) or {}).get("components"),
             # RS block
             "rs_5d": rs_vals.get("rs_5d"),
             "rs_20d": rs_vals.get("rs_20d"),
@@ -539,6 +629,8 @@ def run_phase1_screener(
             # sector
             "sector": sector,
             "sector_strength": round(sec_str, 1) if sec_str is not None else None,
+            "sector_rs_20d": round(sector_rs_20d, 2) if sector_rs_20d is not None else None,
+            "sector_rs_60d": round(sector_rs_60d, 2) if sector_rs_60d is not None else None,
             # closing strength + extension (intraday adds the two references)
             "clv": clv,
             "yesterday_clv": y_clv,
@@ -553,13 +645,21 @@ def run_phase1_screener(
             "base_vol_dryup": base.get("vol_dryup"),
             "shakeout": shake.get("detected") or False,
             "effort_verdict": effort.get("verdict"),
+            # new detectors
+            "ema_reclaim": bool(ema_reclaim.get("detected")),
+            "ema_pullback_pct": ema_reclaim.get("pullback_pct"),
+            "failed_breakdown": bool(fbd.get("detected")),
+            "failed_breakout": bool(fbo.get("failed")),
+            "failure_type": failure_type,
+            "market_regime": (market_regime_now or {}).get("regime"),
             # scores
             "strength_score": round(strength_score, 1),
             "setup_score": round(setup_score, 1),
             "trigger_score": round(trigger_score, 1),
             "breakout_score": bq["score"],
             "master_score": round(master, 1),
-            "rr": rr.get("rr") if rr.get("valid") else None,
+            "master_rr": master_rr,
+            "rr": rr_val,
             "target_price": target,
             "target_kind": target_kind,
             # penny-stock guard annotation
@@ -569,9 +669,10 @@ def run_phase1_screener(
             "classification": classify(
                 strength_score, setup_score, trigger_score,
                 bq, ext, pv["distance_pct"] if pv else None, base, rs_mom,
-                rr=rr.get("rr") if rr.get("valid") else None,
+                rr=rr_val,
                 rs_rank=rs_rank,
                 rs_rank_chg20=rs_rank_chg20,
+                ema_reclaim=ema_reclaim,
             ),
             "reasons": reasons,
         }
@@ -592,13 +693,7 @@ def run_phase1_screener(
 
         results.append(row)
 
-    results.sort(key=lambda r: (
-        r["classification"] == "BREAKOUT" and 0 or
-        r["classification"] == "TRIGGER WATCH" and 1 or
-        r["classification"] == "EXPANSION" and 2 or
-        r["classification"] == "SETUP" and 3 or
-        r["classification"] == "EMERGING LEADER" and 4 or
-        r["classification"] == "LEADER" and 5 or 6,
-        -r["master_score"],
-    ))
+    # Value-first: the most actionable (highest R:R-adjusted master) surfaces
+    # first in the Ignition table. master_rr is always present.
+    results.sort(key=lambda r: (-r["master_rr"], -r["master_score"]))
     return results[:top_n]

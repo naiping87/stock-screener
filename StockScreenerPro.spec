@@ -3,11 +3,17 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('markets', 'markets'), ('tickers', 'tickers'), ('tickers.csv', '.'), ('ui', 'ui'), ('workers', 'workers'), ('resources', 'resources'), ('licensing', 'licensing')]
 binaries = []
-hiddenimports = ['PyQt6', 'pandas', 'numpy', 'requests', 'markets.bursa', 'markets.us', 'markets.shanghai', 'licensing.license_manager', 'screener_phase1', 'screener_rs', 'screener_setup']
+hiddenimports = ['PyQt6', 'pandas', 'numpy', 'requests', 'markets.bursa', 'markets.us', 'markets.shanghai', 'licensing.license_manager', 'screener_phase1', 'screener_rs', 'screener_setup', 'py_mini_racer']
 tmp_ret = collect_all('cryptography')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret2 = collect_all('akshare')
-datas += tmp_ret2[0]; binaries += tmp_ret2[1]; hiddenimports += tmp_ret2[2]
+tmp_ret = collect_all('akshare')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('py_mini_racer')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('curl_cffi')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('pyqtgraph')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
@@ -35,7 +41,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,

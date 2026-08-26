@@ -216,6 +216,13 @@ class ScreenerWorker(QThread):
         if "reasons" in df.columns:
             df["reasons"] = df["reasons"].apply(
                 lambda v: (" · ".join(str(x) for x in v)) if isinstance(v, (list, tuple)) else str(v))
+        # Compact the de-redundant 11-factor cluster breakdown for the table cell
+        if "tech_components" in df.columns:
+            df["tech_components"] = df["tech_components"].apply(
+                lambda v: ("T:%d C:%d M:%d V:%d A:%d" % (
+                    v.get("trend", 0), v.get("compression", 0), v.get("momentum", 0),
+                    v.get("volume", 0), v.get("activity", 0)))
+                if isinstance(v, dict) else "")
         # Rename other columns for display
         rename = {
             "name": "Name", "close": "Price",

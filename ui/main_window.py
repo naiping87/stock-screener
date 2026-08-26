@@ -47,6 +47,7 @@ class MainWindow(QMainWindow):
         self.ticker_names = {}
         self._result_dfs = {}
         self._meta_cache = {}
+        self._screeners_need_meta_rerun = False
         self._busy = False            # a download / screener run is in flight
         self._last_market_code = None
         self._retry_cb = None         # callback for the status-bar Retry button
@@ -332,6 +333,9 @@ class MainWindow(QMainWindow):
         """Start the screener pipeline (busy is already set by the caller)."""
         params = self.sidebar.get_params()
         self._result_dfs = {}
+        # If we have no sector map yet (first run), remember to re-run once the
+        # meta worker has fetched sectors so Phase-1's SecStr / SecRS are filled.
+        self._screeners_need_meta_rerun = bool(not self._sector_map())
         self._set_busy(True, "Running screeners...")
         self.screener_worker = ScreenerWorker(
             self.data, self.ticker_names, params,
@@ -380,6 +384,13 @@ class MainWindow(QMainWindow):
                 s = meta.get("sector")
                 if s:
                     out[t] = s
+        # Optional Bursa-native sector override (tickers/sector_map.csv) wins
+        # over Yahoo's broad GICS sector so the Ignition sector axis is aligned.
+        try:
+            from screener_rs import apply_sector_override
+            out = apply_sector_override(out)
+        except Exception:
+            pass
         return out
 
     def _store_result(self, tab_key, df):
@@ -413,10 +424,31 @@ class MainWindow(QMainWindow):
 
     def _on_meta_loaded(self, meta):
         self._meta_cache.update(meta)
+        # First-run fix: screeners computed Phase-1 before sector meta existed.
+        # Re-run once now that sectors are known (self.data is cached, cheap).
+        if self._screeners_need_meta_rerun:
+            self._screeners_need_meta_rerun = False
+            self._start_screeners()
+            return
         self._finalize_results()
 
     def _finalize_results(self):
         # Attach ROE + sector to each result DataFrame (in-place, fast)
+        # Use the Bursa-native override (tickers/sector_map.csv) first, so
+        # sectors like "Plantation" show instead of Yahoo's broad GICS label.
+        try:
+            from screener_rs import load_sector_override
+            sector_override = load_sector_override()
+        except Exception:
+            sector_override = {}
+
+        def _sec_for(t):
+            raw = str(t).split(".")[0].upper()
+            s = sector_override.get(raw)
+            if s:
+                return s
+            return self._meta_cache.get(t, {}).get("sector", "")
+
         all_sectors = set()
         for _tab_key, df in self._result_dfs.items():
             if df is None or df.empty:
@@ -425,7 +457,7 @@ class MainWindow(QMainWindow):
                 tkrs = df["ticker"].values
                 df["ROE"] = [self._meta_cache.get(t, {}).get("roe") for t in tkrs]
                 df["ROE%"] = [f"{v:.1f}%" if v is not None else "" for v in df["ROE"]]
-                df["Sector"] = [self._meta_cache.get(t, {}).get("sector", "") for t in tkrs]
+                df["Sector"] = [_sec_for(t) for t in tkrs]
                 for s in df["Sector"]:
                     if s:
                         all_sectors.add(s)

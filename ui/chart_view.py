@@ -21,7 +21,7 @@ TEXT_SEC = "#787b86"
 UP = "#089981"
 DOWN = "#f23645"
 GRID = (255, 255, 255, 40)
-EMA_COLORS = {20: "#2962FF", 50: "#f7c600", 100: "#b18cff", 200: "#787b86"}
+EMA_COLORS = {20: "#2962FF", 50: "#f7c600", 60: "#ff6b00", 100: "#b18cff", 200: "#787b86"}
 KDJ_COLORS = {"K": "#2962FF", "D": "#f7c600", "J": "#b18cff"}
 BAR_WIDTH = {"Daily": 60_000 * 0.7, "Weekly": 400_000 * 0.7}  # seconds per bar (xs is epoch seconds)
 
