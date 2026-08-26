@@ -63,6 +63,12 @@ def _acquire_single_instance_lock() -> bool:
 def main():
     _setup_logging()
     app = QApplication(sys.argv)
+    # Fusion style — the dark STYLESHEET below targets Fusion's control
+    # structure (checkbox indicators, slider grooves, combo arrows). Windows'
+    # native style ignores part of it, so the packaged app rendered a
+    # half-native/half-dark hybrid and looked worse than the dev run, which
+    # always used Fusion. Keeping the two entry points identical.
+    app.setStyle("Fusion")
     app.setStyleSheet(STYLESHEET)
     app.setApplicationName("Stock Screener Pro")
     app.setOrganizationName("StockScreenerPro")
