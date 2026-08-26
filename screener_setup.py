@@ -211,6 +211,43 @@ def clv_series(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
     return clv
 
 
+def yesterday_clv(high: pd.Series, low: pd.Series, close: pd.Series) -> float | None:
+    """The CLV of the LAST COMPLETED trading day (the bar before the current
+    bar). In intraday mode the current bar is unfinished, so the completed
+    day's close strength is the reliable reference; closing_strength() would
+    report an unstable intraday number instead.
+    """
+    if high is None or low is None or close is None or len(close) < 2:
+        return None
+    h = float(high.iloc[-2])
+    lo = float(low.iloc[-2])
+    c = float(close.iloc[-2])
+    if not (np.isfinite(h) and np.isfinite(lo) and np.isfinite(c)):
+        return None
+    rng = h - lo
+    if rng <= 0:
+        return None
+    return round(min(1.0, max(0.0, (c - lo) / rng)), 3)
+
+
+def intraday_position(high: pd.Series, low: pd.Series, close: pd.Series) -> float | None:
+    """Where the CURRENT price sits in TODAY'S (in-progress) range: 0 at the
+    low, 1 at the high. Informational in intraday mode — the same value that
+    will become the day's CLV once the market closes.
+    """
+    if high is None or low is None or close is None or len(close) == 0:
+        return None
+    h = float(high.iloc[-1])
+    lo = float(low.iloc[-1])
+    c = float(close.iloc[-1])
+    if not (np.isfinite(h) and np.isfinite(lo) and np.isfinite(c)):
+        return None
+    rng = h - lo
+    if rng <= 0:
+        return None
+    return round(min(1.0, max(0.0, (c - lo) / rng)), 3)
+
+
 # ── Price extension ─────────────────────────────────────────────────────────
 
 def price_extension(close: pd.Series, window: int = 20) -> float | None:

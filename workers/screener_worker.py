@@ -38,13 +38,14 @@ class ScreenerWorker(QThread):
     cancelled = pyqtSignal()
 
     def __init__(self, data, ticker_names, params, parent=None,
-                 bench_close=None, sector_map=None):
+                 bench_close=None, sector_map=None, market_code="my"):
         super().__init__(parent)
         self.data = data
         self.ticker_names = ticker_names
         self.params = params
         self.bench_close = bench_close      # KLCI close series (RS reference)
         self.sector_map = sector_map or {}  # {ticker: sector} for sector strength
+        self.market_code = market_code
 
     def cancel(self):
         """Request cancellation; checked between screeners."""
@@ -165,6 +166,21 @@ class ScreenerWorker(QThread):
                     self.progress.emit(95 + int(4 * done / max(1, total)),
                                        f"Ignition: {done}/{total}")
 
+                # Session-aware screening: an UNCLOSED trading day must not
+                # hard-filter on today's unstable CLV (the 09:30 CLV=0 trap).
+                # eod → EOD mode (final CLV/volume, filter applies);
+                # intraday → CLV filter skipped, yesterday_clv referenced.
+                from market_session import session_mode
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+                try:
+                    _tz_name = "Asia/Kuala_Lumpur" if self.market_code == "my" else "America/New_York"
+                    _tz = ZoneInfo(_tz_name)
+                    _now = datetime.now(tz=_tz)
+                    _session = session_mode(self.market_code, _now, _tz_name)
+                except Exception:
+                    _session = "eod"  # fallback: be conservative (final data)
+
                 r6 = run_phase1_screener(
                     self.data,
                     getattr(self, "bench_close", None),
@@ -173,7 +189,9 @@ class ScreenerWorker(QThread):
                     top_n=p.get("score_top_n", SCORE_TOP_N),
                     clv_min=p.get("clv_min", 0.8),
                     progress_cb=_p1_progress,
+                    session=_session,
                 )
+                self.progress.emit(99, f"Ignition done ({_session} mode)")
                 self.result.emit("phase1", self._to_df(r6))
             except Exception as e:
                 logger.warning("Phase-1 detector skipped: %s", e)

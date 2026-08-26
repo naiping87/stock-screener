@@ -40,12 +40,14 @@ from screener_setup import (
     breakout_quality,
     closing_strength,
     effort_vs_result,
+    intraday_position,
     nearest_pivot,
     nearest_support,
     next_resistance,
     price_extension,
     risk_reward,
     shakeout_check,
+    yesterday_clv,
 )
 
 # Master-score weights (fixed, simple, explainable — NOT tuned against the
@@ -187,6 +189,7 @@ def run_phase1_screener(
     pivot_window: int = 5,
     include_reasons: bool = True,
     progress_cb: Any | None = None,
+    session: str = "eod",
 ) -> list[dict[str, Any]]:
     """Run the full Phase-1 pulse detector over the loaded market.
 
@@ -197,10 +200,16 @@ def run_phase1_screener(
       sector_map  — {ticker: sector} from the meta worker; may be empty.
       clv_min     — Closing-Strength filter: only keep rows with CLV >= this.
                     Pass 0.0 to disable (show all).
+                    IGNORED in intraday mode (see `session`) — an unfinished
+                    bar's close strength is not a reliable filter.
       min_score_tech — existing 11-factor score floor (0 = any).
       progress_cb — optional callable(done:int, total:int) invoked every 50
                     stocks so the UI can show stepwise progress (no-op when
                     None; never affects results).
+      session     — "eod" (market closed → CLV/volume FINAL, clv_min applies)
+                    or "intraday" (market open → CLV unstable, yesterday_clv
+                    is the reference, volume is time-of-day normalized).
+                    Passed by the caller (market_session.session_mode).
     """
     ticker_names = ticker_names or {}
 
@@ -343,9 +352,25 @@ def run_phase1_screener(
             rs_rank_chg60 = float(_r["rs_rank_chg60"]) if pd.notna(_r.get("rs_rank_chg60")) else None
 
         # ── Closing strength / extension / effort ────────────────────────
+        # In EOD mode, `clv` is the completed day's close strength (final).
+        # In intraday mode the current bar is UNFINISHED — `clv` is still
+        # computed and shown (labeled intraday) but NEVER hard-filters;
+        # `yesterday_clv` is the reliable completed-day reference and feeds
+        # the trigger score instead.
         clv = closing_strength(high, low, close)
+        y_clv = yesterday_clv(high, low, close)
+        ipos = intraday_position(high, low, close)
         ext = price_extension(close, window=20)
         effort = effort_vs_result(high, low, close, vol)
+        intraday = session == "intraday"
+        if intraday:
+            # Volume is partial (only a fraction of the day has traded);
+            # effort_vs_result compares today's partial volume against a
+            # 20-day AVERAGE OF FULL DAYS — under-reporting spikes and
+            # over-reporting dry-ups. For intraday we neutralize the verdict
+            # (still report the raw ratio, no supply/accumulation call).
+            if effort.get("verdict") is not None:
+                effort = {**effort, "verdict": None}
 
         # ── Structure: base + pivot/support + shakeout ───────────────────
         base = base_quality(high, low, close, vol, lookback=40)
@@ -434,10 +459,14 @@ def run_phase1_screener(
 
         trigger_score = 0.0
         parts_t: list[str] = []
-        if clv is not None and clv >= 0.8:
+        # EOD: today's completed close strength. Intraday: the only reliable
+        # completed-day reference is YESTERDAY's CLV — today's is unfinished
+        # and can swing -1→+1 minute-to-minute (#sunway case).
+        clv_ref = y_clv if intraday else clv
+        if clv_ref is not None and clv_ref >= 0.8:
             trigger_score += 30.0
-            parts_t.append(_t("Strong close CLV={clv}", clv=f"{clv:.2f}"))
-        elif clv is not None and clv >= 0.6:
+            parts_t.append(_t("Strong close CLV={clv}", clv=f"{clv_ref:.2f}"))
+        elif clv_ref is not None and clv_ref >= 0.6:
             trigger_score += 15.0
         if shake.get("detected"):
             trigger_score += 25.0
@@ -510,8 +539,11 @@ def run_phase1_screener(
             # sector
             "sector": sector,
             "sector_strength": round(sec_str, 1) if sec_str is not None else None,
-            # closing strength + extension
+            # closing strength + extension (intraday adds the two references)
             "clv": clv,
+            "yesterday_clv": y_clv,
+            "intraday_position": ipos,
+            "session": session,
             "extension_pct": ext,
             # structure
             "pivot_price": pv["price"] if pv else None,
@@ -546,8 +578,14 @@ def run_phase1_screener(
         if penny_note:
             reasons.append("⚠ " + penny_note)
 
-        # Closing-Strength filter (user-adjustable; 0 = disabled)
-        if clv_min > 0 and (clv is None or clv < clv_min):
+        # Closing-Strength filter (user-adjustable; 0 = disabled).
+        # INTRADAY MODE: the current bar is unfinished — a strong stock can
+        # read CLV=0 at 09:30 (one print at the low) and CLV=1 at 09:45, so
+        # the filter NEVER applies intraday. The filter's job is done by the
+        # trigger score via yesterday_clv instead (see above).
+        if intraday:
+            pass  # no CLV hard filter while the market is open
+        elif clv_min > 0 and (clv is None or clv < clv_min):
             continue
         if tech_score < min_score_tech:
             continue

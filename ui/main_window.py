@@ -337,6 +337,7 @@ class MainWindow(QMainWindow):
             self.data, self.ticker_names, params,
             bench_close=self._get_benchmark(),
             sector_map=self._sector_map(),
+            market_code=self._last_market_code or params.get("market_code", "my"),
         )
         self.screener_worker.progress.connect(self.update_progress)
         self.screener_worker.result.connect(self._store_result)
