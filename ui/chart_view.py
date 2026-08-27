@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDialog, QLabel, QTabWidget, QVBoxLayout
 
 from screener import KDJ_PERIOD, KDJ_SIGNAL, _calc_kdj
@@ -131,6 +132,9 @@ def _prepare(data: dict, interval: str) -> dict:
 
 class ChartWidget(pg.GraphicsLayoutWidget):
     """Price (candles + EMA) / volume / KDJ panes with linked zoom & crosshair."""
+
+    # Emitted on a double-click so the dialog can close without hunting the ✕.
+    double_clicked = pyqtSignal()
 
     def __init__(self, data: dict, interval: str = "Daily", parent=None):
         super().__init__(parent)
@@ -304,6 +308,11 @@ class ChartWidget(pg.GraphicsLayoutWidget):
         # Auto-fit price range to the data
         self.price.autoRange()
 
+    def mouseDoubleClickEvent(self, evt):
+        """Double-click anywhere on the chart closes the dialog."""
+        self.double_clicked.emit()
+        super().mouseDoubleClickEvent(evt)
+
     def _on_mouse_moved(self, evt):
         if self._empty:
             return
@@ -358,6 +367,12 @@ class ChartDialog(QDialog):
         tabs.addTab(ChartWidget(data, "Weekly"), "🗓 Weekly")
         layout.addWidget(tabs, 1)
 
-        hint = QLabel("Scroll to zoom · Drag to pan · Hover for OHLCV")
+        # Double-click the chart (either tab) to close the dialog.
+        for i in range(tabs.count()):
+            w = tabs.widget(i)
+            if hasattr(w, "double_clicked"):
+                w.double_clicked.connect(self.close)
+
+        hint = QLabel("Scroll to zoom · Drag to pan · Hover for OHLCV · Double-click to close")
         hint.setStyleSheet(f"color:{TEXT_SEC}; font-size:11px; padding:2px 4px;")
         layout.addWidget(hint)
