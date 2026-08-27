@@ -468,7 +468,7 @@ def ema_pullback_reclaim(close: pd.Series, high: pd.Series, low: pd.Series,
                          reclaim_lookback: int = 15, dryup_ratio: float = 0.9,
                          touch_tol: float = 1.005,
                          reclaim_fresh_bars: int = 5,
-                         current_near_pct: float = 15.0) -> dict[str, Any]:
+                         current_near_pct: float = 5.0) -> dict[str, Any]:
     """Detect the "strong uptrend → pullback to EMA(slow) → reclaim" setup.
 
     Causal: reads bars up to and including the last bar only (no lookahead).
@@ -482,7 +482,7 @@ def ema_pullback_reclaim(close: pd.Series, high: pd.Series, low: pd.Series,
         the upper half of the day's range (no distribution).
       - FRESH only: the reclaim must have happened within `reclaim_fresh_bars`
         bars (default 5) AND the current close must still be within
-        `current_near_pct` (default 15%) of EMA(slow). Without this, a stock
+        `current_near_pct` (default 5%) of EMA(slow). Without this, a stock
         that reclaimed EMA60 two weeks ago and then ran +30% is still labelled
         "EMA RECLAIM near EMA60" — which is not what a trader sees on the chart.
 
