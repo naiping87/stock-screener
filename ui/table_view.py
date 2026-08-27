@@ -1,12 +1,12 @@
 """Custom QTableView with sorting, conditional formatting, and export."""
 
 import pandas as pd
-from PyQt6.QtCore import QSortFilterProxyModel, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QSortFilterProxyModel, Qt, pyqtSignal
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QFileDialog, QHeaderView, QMenu, QTableView
+from PyQt6.QtWidgets import QFileDialog, QHeaderView, QMenu, QTableView, QToolTip
 
 from .styles import BLUE, GREEN, ORANGE, RED, TEXT_DIM
-from .table_model import PandasModel
+from .table_model import PandasModel, _column_help
 
 # ── Default colour maps for common columns ───────────────────────────────
 
@@ -170,6 +170,8 @@ class TableView(QTableView):
         self.setMouseTracking(True)
         if hasattr(self, "setToolTipsVisible"):
             self.setToolTipsVisible(True)
+        # reliable per-column header tooltips via an event filter on the header.
+        self.horizontalHeader().viewport().installEventFilter(self)
         self.verticalHeader().setVisible(False)
         self.horizontalHeader().setStretchLastSection(True)
         self.horizontalHeader().setSectionsClickable(True)
@@ -201,6 +203,18 @@ class TableView(QTableView):
     def set_filter(self, text: str):
         """Filter rows by text across all columns (empty string = clear)."""
         self._proxy.setFilterFixedString(text.strip())
+
+    def eventFilter(self, obj, event):
+        """Show column explanations when hovering the header on any tab."""
+        if obj is self.horizontalHeader().viewport() and event.type() == QEvent.Type.ToolTip:
+            pos = self.horizontalHeader().viewport().mapFromGlobal(event.globalPos())
+            sec = self.horizontalHeader().logicalIndexAt(pos)
+            if sec >= 0:
+                name = str(self._proxy.headerData(
+                    sec, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole))
+                QToolTip.showText(event.globalPos(), f"{name}: {_column_help(name) or name}")
+                return True
+        return super().eventFilter(obj, event)
 
     def _auto_size_cols(self):
         header = self.horizontalHeader()

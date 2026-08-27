@@ -74,6 +74,35 @@ COLUMN_HELP = {
     "SECTOR": "Stock's sector (Bursa taxonomy)",
     "PRICE": "Latest close price",
     "WTD%": "Weighted technical score",
+    # scoring raw keys (displayed uppercase-ish)
+    "wkdj_sig": "Weekly KDJ golden-cross / above signal",
+    "kdj_sig": "Daily KDJ golden-cross / above signal",
+    "above_200": "Close above the 200-day EMA",
+    "ema200_up": "200-day EMA rising",
+    "trend_tight": "Short EMAs compressed / tight trend",
+    "vol_ok": "Volume above the minimum threshold",
+    "vol_ma_ok": "Volume above its moving average",
+    "vol_expand": "Volume expanding",
+    "aligned": "EMA 50 > 100 > 200 aligned (bullish)",
+    "bb_squeeze": "Bollinger squeeze (compression)",
+    "vol_spike": "Today's volume > 2x the 20-day average",
+    "score_components": "Trend / Compression / Momentum / Volume / Activity breakdown",
+    "score_weighted": "Weighted technical score (0-100)",
+    # phase-1 raw keys (in case shown unrenamed)
+    "rs_5d": "Relative strength vs market, 5 days",
+    "rs_20d": "Relative strength vs market, 20 days",
+    "rs_60d": "Relative strength vs market, 60 days",
+    "rs_120d": "Relative strength vs market, 120 days",
+    "rs_momentum": "RS acceleration / momentum",
+    "sector_strength": "Sector strength (0-100)",
+    "sector_rs_20d": "Stock vs its own sector, 20 days",
+    "market_regime": "Whole-market RISK_ON / NEUTRAL / RISK_OFF",
+    "pivot_distance_pct": "% from the nearest pivot",
+    "base_range_pct": "Base width (% range)",
+    "extension_pct": "% above the 20-day EMA",
+    "master_rr": "Risk/reward-adjusted master score (main ranking)",
+    "master_score": "Weighted Strength/Setup/Trigger/Breakout score",
+    "tech_weighted": "Weighted technical score (0-100)",
 }
 
 # case-insensitive lookup so "Score"/"SCORE"/"score" all match.
@@ -188,8 +217,8 @@ class PandasModel(QAbstractTableModel):
             return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         elif role == Qt.ItemDataRole.ToolTipRole:
-            help_text = _column_help(col_name)
-            return f"{col_name}: {help_text}" if help_text else None
+            help_text = _column_help(col_name) or str(col_name)
+            return f"{col_name}: {help_text}"
 
         return None
 
@@ -200,7 +229,9 @@ class PandasModel(QAbstractTableModel):
             else:
                 return str(section + 1)
         if role == Qt.ItemDataRole.ToolTipRole and orientation == Qt.Orientation.Horizontal:
-            return _column_help(str(self._df.columns[section]))
+            name = str(self._df.columns[section])
+            help_text = _column_help(name) or name
+            return f"{name}: {help_text}"
         return None
 
     # ── Sorting ───────────────────────────────────────────────────────────
