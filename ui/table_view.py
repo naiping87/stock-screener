@@ -212,6 +212,16 @@ class TableView(QTableView):
         copy_action.triggered.connect(self._copy_selection)
         menu.addAction(copy_action)
 
+        # Column visibility — hide the noise, keep what you actually use.
+        cols = menu.addMenu("Columns…")
+        df = self._model.dataframe()
+        for i, name in enumerate(df.columns):
+            act = cols.addAction(str(name))
+            act.setCheckable(True)
+            act.setChecked(not self.isColumnHidden(i))
+            act.triggered.connect(lambda checked, c=i: self.setColumnHidden(c, not checked))
+        menu.addSeparator()
+
         export_action = QAction("Export CSV...", self)
         export_action.triggered.connect(self._export_csv)
         menu.addAction(export_action)

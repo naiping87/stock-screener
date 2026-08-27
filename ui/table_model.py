@@ -5,6 +5,67 @@ from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PyQt6.QtGui import QBrush, QColor
 
 
+# Plain-language explanations shown when hovering a column header.
+COLUMN_HELP = {
+    # Identifiers / price
+    "Code": "Ticker code",
+    "Name": "Company name",
+    "Price": "Latest close price",
+    "Close": "Latest close price",
+    # Ignition / phase-1 (friendly names)
+    "Setup Type": "The classification: SETUP / TRIGGER WATCH / BREAKOUT / LEADER / EMA RECLAIM / WEAKENING…",
+    "Value": "Risk/reward-adjusted master score — the main ranking. Higher = better.",
+    "Master": "Weighted Strength/Setup/Trigger/Breakout score (0-100).",
+    "Strength": "Leading factor (30%): RS rank + momentum + sector strength.",
+    "Setup": "Structure (25%): tight base, higher low, volume dry-up.",
+    "Trigger": "Trigger (25%): strong close, near pivot, shakeout, EMA reclaim.",
+    "Breakout": "Breakout quality (20%): how it broke above a pivot.",
+    "RS Rank": "Relative-strength percentile vs the whole market (0-100).",
+    "CLV": "Closing strength: 1.0 = closes at the day high (0-1).",
+    "R:R": "Risk/reward to the next resistance (higher = better).",
+    "Score": "11-factor technical score (0-11).",
+    "Sector": "Stock's sector (Bursa taxonomy).",
+    "Wtd%": "Weighted technical component score.",
+    # RS / sector
+    "RS5": "Relative strength vs market, 5 days",
+    "RS20": "Relative strength vs market, 20 days",
+    "RS60": "Relative strength vs market, 60 days",
+    "RS Mom": "RS acceleration / momentum",
+    "RS↑20d": "20-day change in RS rank (+ = gaining)",
+    "RS Rank Chg": "Change in RS rank",
+    "SecStr": "Sector strength (0-100)",
+    "SecRS": "Stock vs its own sector (%)",
+    # structure
+    "Pivot": "Nearest resistance (confirmed pivot) above price",
+    "Dist%": "% from the nearest pivot",
+    "Target": "Measured-move target price",
+    "Sup": "Nearest support below price",
+    "Base%": "Base width (% range)",
+    "DryUp": "Volume dry-up inside the base",
+    "Shake": "Shakeout detected (a washout that recovered)",
+    "FBO": "Failed breakout — broke a pivot but closed back below",
+    "FBD": "Failed breakdown — broke support but recovered",
+    "Regime": "Whole-market RISK_ON / NEUTRAL / RISK_OFF",
+    "Why": "Why the stock is on the list (buy-side reasons)",
+    # KDJ
+    "Signal": "'crossed' = fresh golden cross · 'above' = already bullish",
+    "kdj_k": "KDJ K value",
+    "kdj_d": "KDJ D value",
+    "kdj_j": "KDJ J value (K/D momentum)",
+    "kdj_state": "BULLISH (K>D) / BEARISH (K<D)",
+    "kdj_k_d_golden": "K crossed above D today (golden cross)",
+    # scoring / fundamentals
+    "ROE%": "Return on equity (%)",
+    "ROE": "Return on equity",
+    # volume
+    "Vol MA": "Average volume",
+    "Vol Ratio": "Today's volume vs the 20-day average",
+    "Volume": "Trading volume",
+    # movers
+    "Chg%": "% change for the day",
+}
+
+
 def _format_cell(val, col_name: str) -> str:
     """TradingView-style cell formatting.
 
@@ -108,6 +169,8 @@ class PandasModel(QAbstractTableModel):
                 return str(self._df.columns[section])
             else:
                 return str(section + 1)
+        if role == Qt.ItemDataRole.ToolTipRole and orientation == Qt.Orientation.Horizontal:
+            return COLUMN_HELP.get(str(self._df.columns[section]))
         return None
 
     # ── Sorting ───────────────────────────────────────────────────────────

@@ -7,8 +7,11 @@ Tab titles carry live result counts; a search box filters the current tab.
 import pandas as pd
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
+    QPushButton,
     QStackedWidget,
     QTabWidget,
     QVBoxLayout,
@@ -78,7 +81,13 @@ class ResultsPanel(QWidget):
         self.search_box.setPlaceholderText("🔍 " + i18n.t("Search code / name / signal…"))
         self.search_box.setClearButtonEnabled(True)
         self.search_box.textChanged.connect(self._on_search)
-        layout.addWidget(self.search_box)
+        self.guide_btn = QPushButton("❓ Guide")
+        self.guide_btn.setObjectName("guideButton")
+        self.guide_btn.clicked.connect(self._show_guide)
+        head = QHBoxLayout()
+        head.addWidget(self.search_box, 1)
+        head.addWidget(self.guide_btn)
+        layout.addLayout(head)
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
@@ -180,3 +189,22 @@ class ResultsPanel(QWidget):
         table = self._current_table()
         if table:
             table.set_filter(self.search_box.text())
+
+    def _show_guide(self):
+        """Quick how-to so users aren't dropped into a wall of columns."""
+        QMessageBox.information(
+            self,
+            "How to use Stock Screener Pro",
+            "Start on the Ignition tab (first tab) — it ranks the whole market "
+            "by setup quality.\n\n"
+            "1) Click a column header to SORT (start with 'Value').\n"
+            "2) Read the 'Why' column — it explains each signal in plain words.\n"
+            "3) Hover any column header to see what it means.\n"
+            "4) Double-click a stock to open its chart (candles + EMA + KDJ).\n"
+            "5) Too many/too few? Adjust Min Score, Top N, Min Closing Strength "
+            "on the left.\n"
+            "6) Too many columns? Right-click -> 'Columns…' to hide the ones you "
+            "don't use.\n\n"
+            "Other tabs: Top Movers (today's leaders), EMA / KDJ screeners, "
+            "Scoring, New Picks. Start simple: Ignition -> chart -> decide.",
+        )
