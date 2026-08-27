@@ -1351,6 +1351,9 @@ try:
 except Exception:
     pass
 
+if st.session_state.get("_market_ts"):
+    st.caption("🕒 Data as of " + st.session_state._market_ts + " (" + market.timezone + ")")
+
 # Stage 2: Run screeners — cached by param fingerprint, skip on unrelated changes
 screener_progress = st.empty()
 screener_progress.progress(0, text="Running screeners...")

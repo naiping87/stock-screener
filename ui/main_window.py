@@ -140,6 +140,10 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.statusbar)
         self.status_label = QLabel(i18n.t("Ready"))
         self.statusbar.addWidget(self.status_label, 1)
+        # Data-freshness indicator: last bar date + fetch time (right side).
+        self.asof_label = QLabel("")
+        self.asof_label.setStyleSheet("color:#9aa4b5;")
+        self.statusbar.addPermanentWidget(self.asof_label)
         self.progress_bar = QProgressBar()
         self.progress_bar.setMaximumWidth(200)
         self.progress_bar.setMaximumHeight(16)
@@ -278,10 +282,31 @@ class MainWindow(QMainWindow):
     def _on_data_loaded(self, data, ticker_names):
         self.data = data
         self.ticker_names = ticker_names
+        self._refresh_asof()
         self._populate_top_movers()
         self.status_label.setText("Loaded " + str(len(data)) + " tickers - running screeners...")
         # Internal chain: busy flag stays set, so bypass the guard.
         self._start_screeners()
+
+    def _refresh_asof(self):
+        """Show the latest bar date across the loaded universe + fetch time."""
+        latest = None
+        for d in self.data.values():
+            if not isinstance(d, dict):
+                continue
+            c = d.get("close")
+            if c is not None and len(c) and hasattr(c, "index"):
+                t = c.index[-1]
+                if latest is None or t > latest:
+                    latest = t
+        now = datetime.now()
+        if latest is not None:
+            self.asof_label.setText(
+                "Data as of " + latest.strftime("%Y-%m-%d")
+                + " · updated " + now.strftime("%H:%M")
+            )
+        else:
+            self.asof_label.setText("")
 
     def _populate_top_movers(self):
         """Show the market's top gainers / losers / actives for the day.

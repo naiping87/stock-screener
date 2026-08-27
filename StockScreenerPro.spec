@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('markets', 'markets'), ('tickers', 'tickers'), ('tickers.csv', '.'), ('ui', 'ui'), ('workers', 'workers'), ('resources', 'resources'), ('licensing', 'licensing')]
+datas = [('markets', 'markets'), ('tickers', 'tickers'), ('tickers.csv', '.'), ('ui', 'ui'), ('workers', 'workers'), ('resources', 'resources'), ('licensing', 'licensing'), ('indicators', 'indicators')]
 binaries = []
 hiddenimports = ['PyQt6', 'pandas', 'numpy', 'requests', 'markets.bursa', 'markets.us', 'markets.shanghai', 'licensing.license_manager', 'screener_phase1', 'screener_rs', 'screener_setup', 'py_mini_racer']
 tmp_ret = collect_all('cryptography')

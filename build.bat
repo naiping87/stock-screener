@@ -14,6 +14,7 @@ python -m PyInstaller --onefile --windowed ^
     --add-data="workers;workers" ^
     --add-data="resources;resources" ^
     --add-data="licensing;licensing" ^
+    --add-data="indicators;indicators" ^
     --collect-all=cryptography ^
     --collect-all=akshare ^
     --collect-all=pyqtgraph ^
