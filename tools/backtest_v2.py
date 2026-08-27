@@ -61,7 +61,7 @@ STAMP = datetime.now().strftime("%Y%m%d-%H%M")
 
 
 def fetch_universe(tickers: dict[str, str], start: str, end: str | None,
-                   min_bars: int = 20, max_workers: int = 15) -> dict[str, dict[str, Any]]:
+                   min_bars: int = 20, max_workers: int = 3) -> dict[str, dict[str, Any]]:
     """Download daily history for the whole ticker list (threaded)."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -74,6 +74,7 @@ def fetch_universe(tickers: dict[str, str], start: str, end: str | None,
     errors = 0
 
     def fetch(tkr: str):
+        time.sleep(0.25)  # throttle: Yahoo 429s concurrent bursts of the chart API
         d, name = _fetch_chart(sess, tkr, p1, p2, "1d", min_bars)
         return tkr, d, name
 

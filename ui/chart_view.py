@@ -19,8 +19,8 @@ BG = "#131722"
 PANEL = "#1e222d"
 TEXT = "#d1d4dc"
 TEXT_SEC = "#787b86"
-UP = "#089981"
-DOWN = "#f23645"
+UP = "#26A69A"      # muted, eye-friendly green (up)
+DOWN = "#EF5350"    # muted, eye-friendly red (down)
 GRID = (255, 255, 255, 40)
 EMA_COLORS = {20: "#2962FF", 50: "#f7c600", 60: "#ff6b00", 100: "#b18cff", 200: "#787b86"}
 KDJ_COLORS = {"K": "#2962FF", "D": "#f7c600", "J": "#b18cff"}
@@ -38,7 +38,7 @@ class CandlestickItem(pg.GraphicsObject):
     paint() with the view's transform instead — correct in every Qt.
     """
 
-    def __init__(self, xs, opens, highs, lows, closes):
+    def __init__(self, xs, opens, highs, lows, closes, width=42000.0):
         super().__init__()
         self.xs = np.asarray(xs, dtype=float)
         self.opens = np.asarray(opens, dtype=float)
@@ -52,7 +52,10 @@ class CandlestickItem(pg.GraphicsObject):
             float(self.xs.max() - self.xs.min() + 1.2),
             float(np.nanmax(self.highs) - np.nanmin(self.lows) + 0.1),
         )
-        self._w = 0.5
+        # Body width in DATA units (xs are epoch SECONDS). A fixed 0.5 (1 s)
+        # made the candle body ~1/86400 of a daily bar → invisible. Use the
+        # bar width (e.g. 42 000 s for daily) so open/close bodies are legible.
+        self._w = max(width * 0.5, 0.5)
 
     def paint(self, painter, *args, **kwargs):
         painter.setRenderHint(pg.QtGui.QPainter.RenderHint.Antialiasing, False)
@@ -197,7 +200,8 @@ class ChartWidget(pg.GraphicsLayoutWidget):
             self.volume.hideAxis("bottom")
 
         # ── Candles + EMA ──────────────────────────────────────────────
-        self.price.addItem(CandlestickItem(xs, opens, highs, lows, closes))
+        self.price.addItem(CandlestickItem(
+            xs, opens, highs, lows, closes, width=BAR_WIDTH.get(interval, 60_000)))
         width = BAR_WIDTH.get(interval, 60_000)
         for period, color in EMA_COLORS.items():
             if len(close) >= period:
