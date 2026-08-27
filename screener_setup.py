@@ -466,7 +466,9 @@ def ema_pullback_reclaim(close: pd.Series, high: pd.Series, low: pd.Series,
                          min_extension: float = 5.0, lookback: int = 40,
                          slope_bars: int = 10, pullback_max_pct: float = 4.0,
                          reclaim_lookback: int = 15, dryup_ratio: float = 0.9,
-                         touch_tol: float = 1.005) -> dict[str, Any]:
+                         touch_tol: float = 1.005,
+                         reclaim_fresh_bars: int = 5,
+                         current_near_pct: float = 15.0) -> dict[str, Any]:
     """Detect the "strong uptrend → pullback to EMA(slow) → reclaim" setup.
 
     Causal: reads bars up to and including the last bar only (no lookahead).
@@ -478,6 +480,11 @@ def ema_pullback_reclaim(close: pd.Series, high: pd.Series, low: pd.Series,
       - volume drying up during the pullback (supply contracting);
       - a reclaim bar: it touched EMA(slow) and closed back above it, closing in
         the upper half of the day's range (no distribution).
+      - FRESH only: the reclaim must have happened within `reclaim_fresh_bars`
+        bars (default 5) AND the current close must still be within
+        `current_near_pct` (default 15%) of EMA(slow). Without this, a stock
+        that reclaimed EMA60 two weeks ago and then ran +30% is still labelled
+        "EMA RECLAIM near EMA60" — which is not what a trader sees on the chart.
 
     Returns a dict (always, never raises):
       detected, pullback_pct, slope_ok, vol_dryup, reclaim_bars_ago,
@@ -526,7 +533,11 @@ def ema_pullback_reclaim(close: pd.Series, high: pd.Series, low: pd.Series,
     low_vs_slow = (lo_win.values / slow_pull.values - 1.0) * 100.0
     low_vs_slow = low_vs_slow[np.isfinite(low_vs_slow)]
     pullback_pct = round(float(np.min(low_vs_slow)), 2) if low_vs_slow.size else None
-    near_slow = pullback_pct is not None and pullback_pct <= pullback_max_pct
+    # "near EMA(slow)" means the low came WITHIN pullback_max_pct of the EMA
+    # on EITHER side. The old `pullback_pct <= pullback_max_pct` was wrong: a
+    # stock whose low fell 8% BELOW the EMA (pullback_pct = -8) still passed
+    # (-8 <= 4), so deep dips were called "near". Use abs() so only ±4% counts.
+    near_slow = pullback_pct is not None and abs(pullback_pct) <= pullback_max_pct
 
     # ── volume dry-up during the pullback (bars where close fell under fast) ─
     vol_dryup = None
@@ -575,7 +586,18 @@ def ema_pullback_reclaim(close: pd.Series, high: pd.Series, low: pd.Series,
             if np.isfinite(day_low) and np.isfinite(day_high) and day_high > day_low:
                 no_distribution = float(c.iloc[-1]) >= day_low + 0.5 * (day_high - day_low)
 
-    detected = bool(slope_ok and ran_up and near_slow
+    # Freshness guard so the label reflects the CURRENT setup, not a reclaim
+    # that already ran away. YTLPOWER-style: reclaimed 13 bars ago, price now
+    # +30% above EMA60 — must NOT still read "EMA RECLAIM near EMA60".
+    current_close_vs_slow = None
+    if np.isfinite(float(c.iloc[-1])) and np.isfinite(float(slow.iloc[-1])) and float(slow.iloc[-1]) != 0:
+        current_close_vs_slow = abs(float(c.iloc[-1]) / float(slow.iloc[-1]) - 1.0) * 100.0
+    fresh = (reclaim_bars_ago is not None
+             and reclaim_bars_ago <= reclaim_fresh_bars
+             and current_close_vs_slow is not None
+             and current_close_vs_slow <= current_near_pct)
+
+    detected = bool(slope_ok and ran_up and near_slow and fresh
                     and reclaim_bars_ago is not None
                     and (vol_dryup is None or vol_dryup)
                     and (no_distribution is None or no_distribution))

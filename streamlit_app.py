@@ -1548,7 +1548,7 @@ try:
     if _fp_clv != _cur_fp or "results_phase1" not in st.session_state:
         results_p1 = run_phase1_screener(
             data, bench, sector_map, ticker_names=ticker_names,
-            top_n=score_top_n, clv_min=_clv,
+            top_n=score_top_n, min_score_tech=score_min, clv_min=_clv,
         )
         st.session_state.results_phase1 = results_p1
         st.session_state._p1_fp = _cur_fp

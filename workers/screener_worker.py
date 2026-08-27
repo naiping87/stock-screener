@@ -187,6 +187,7 @@ class ScreenerWorker(QThread):
                     getattr(self, "sector_map", None) or {},
                     ticker_names=self.ticker_names,
                     top_n=p.get("score_top_n", SCORE_TOP_N),
+                    min_score_tech=p.get("score_min", SCORE_MIN),
                     clv_min=p.get("clv_min", 0.8),
                     progress_cb=_p1_progress,
                     session=_session,
