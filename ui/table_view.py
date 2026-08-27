@@ -51,6 +51,48 @@ def score_colour(val) -> str | None:
         return None
 
 
+def score11_colour(val) -> str | None:
+    """11-factor technical score (0-11): 7+ green, 4+ orange, else red."""
+    try:
+        v = float(val)
+        if v >= 7:
+            return GREEN
+        elif v >= 4:
+            return ORANGE
+        else:
+            return RED
+    except (ValueError, TypeError):
+        return None
+
+
+def clv_colour(val) -> str | None:
+    """Closing strength (0-1): 0.8+ green, 0.6+ orange, else red."""
+    try:
+        v = float(val)
+        if v >= 0.8:
+            return GREEN
+        elif v >= 0.6:
+            return ORANGE
+        else:
+            return RED
+    except (ValueError, TypeError):
+        return None
+
+
+def rr_colour(val) -> str | None:
+    """Risk/reward: 2+ green, 1.2+ orange, else red."""
+    try:
+        v = float(val)
+        if v >= 2.0:
+            return GREEN
+        elif v >= 1.2:
+            return ORANGE
+        else:
+            return RED
+    except (ValueError, TypeError):
+        return None
+
+
 def chg_colour(val) -> str | None:
     """Green if change is positive, red if negative."""
     try:
@@ -70,16 +112,18 @@ DEFAULT_COLOUR_MAP = {
     "Signal": signal_colour,
     "KDJ": signal_colour,
     "WKDJ": signal_colour,
-    "Score": score_colour,
+    "Score": score11_colour,
     "Chg%": chg_colour,
-    # Phase-1 sub-scores: same gradient as Score
-    "master_score": score_colour,
-    "master_rr": score_colour,
-    "tech_weighted": score_colour,
-    "strength_score": score_colour,
-    "setup_score": score_colour,
-    "trigger_score": score_colour,
-    "breakout_score": score_colour,
+    # Phase-1 (Ignition) friendly columns: 0-100 gradient for sub-scores
+    "Value": score_colour,
+    "Master": score_colour,
+    "Strength": score_colour,
+    "Setup": score_colour,
+    "Trigger": score_colour,
+    "Breakout": score_colour,
+    "RS Rank": score_colour,
+    "CLV": clv_colour,
+    "R:R": rr_colour,
 }
 
 

@@ -85,6 +85,8 @@ class ResultsPanel(QWidget):
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
         tab_specs = [
+            ("🚀 " + i18n.t("Ignition"), "phase1"),
+            ("⭐ " + i18n.t("Scoring"), "scoring"),
             ("🔺 " + i18n.t("Top Movers"), "top_movers"),
             ("📅 " + i18n.t("Daily EMA"), "daily_ema"),
             ("⏱ " + i18n.t("Hourly EMA"), "hourly_ema"),
@@ -92,8 +94,6 @@ class ResultsPanel(QWidget):
             ("📉 " + i18n.t("KDJ Divergence"), "kdj_div"),
             ("📆 " + i18n.t("Weekly KDJ"), "weekly_kdj"),
             ("📊 " + i18n.t("Daily KDJ"), "daily_kdj"),
-            ("⭐ " + i18n.t("Scoring"), "scoring"),
-            ("🚀 " + i18n.t("Ignition"), "phase1"),
             ("🆕 " + i18n.t("New Picks"), "new_picks"),
         ]
 

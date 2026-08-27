@@ -231,6 +231,31 @@ class ScreenerWorker(QThread):
             "ROE": "ROE%",
         }
         df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+
+        # Ignition (phase1): friendly names + importance ordering so the most
+        # decision-relevant components (Value -> Strength -> Setup -> Trigger ->
+        # Breakout) sit leftmost, matching the 30/25/25/20 weighting.
+        if "master_rr" in df.columns:
+            p1_rename = {
+                "classification": "Setup Type",
+                "master_rr": "Value",
+                "master_score": "Master",
+                "strength_score": "Strength",
+                "setup_score": "Setup",
+                "trigger_score": "Trigger",
+                "breakout_score": "Breakout",
+                "rs_rank": "RS Rank",
+                "clv": "CLV",
+                "rr": "R:R",
+                "score": "Score",
+                "sector": "Sector",
+            }
+            df = df.rename(columns={k: v for k, v in p1_rename.items() if k in df.columns})
+            preferred = ["Code", "Name", "Setup Type", "Value", "Master", "Strength",
+                         "Setup", "Trigger", "Breakout", "RS Rank", "CLV", "R:R",
+                         "Score", "Sector", "Price"]
+            remaining = [c for c in df.columns if c not in preferred]
+            df = df[preferred + remaining]
         return df
 
 

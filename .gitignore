@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 dist/
 dist_v2/
+dist_v3/
 build/
 *.egg-info/
 installer/
