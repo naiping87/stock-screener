@@ -166,6 +166,10 @@ class TableView(QTableView):
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self.setShowGrid(False)
+        # cell hover tooltips (the model returns ToolTipRole = column explanation)
+        self.setMouseTracking(True)
+        if hasattr(self, "setToolTipsVisible"):
+            self.setToolTipsVisible(True)
         self.verticalHeader().setVisible(False)
         self.horizontalHeader().setStretchLastSection(True)
         self.horizontalHeader().setSectionsClickable(True)

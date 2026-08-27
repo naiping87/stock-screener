@@ -63,7 +63,27 @@ COLUMN_HELP = {
     "Volume": "Trading volume",
     # movers
     "Chg%": "% change for the day",
+    # scoring / EMA tab raw keys (displayed uppercase by the table)
+    "SCORE": "11-factor technical score (0-11).",
+    "TECH_WEIGHTED": "Weighted technical score (0-100).",
+    "TECH_COMPONENTS": "Trend / Compression / Momentum / Volume / Activity breakdown.",
+    "RS_5D": "Relative strength vs the market, 5 days",
+    "RS_20D": "Relative strength vs the market, 20 days",
+    "RS_60D": "Relative strength vs the market, 60 days",
+    "TICKER": "Ticker code",
+    "SECTOR": "Stock's sector (Bursa taxonomy)",
+    "PRICE": "Latest close price",
+    "WTD%": "Weighted technical score",
 }
+
+# case-insensitive lookup so "Score"/"SCORE"/"score" all match.
+_COLUMN_HELP_LOWER = {str(k).strip().lower(): v for k, v in COLUMN_HELP.items()}
+
+
+def _column_help(name) -> str | None:
+    if not name:
+        return None
+    return _COLUMN_HELP_LOWER.get(str(name).strip().lower())
 
 
 def _format_cell(val, col_name: str) -> str:
@@ -167,6 +187,10 @@ class PandasModel(QAbstractTableModel):
                 return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
+        elif role == Qt.ItemDataRole.ToolTipRole:
+            help_text = _column_help(col_name)
+            return f"{col_name}: {help_text}" if help_text else None
+
         return None
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
@@ -176,7 +200,7 @@ class PandasModel(QAbstractTableModel):
             else:
                 return str(section + 1)
         if role == Qt.ItemDataRole.ToolTipRole and orientation == Qt.Orientation.Horizontal:
-            return COLUMN_HELP.get(str(self._df.columns[section]))
+            return _column_help(str(self._df.columns[section]))
         return None
 
     # ── Sorting ───────────────────────────────────────────────────────────
