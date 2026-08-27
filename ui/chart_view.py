@@ -9,6 +9,7 @@ import pandas as pd
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QDialog, QLabel, QTabWidget, QVBoxLayout
 
 from screener import KDJ_PERIOD, KDJ_SIGNAL, _calc_kdj
@@ -274,8 +275,8 @@ class ChartWidget(pg.GraphicsLayoutWidget):
         self._ohlcv = list(zip(xs, opens, highs, lows, closes,
                                volume.to_numpy(dtype="float64") if volume is not None else [None] * len(xs),
                                strict=True))
-        self._vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#2a2e39"))
-        self._hline = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen("#2a2e39"))
+        self._vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#4a5060"))
+        self._hline = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen("#4a5060"))
         self.price.addItem(self._vline, ignoreBounds=True)
         self.price.addItem(self._hline, ignoreBounds=True)
         self._crosshair_label = pg.TextItem(anchor=(0, 0), color=TEXT, fill=pg.mkBrush("#1e222d"))
@@ -284,6 +285,11 @@ class ChartWidget(pg.GraphicsLayoutWidget):
         # the x-range down to 0 and the 5% padding blows it to ±10^9).
         self.price.addItem(self._crosshair_label, ignoreBounds=True)
         self._crosshair_label.setVisible(False)
+        # Live price readout at the cursor (so you don't read the left axis).
+        self._price_label = pg.TextItem(anchor=(0, 0.5), color=TEXT, fill=pg.mkBrush("#1e222d"))
+        self._price_label.setZValue(51)
+        self.price.addItem(self._price_label, ignoreBounds=True)
+        self._price_label.setVisible(False)
         self._mouse_proxy = pg.SignalProxy(self.price.scene().sigMouseMoved,
                                            rateLimit=60, slot=self._on_mouse_moved)
 
@@ -341,6 +347,12 @@ class ChartWidget(pg.GraphicsLayoutWidget):
                     break
             self._vline.setPos(nearest)
             self._hline.setPos(mouse.y())
+            # price at the cursor's Y, in real time (3 decimals below RM1)
+            pv = mouse.y()
+            price_txt = f"{pv:,.3f}" if abs(pv) < 1.0 else f"{pv:,.2f}"
+            self._price_label.setText(price_txt)
+            self._price_label.setPos(nearest + 6, mouse.y())
+            self._price_label.setVisible(True)
 
     def _show_empty(self):
         lbl = pg.LabelItem("<span style='color:#5d606b;font-size:14px'>Not enough data to render chart</span>")
@@ -377,6 +389,10 @@ class ChartDialog(QDialog):
             if hasattr(w, "double_clicked"):
                 w.double_clicked.connect(self.close)
 
-        hint = QLabel("Scroll to zoom · Drag to pan · Hover for OHLCV · Double-click to close")
+        # Hotkeys: D = Daily, W = Weekly.
+        QShortcut(QKeySequence("D"), self, activated=lambda: tabs.setCurrentIndex(0))
+        QShortcut(QKeySequence("W"), self, activated=lambda: tabs.setCurrentIndex(1))
+
+        hint = QLabel("Scroll to zoom · Drag to pan · Hover for OHLCV · D = Daily · W = Weekly · Double-click to close")
         hint.setStyleSheet(f"color:{TEXT_SEC}; font-size:11px; padding:2px 4px;")
         layout.addWidget(hint)
