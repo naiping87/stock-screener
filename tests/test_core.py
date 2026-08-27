@@ -10,7 +10,8 @@ def test_format_cell():
     assert _format_cell(1_234_567, "Vol MA") == "1.2M"
     assert _format_cell(2_500_000, "Vol MA") == "2.5M"
     assert _format_cell(12_345.0, "Price") == "12,345.00"
-    assert _format_cell(0.55, "Price") == "0.5500"
+    assert _format_cell(0.55, "Price") == "0.55"
+    assert _format_cell(0.335, "Price") == "0.335"   # Bursa 0.005 tick precision
     assert _format_cell(3.5, "Div%") == "3.50%"
     assert _format_cell(0.123, "ROE") == "12.30%"
     assert _format_cell(11, "Score") == "11"

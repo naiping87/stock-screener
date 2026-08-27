@@ -100,7 +100,13 @@ def _format_cell(val, col_name: str) -> str:
                 return f"{val / 1e3:.0f}K"
             return f"{val:,.0f}"
         if col == "Price" or col.startswith("EMA"):
-            return f"{val:,.4f}" if abs(val) < 1 else f"{val:,.2f}"
+            av = abs(val)
+            if av < 1.00:
+                # Bursa tick is 0.005 below RM1 -> show up to 3 decimals,
+                # trimming trailing zeros so 0.500 -> 0.5 but 0.335 -> 0.335.
+                s = f"{val:,.3f}".rstrip("0").rstrip(".")
+                return s or "0"
+            return f"{val:,.2f}"
         if "div" in low or col.endswith("%") or col == "ROE":
             # ROE 原始值是小数 (0.123 = 12.3%)，其余百分比列直接是百分数值
             return f"{val * 100:.2f}%" if col == "ROE" else f"{val:.2f}%"

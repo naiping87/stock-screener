@@ -571,7 +571,7 @@ def _run_ema_screener_impl(data, ticker_names, periods, threshold, min_compressi
         result = {
             "ticker": tkr,
             "name": name,
-            "close": round(close.iloc[-1], 2),
+            "close": round(close.iloc[-1], 4),
             "divergence_pct": round(div, 2),
             "vol_ma": vol_ma_val,
             "trend": trend,
@@ -667,7 +667,7 @@ def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
         vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
-        price = round(d["close"].iloc[-1], 2)
+        price = round(d["close"].iloc[-1], 4)
 
         # Standardised KDJ taxonomy (P1): add canonical state + pivot divergence
         # alongside the existing slope divergence.
@@ -769,7 +769,7 @@ def run_weekly_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
         s2 += 1
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
-        price = round(w_close.iloc[-1], 2)
+        price = round(w_close.iloc[-1], 4)
         vol_ma_val = int(w_vol.rolling(20).mean().iloc[-1]) if w_vol is not None and len(w_vol) >= 20 else 0
         kdj_st = kdj_state(k, d_kdj)["state"]
         kd_golden = kdj_cross(k, d_kdj, j)["k_d_golden"]
@@ -829,7 +829,7 @@ def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[s
             vol_ratio_val = round(cross_vol / vol_ma20 if vol_ma20 > 0 else 0, 1)
 
         name = d.get("name", "") or ticker_names.get(tkr, "")
-        price = round(close.iloc[-1], 2)
+        price = round(close.iloc[-1], 4)
         vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
         kdj_st = kdj_state(k, d_kdj)["state"]
         kd_golden = kdj_cross(k, d_kdj, j)["k_d_golden"]
@@ -1011,7 +1011,7 @@ def run_scoring_screener(data: dict[str, dict[str, Any]], ticker_names: dict[str
         row = {
             "ticker": tkr,
             "name": name,
-            "close": round(close.iloc[-1], 2),
+            "close": round(close.iloc[-1], 4),
             "score": score,
             "above_200": "Y" if above_200 else "",
             "ema200_up": "Y" if slope_up else "",

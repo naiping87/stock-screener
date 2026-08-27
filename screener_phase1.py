@@ -611,7 +611,7 @@ def run_phase1_screener(
         row: dict[str, Any] = {
             "ticker": tkr,
             "name": d.get("name", "") or ticker_names.get(tkr, ""),
-            "close": round(float(close.iloc[-1]), 2),
+            "close": round(float(close.iloc[-1]), 4),
             # legacy technical
             "score": tech_score,
             "tech_weighted": (tech_detail.get(tkr) or {}).get("weighted"),
