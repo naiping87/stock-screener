@@ -489,6 +489,13 @@ class MainWindow(QMainWindow):
         self.sidebar.set_sectors(list(all_sectors))
         # Show all tabs
         self._apply_sector_filter()
+        # Edge Report: signal-journal win rates (accumulates as you run it)
+        try:
+            from tools.signal_journal import SignalJournal
+            rep = SignalJournal().report_bands()
+            self.results_panel.set_results("edge", rep)
+        except Exception:
+            self.results_panel.set_results("edge", pd.DataFrame())
         self.status_label.setText("Ready")
         self.update_progress(100, "Ready")
         self._set_busy(False)

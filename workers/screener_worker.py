@@ -194,6 +194,10 @@ class ScreenerWorker(QThread):
                 )
                 self.progress.emit(99, f"Ignition done ({_session} mode)")
                 self.result.emit("phase1", self._to_df(r6))
+                try:
+                    self._write_journal(r6)
+                except Exception:
+                    pass
             except Exception as e:
                 logger.warning("Phase-1 detector skipped: %s", e)
                 self.result.emit("phase1", pd.DataFrame())
@@ -205,6 +209,29 @@ class ScreenerWorker(QThread):
 
         except Exception as e:
             self.error.emit(str(e))
+
+    def _write_journal(self, phase1_rows):
+        """Append Ignition signals to the signal journal so win rates accumulate."""
+        try:
+            from tools.signal_journal import SignalJournal
+            j = SignalJournal()
+            try:
+                j.backfill(self.data)
+            except Exception:
+                pass
+            asof = None
+            for d in self.data.values():
+                if not isinstance(d, dict):
+                    continue
+                c = d.get("close")
+                if c is not None and len(c):
+                    t = c.index[-1]
+                    if asof is None or t > asof:
+                        asof = t
+            if asof is not None:
+                j.record(phase1_rows, getattr(self, "market_code", ""), asof)
+        except Exception as e:
+            logger.debug("signal journal skip: %s", e)
 
     def _to_df(self, results: list) -> pd.DataFrame:
         if not results:

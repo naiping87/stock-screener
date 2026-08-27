@@ -58,6 +58,12 @@ _EMPTY_STATES = {
         "Stocks that pass the screeners for the first time appear here — "
         "the baseline is set on the first run after a data refresh",
     ),
+    "edge": (
+        "No edge stats yet",
+        "This tab shows real win rates per signal type (built from the "
+        "signal journal). It accumulates as you run the screeners over the "
+        "coming days — check back after a week or two.",
+    ),
 }
 
 
@@ -104,6 +110,7 @@ class ResultsPanel(QWidget):
             ("📆 " + i18n.t("Weekly KDJ"), "weekly_kdj"),
             ("📊 " + i18n.t("Daily KDJ"), "daily_kdj"),
             ("🆕 " + i18n.t("New Picks"), "new_picks"),
+            ("📈 " + i18n.t("Edge Report"), "edge"),
         ]
 
         for tab_label, tab_key in tab_specs:
