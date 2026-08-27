@@ -22,6 +22,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+from indicators.gm_kdj import gm_kdj, kdj_state, kdj_cross, kdj_divergence
+
 try:
     import akshare as ak
 except Exception:  # akshare 是可选的;导入失败(ImportError/FileNotFoundError 等)时降级为 None
@@ -47,7 +49,7 @@ MAX_WORKERS = 15                    # concurrent download threads
 REQUEST_DELAY = 0.0                 # seconds between requests per thread
 MAX_RETRIES = 3
 MIN_COMPRESSION_BARS = 20           # SMAs must be tight for this many bars
-KDJ_PERIOD = 20                     # KDJ lookback (same as Pine Script 'Period')
+KDJ_PERIOD = 26                     # KDJ lookback (same as Pine Script 'Period')
 KDJ_SIGNAL = 5                      # KDJ smooth (same as Pine Script 'Signal Period')
 DIVERGENCE_LOOKBACK = 30            # bars for KDJ/price divergence detection
 DAILY_DAYS = 400                    # days of daily data (max EMA period 200 + 20 compression bars)
@@ -471,22 +473,12 @@ def _check_compression_duration(close_series: pd.Series, periods: list[int], thr
 
 
 def _calc_kdj(daily_high: pd.Series, daily_low: pd.Series, daily_close: pd.Series, period: int = KDJ_PERIOD, signal: int = KDJ_SIGNAL) -> tuple[pd.Series | None, pd.Series | None, pd.Series | None]:
-    """Calculate KDJ (K, D, J) series from daily OHLC. Returns (k, d, j) or (None, None, None)."""
+    """Calculate KDJ (K, D, J) — delegates to indicators.gm_kdj (Pine-parity)."""
     needed = period + signal
-    if daily_high is None or len(daily_close) < needed:
+    if daily_high is None or daily_low is None or daily_close is None or len(daily_close) < needed:
         return None, None, None
-
-    lowest_low = daily_low.rolling(period).min()
-    highest_high = daily_high.rolling(period).max()
-    denom = highest_high - lowest_low
-    rsv = 100.0 * (daily_close - lowest_low) / denom.replace(0, float("nan"))
-
-    # Custom EMA: (1*src + (length-1)*prev) / length  →  alpha = 1/signal
-    alpha = 1.0 / signal
-    k = rsv.ewm(alpha=alpha, min_periods=1, adjust=False).mean()
-    d = k.ewm(alpha=alpha, min_periods=1, adjust=False).mean()
-    j = 3.0 * k - 2.0 * d
-    return k, d, j
+    out = gm_kdj(daily_high, daily_low, daily_close, period=period, signal=signal)
+    return out["k"], out["d"], out["j"]
 
 
 def _detect_divergence(daily_high: pd.Series, daily_low: pd.Series, daily_close: pd.Series,
@@ -677,6 +669,14 @@ def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
         name = d.get("name", "") or ticker_names.get(tkr, "")
         price = round(d["close"].iloc[-1], 2)
 
+        # Standardised KDJ taxonomy (P1): add canonical state + pivot divergence
+        # alongside the existing slope divergence.
+        k_series, d_series, _ = _calc_kdj(d["high"], d["low"], d["close"],
+                                          period=KDJ_PERIOD, signal=KDJ_SIGNAL)
+        kdj_st = kdj_state(k_series, d_series)["state"] if k_series is not None else ""
+        pivot_div = (kdj_divergence(d["close"], k_series, lookback=lookback)["pivot_bullish"]
+                     if k_series is not None else False)
+
         yield {
             "ticker": tkr,
             "name": name,
@@ -686,6 +686,8 @@ def run_divergence_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
             "kdj_j": j_val,
             "price_slope": price_slope,
             "kdj_k_slope": k_slope,
+            "kdj_state": kdj_st,
+            "kdj_pivot_div": pivot_div,
             "vol_ma": vol_ma_val,
         }
 
@@ -769,6 +771,8 @@ def run_weekly_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
         name = d.get("name", "") or ticker_names.get(tkr, "")
         price = round(w_close.iloc[-1], 2)
         vol_ma_val = int(w_vol.rolling(20).mean().iloc[-1]) if w_vol is not None and len(w_vol) >= 20 else 0
+        kdj_st = kdj_state(k, d_kdj)["state"]
+        kd_golden = kdj_cross(k, d_kdj, j)["k_d_golden"]
 
         yield {
             "ticker": tkr,
@@ -778,6 +782,8 @@ def run_weekly_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[
             "kdj_d": d_val,
             "kdj_j": j_val,
             "kdj_signal": kdj_sig,
+            "kdj_state": kdj_st,
+            "kdj_k_d_golden": kd_golden,
             "vol_ma": vol_ma_val,
         }
 
@@ -825,6 +831,8 @@ def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[s
         name = d.get("name", "") or ticker_names.get(tkr, "")
         price = round(close.iloc[-1], 2)
         vol_ma_val = int(vol.rolling(20).mean().iloc[-1]) if vol is not None and len(vol) >= 20 else 0
+        kdj_st = kdj_state(k, d_kdj)["state"]
+        kd_golden = kdj_cross(k, d_kdj, j)["k_d_golden"]
 
         yield {
             "ticker": tkr,
@@ -834,6 +842,8 @@ def run_daily_kdj_screener(data: dict[str, dict[str, Any]], ticker_names: dict[s
             "kdj_d": d_val,
             "kdj_j": j_val,
             "kdj_signal": kdj_sig,
+            "kdj_state": kdj_st,
+            "kdj_k_d_golden": kd_golden,
             "vol_ratio": vol_ratio_val,
             "vol_ma": vol_ma_val,
         }
