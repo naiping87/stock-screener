@@ -188,6 +188,19 @@ def _prepare(data: dict, interval: str) -> dict:
     }
 
 
+class _NoWheelViewBox(pg.ViewBox):
+    """ViewBox that ignores wheel events entirely.
+
+    Our datasets are already fully visible (a few hundred bars), so wheel zoom
+    buys nothing and stutters on every tick while repainting all panes. Drag-to-
+    pan and the crosshair stay fully functional — only the wheel is swallowed.
+    """
+
+    def wheelEvent(self, ev, axis=None):
+        ev.ignore()
+        return
+
+
 class ChartWidget(pg.GraphicsLayoutWidget):
     """Price (candles + EMA) / volume / KDJ panes with linked zoom & crosshair."""
 
@@ -224,7 +237,8 @@ class ChartWidget(pg.GraphicsLayoutWidget):
         # axis labels read local dates, not UTC. Reused for every pane whose
         # bottom may become visible (volume/KDJ panes hide theirs).
         date_axis = pg.DateAxisItem(orientation="bottom", utcOffset=8 * 3600)
-        self.price = self.addPlot(row=0, col=0, axisItems={"bottom": date_axis})
+        self.price = self.addPlot(row=0, col=0, axisItems={"bottom": date_axis},
+                                  viewBox=_NoWheelViewBox())
         self.price.setMenuEnabled(False)
         self.price.showGrid(x=True, y=True, alpha=0.15)
         self.price.getAxis("left").setTextPen(pg.mkPen(TEXT_SEC))
@@ -234,7 +248,8 @@ class ChartWidget(pg.GraphicsLayoutWidget):
         n_rows = 1
         if volume is not None and len(volume) > 0:
             self.volume = self.addPlot(row=1, col=0,
-                                       axisItems={"bottom": pg.DateAxisItem(orientation="bottom")})
+                                       axisItems={"bottom": pg.DateAxisItem(orientation="bottom")},
+                                       viewBox=_NoWheelViewBox())
             self.volume.setMenuEnabled(False)
             self.volume.setXLink(self.price)
             self.volume.hideAxis("bottom")
@@ -243,7 +258,8 @@ class ChartWidget(pg.GraphicsLayoutWidget):
             n_rows = 2
 
         self.kdj = self.addPlot(row=n_rows, col=0,
-                                axisItems={"bottom": pg.DateAxisItem(orientation="bottom", utcOffset=8 * 3600)})
+                                axisItems={"bottom": pg.DateAxisItem(orientation="bottom", utcOffset=8 * 3600)},
+                                viewBox=_NoWheelViewBox())
         self.kdj.setMenuEnabled(False)
         self.kdj.setXLink(self.price)
         self.kdj.showGrid(x=True, y=True, alpha=0.15)
@@ -458,6 +474,6 @@ class ChartDialog(QDialog):
         QShortcut(QKeySequence("D"), self, activated=lambda: tabs.setCurrentIndex(0))
         QShortcut(QKeySequence("W"), self, activated=lambda: tabs.setCurrentIndex(1))
 
-        hint = QLabel("Scroll to zoom · Drag to pan · Hover for OHLCV · D = Daily · W = Weekly · Double-click to close")
+        hint = QLabel("Drag to pan · Hover for OHLCV · D = Daily · W = Weekly · Double-click to close")
         hint.setStyleSheet(f"color:{TEXT_SEC}; font-size:11px; padding:2px 4px;")
         layout.addWidget(hint)
