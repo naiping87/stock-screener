@@ -20,8 +20,12 @@ BG = "#131722"
 PANEL = "#1e222d"
 TEXT = "#d1d4dc"
 TEXT_SEC = "#787b86"
-UP = "#26A69A"      # muted, eye-friendly green (up)
-DOWN = "#EF5350"    # muted, eye-friendly red (down)
+# High-contrast up/down: bright professional green / clear red. The previous
+# #26A69A (teal) read as "cyan" against the dark background and the teal EMA,
+# and #EF5350 was too close to the greens — the up/down split was hard to see
+# at a glance. Solid, opaque bodies so the color never depends on the wick.
+UP = "#22C55E"
+DOWN = "#EF4444"
 GRID = (255, 255, 255, 40)
 EMA_COLORS = {20: "#2962FF", 50: "#f7c600", 60: "#ff6b00", 100: "#b18cff", 200: "#787b86"}
 KDJ_COLORS = {"K": "#2962FF", "D": "#f7c600", "J": "#b18cff"}
@@ -48,15 +52,22 @@ class CandlestickItem(pg.GraphicsObject):
         self.closes = np.asarray(closes, dtype=float)
         # Cache bounds so boundingRect() doesn't scan the arrays every paint
         self._bounds = pg.QtCore.QRectF(
-            float(self.xs.min() - 0.6),
+            float(self.xs.min() - width),
             float(np.nanmin(self.lows)),
-            float(self.xs.max() - self.xs.min() + 1.2),
+            float((self.xs.max() - self.xs.min()) + width * 2),
             float(np.nanmax(self.highs) - np.nanmin(self.lows) + 0.1),
         )
-        # Body width in DATA units (xs are epoch SECONDS). A fixed 0.5 (1 s)
-        # made the candle body ~1/86400 of a daily bar → invisible. Use the
-        # bar width (e.g. 42 000 s for daily) so open/close bodies are legible.
-        self._w = max(width * 0.5, 0.5)
+        # ── Dynamic body width ──────────────────────────────────────────
+        # Width is derived from the MEDIAN gap between consecutive bars, so
+        # the body always spans a readable fraction (~62%) of a bar slot on
+        # ANY timeframe and at ANY zoom. Fixed widths made daily candles look
+        # razor-thin when zoomed out and weekly bodies too narrow; using the
+        # actual bar spacing keeps up/down instantly readable at every level.
+        gaps = np.diff(self.xs)
+        gaps = gaps[np.isfinite(gaps) & (gaps > 0)]
+        slot = float(np.median(gaps)) if gaps.size > 0 else float(width)
+        self._w = max(slot * 0.62, 0.5)   # body = 62% of the bar slot (min 0.5 s)
+        self._wick_w = 1.0                 # 1 px wick, color-first readability
 
     def paint(self, painter, *args, **kwargs):
         painter.setRenderHint(pg.QtGui.QPainter.RenderHint.Antialiasing, False)
@@ -65,17 +76,25 @@ class CandlestickItem(pg.GraphicsObject):
             if not (np.isfinite(o) and np.isfinite(h) and np.isfinite(lo)
                     and np.isfinite(c)):
                 continue
+            # ── Yahoo data is sometimes inconsistent (close > recorded high
+            # or open outside the [low, high] range — 40+ bars on 5211.KL).
+            # Visual repair: expand the wicks to always CONTAIN the body, so
+            # the candle looks like a real OHLC bar instead of a body that
+            # pokes out of its shadows (looked like a "weird candle").
+            h_eff = max(h, o, c)
+            l_eff = min(lo, o, c)
             up = c >= o
             color = UP if up else DOWN
-            pen = pg.mkPen(color, width=1)
-            painter.setPen(pen)
+            # OPAQUE brush — a translucent/faded body lets the background or
+            # the EMA show through and kills the green-vs-red signal.
+            painter.setPen(pg.mkPen(color, width=1))
             painter.setBrush(pg.mkBrush(color))
-            # wick
-            painter.drawLine(pg.QtCore.QPointF(x, lo), pg.QtCore.QPointF(x, h))
-            # body (min height so flat bars are visible)
+            # wick (same color, solid)
+            painter.drawLine(pg.QtCore.QPointF(x, l_eff), pg.QtCore.QPointF(x, h_eff))
+            # body — full-opacity rect, min visible height for flat bars
             top = o if up else c
             bottom = c if up else o
-            hgt = max(bottom - top, (h - lo) * 0.003, 0.01)
+            hgt = max(bottom - top, (h_eff - l_eff) * 0.004, 0.01)
             painter.drawRect(pg.QtCore.QRectF(x - self._w, top,
                                               self._w * 2, hgt))
 
@@ -99,11 +118,23 @@ def _prepare(data: dict, interval: str) -> dict:
     """Normalise one interval's OHLCV series onto a single aligned index."""
     if interval == "Weekly" and "close_weekly" in data:
         idx = data["close_weekly"].index
+        wk_open = data.get("open_weekly", data["close_weekly"]).reindex(idx)
+        # Same placeholder fix as the daily path: Yahoo weekly opens are often
+        # NaN or open==close for illiquid names, making every bar read 'green'.
+        # Fill from the previous close so the candle has a real body and the
+        # true up/down verdict.
+        if wk_open is not None:
+            prev = data["close_weekly"].reindex(idx).shift(1)
+            wk_open = wk_open.fillna(prev)
+            same = (wk_open == data["close_weekly"].reindex(idx)) & (prev != data["close_weekly"].reindex(idx)) & prev.notna()
+            if same.any():
+                wk_open = wk_open.mask(same, prev)
+            wk_open = wk_open.fillna(data["close_weekly"].reindex(idx))
         out = {
             "close": data["close_weekly"].reindex(idx),
             "high": data.get("high_weekly", data["close_weekly"]).reindex(idx),
             "low": data.get("low_weekly", data["close_weekly"]).reindex(idx),
-            "open": data.get("open_weekly", data["close_weekly"]).reindex(idx),
+            "open": wk_open,
             "volume": data.get("volume_weekly"),
         }
         return {k: v for k, v in out.items() if v is not None}
@@ -114,9 +145,17 @@ def _prepare(data: dict, interval: str) -> dict:
 
     if interval == "Weekly":
         close = close.resample("W-FRI").last().dropna()
+        wk_open = data.get("open", close).resample("W-FRI").first().reindex(close.index)
+        if wk_open is not None:
+            prev = close.shift(1)
+            wk_open = wk_open.fillna(prev)
+            same_as_close = (wk_open == close) & (prev != close) & prev.notna()
+            if same_as_close.any():
+                wk_open = wk_open.mask(same_as_close, prev)
+            wk_open = wk_open.fillna(close)
         return {
             "close": close,
-            "open": data.get("open", close).resample("W-FRI").first().reindex(close.index),
+            "open": wk_open,
             "high": data.get("high", close).resample("W-FRI").max().reindex(close.index),
             "low": data.get("low", close).resample("W-FRI").min().reindex(close.index),
             "volume": (data.get("volume", pd.Series(dtype=float))
@@ -125,9 +164,24 @@ def _prepare(data: dict, interval: str) -> dict:
         }
 
     idx = close.index
+    opens = _series(data, "open", idx, close)
+    # Yahoo daily data frequently carries NaN opens or open==close
+    # placeholders for illiquid names. With open==close we can't tell up from
+    # down — every such bar reads as a green doji. Two-stage fill:
+    #   1. NaN open → previous CLOSE (standard missing-open fallback)
+    #   2. open == close AND previous close differs → the "open" was a
+    #      placeheld close; use the previous close instead, restoring a real
+    #      body and the true up/down verdict.
+    if opens is not None:
+        prev = close.shift(1)
+        opens = opens.fillna(prev)
+        same_as_close = (opens == close) & (prev != close) & prev.notna()
+        if same_as_close.any():
+            opens = opens.mask(same_as_close, prev)
+        opens = opens.fillna(close)
     return {
         "close": close,
-        "open": _series(data, "open", idx, close),
+        "open": opens,
         "high": _series(data, "high", idx, close),
         "low": _series(data, "low", idx, close),
         "volume": _series(data, "volume", idx),
@@ -201,13 +255,17 @@ class ChartWidget(pg.GraphicsLayoutWidget):
             self.volume.hideAxis("bottom")
 
         # ── Candles + EMA ──────────────────────────────────────────────
-        self.price.addItem(CandlestickItem(
-            xs, opens, highs, lows, closes, width=BAR_WIDTH.get(interval, 60_000)))
+        # Draw EMA FIRST, candles LAST: the candlesticks must be the top
+        # visual layer (K > EMA), not buried under the moving averages.
+        # A 20-day EMA through the middle of a body used to hide the
+        # open/close — the core up/down signal.
         width = BAR_WIDTH.get(interval, 60_000)
         for period, color in EMA_COLORS.items():
             if len(close) >= period:
                 ema = close.ewm(span=period, adjust=False).mean().to_numpy(dtype="float64")
                 self.price.plot(xs, ema, pen=pg.mkPen(color, width=1.2))
+        self.price.addItem(CandlestickItem(
+            xs, opens, highs, lows, closes, width=width))
 
         # ── Phase-1 annotations: nearest confirmed pivot (resistance) ───
         try:
@@ -247,16 +305,23 @@ class ChartWidget(pg.GraphicsLayoutWidget):
             pass
 
         # ── Volume ─────────────────────────────────────────────────────
+        # Keep the up/down split but SOFTEN the intensity (55% alpha) so
+        # volume reads as supporting context, never competing with the
+        # candlesticks above it (visual hierarchy: K > EMA > volume).
         if volume is not None and len(volume) > 0:
             vols = volume.to_numpy(dtype="float64")
             up_mask = closes >= opens
             down_mask = ~up_mask
+            up_brush = pg.mkBrush(pg.mkColor(UP))
+            up_brush.setColor(pg.mkColor(UP + "8C"))  # 55% alpha
+            down_brush = pg.mkBrush(pg.mkColor(DOWN))
+            down_brush.setColor(pg.mkColor(DOWN + "8C"))
             self.volume.addItem(pg.BarGraphItem(
-                x=xs[up_mask], height=vols[up_mask], width=width,
-                brush=pg.mkBrush(UP), pen=pg.mkPen(None)))
+                x=xs[up_mask], height=vols[up_mask], width=width * 0.8,
+                brush=up_brush, pen=pg.mkPen(None)))
             self.volume.addItem(pg.BarGraphItem(
-                x=xs[down_mask], height=vols[down_mask], width=width,
-                brush=pg.mkBrush(DOWN), pen=pg.mkPen(None)))
+                x=xs[down_mask], height=vols[down_mask], width=width * 0.8,
+                brush=down_brush, pen=pg.mkPen(None)))
 
         # ── KDJ ────────────────────────────────────────────────────────
         kdj = _calc_kdj(d["high"], d["low"], close, KDJ_PERIOD, KDJ_SIGNAL)

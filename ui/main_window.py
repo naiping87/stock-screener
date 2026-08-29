@@ -358,9 +358,6 @@ class MainWindow(QMainWindow):
         """Start the screener pipeline (busy is already set by the caller)."""
         params = self.sidebar.get_params()
         self._result_dfs = {}
-        # If we have no sector map yet (first run), remember to re-run once the
-        # meta worker has fetched sectors so Phase-1's SecStr / SecRS are filled.
-        self._screeners_need_meta_rerun = bool(not self._sector_map())
         self._set_busy(True, "Running screeners...")
         self.screener_worker = ScreenerWorker(
             self.data, self.ticker_names, params,
@@ -436,6 +433,11 @@ class MainWindow(QMainWindow):
 
         # Filter to tickers not already cached
         new_tickers = all_tickers - set(self._meta_cache.keys())
+        # Show results IMMEDIATELY — the screeners (incl. Phase-1) are done,
+        # so sticking Ignition behind a meta data fetch makes the user stare
+        # at an empty tab. meta fills ROE/Sector columns afterwards without
+        # re-running the whole pipeline (see _on_meta_loaded).
+        self._finalize_results()
         if new_tickers:
             self.meta_worker = MetaWorker(new_tickers)
             self.meta_worker.progress.connect(self.update_progress)
@@ -444,18 +446,19 @@ class MainWindow(QMainWindow):
                 lambda e: self._show_error("Meta data failed: " + e, self._start_screeners))
             self.meta_worker.cancelled.connect(self._on_worker_cancelled)
             self.meta_worker.start()
-        else:
-            self._finalize_results()
+            self.status_label.setText(
+                f"Results ready — fetching ROE/Sector for {len(new_tickers)} stocks…")
 
     def _on_meta_loaded(self, meta):
         self._meta_cache.update(meta)
-        # First-run fix: screeners computed Phase-1 before sector meta existed.
-        # Re-run once now that sectors are known (self.data is cached, cheap).
-        if self._screeners_need_meta_rerun:
-            self._screeners_need_meta_rerun = False
-            self._start_screeners()
+        # Results are already on screen; only re-attach ROE/Sector columns.
+        # Guard: if a NEW run replaced the results while meta was fetching,
+        # don't stomp them — just flag the status (the next run re-attaches).
+        if self._busy:
+            self.status_label.setText("Meta ready (re-attached next run)")
             return
         self._finalize_results()
+        self.status_label.setText("Ready")
 
     def _finalize_results(self):
         # Attach ROE + sector to each result DataFrame (in-place, fast)
