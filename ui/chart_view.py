@@ -10,7 +10,7 @@ import pyqtgraph as pg
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QKeySequence, QShortcut
-from PyQt6.QtWidgets import QDialog, QLabel, QTabWidget, QVBoxLayout
+from PyQt6.QtWidgets import QDialog, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from screener import KDJ_PERIOD, KDJ_SIGNAL, _calc_kdj
 from screener_setup import nearest_pivot, closing_strength
@@ -356,6 +356,11 @@ class ChartWidget(pg.GraphicsLayoutWidget):
         self._ohlcv = list(zip(xs, opens, highs, lows, closes,
                                volume.to_numpy(dtype="float64") if volume is not None else [None] * len(xs),
                                strict=True))
+        # Crosshair throttling: remember the last hovered bar/price so the rich
+        # OHLCV label (and the price text) are only re-laid-out when they change,
+        # instead of on every single mouse-pixel event (up to 60 Hz).
+        self._last_hover_index = -1
+        self._last_price_text = ""
         self._vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#4a5060"))
         self._hline = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen("#4a5060"))
         self.price.addItem(self._vline, ignoreBounds=True)
@@ -408,31 +413,46 @@ class ChartWidget(pg.GraphicsLayoutWidget):
         if self._empty:
             return
         pos = evt[0]
-        if self.price.sceneBoundingRect().contains(pos):
-            mouse = self.price.vb.mapSceneToView(pos)
-            x = mouse.x()
-            nearest = min(self._xs, key=lambda v: abs(v - x))
-            for (bx, o, h, _lo, c, vol) in self._ohlcv:
-                if bx == nearest:
-                    color = UP if c >= o else DOWN
-                    txt = (f"<span style='color:{TEXT}'><b>{pd.Timestamp(bx, unit='s'):%Y-%m-%d}</b></span>"
-                           f"&nbsp; O <span style='color:{color}'>{o:,.2f}</span>"
-                           f"&nbsp; H <span style='color:{color}'>{h:,.2f}</span>"
-                           f"&nbsp; L <span style='color:{color}'>{_lo:,.2f}</span>"
-                           f"&nbsp; C <span style='color:{color}'>{c:,.2f}</span>")
-                    if vol is not None:
-                        txt += f"&nbsp; V <span style='color:{TEXT_SEC}'>{vol:,.0f}</span>"
-                    self._crosshair_label.setHtml(txt)
-                    self._crosshair_label.setPos(nearest + 12, mouse.y() - 26)
-                    self._crosshair_label.setVisible(True)
-                    break
-            self._vline.setPos(nearest)
-            self._hline.setPos(mouse.y())
-            # price at the cursor's Y, in real time (3 decimals below RM1)
-            pv = mouse.y()
-            price_txt = f"{pv:,.3f}" if abs(pv) < 1.0 else f"{pv:,.2f}"
+        if not self.price.sceneBoundingRect().contains(pos):
+            return
+        mouse = self.price.vb.mapSceneToView(pos)
+        x = mouse.x()
+        # O(log n) nearest-bar lookup instead of scanning every bar per event.
+        i = int(np.searchsorted(self._xs, x))
+        if i >= len(self._xs):
+            i = len(self._xs) - 1
+        # <= matches the old `min(key=abs)` tie-break (leftmost bar wins).
+        if i > 0 and abs(self._xs[i - 1] - x) <= abs(self._xs[i] - x):
+            i -= 1
+        bx = self._xs[i]
+        _bxo, o, h, _lo, c, vol = self._ohlcv[i]
+
+        # Rebuild the rich OHLCV label only when the hovered candle actually
+        # changes; moving within the same bar only slides the two crosshair
+        # lines (cheap) instead of re-laying-out HTML text every pixel.
+        if i != self._last_hover_index:
+            self._last_hover_index = i
+            color = UP if c >= o else DOWN
+            txt = (f"<span style='color:{TEXT}'><b>{pd.Timestamp(bx, unit='s'):%Y-%m-%d}</b></span>"
+                   f"&nbsp; O <span style='color:{color}'>{o:,.2f}</span>"
+                   f"&nbsp; H <span style='color:{color}'>{h:,.2f}</span>"
+                   f"&nbsp; L <span style='color:{color}'>{_lo:,.2f}</span>"
+                   f"&nbsp; C <span style='color:{color}'>{c:,.2f}</span>")
+            if vol is not None:
+                txt += f"&nbsp; V <span style='color:{TEXT_SEC}'>{vol:,.0f}</span>"
+            self._crosshair_label.setHtml(txt)
+            self._crosshair_label.setPos(bx + 12, mouse.y() - 26)
+            self._crosshair_label.setVisible(True)
+
+        self._vline.setPos(bx)
+        self._hline.setPos(mouse.y())
+        # price at the cursor's Y, in real time (3 decimals below RM1)
+        pv = mouse.y()
+        price_txt = f"{pv:,.3f}" if abs(pv) < 1.0 else f"{pv:,.2f}"
+        if price_txt != self._last_price_text:
+            self._last_price_text = price_txt
             self._price_label.setText(price_txt)
-            self._price_label.setPos(nearest + 6, mouse.y())
+            self._price_label.setPos(bx + 6, mouse.y())
             self._price_label.setVisible(True)
 
     def _show_empty(self):
@@ -461,14 +481,30 @@ class ChartDialog(QDialog):
         tabs = QTabWidget()
         tabs.setDocumentMode(True)
         tabs.addTab(ChartWidget(data, "Daily"), "📅 Daily")
-        tabs.addTab(ChartWidget(data, "Weekly"), "🗓 Weekly")
+        # The Weekly view is built lazily on the first switch: constructing it
+        # eagerly doubles the dialog's open cost (resample + EMA + KDJ + pivot
+        # detection + a second fully-stacked plot) and makes the chart feel like
+        # it hangs for a beat. Only pay for it if the user actually opens Weekly.
+        self._weekly = None
+        tabs.addTab(QWidget(), "🗓 Weekly")  # placeholder, replaced on first switch
         layout.addWidget(tabs, 1)
 
-        # Double-click the chart (either tab) to close the dialog.
-        for i in range(tabs.count()):
-            w = tabs.widget(i)
-            if hasattr(w, "double_clicked"):
+        # Double-click on Daily closes the dialog; Weekly gets wired on build.
+        daily = tabs.widget(0)
+        if hasattr(daily, "double_clicked"):
+            daily.double_clicked.connect(self.close)
+
+        def _ensure_weekly(index):
+            if index == 1 and self._weekly is None:
+                w = ChartWidget(data, "Weekly")
                 w.double_clicked.connect(self.close)
+                tabs.removeTab(1)
+                tabs.insertTab(1, w, "🗓 Weekly")
+                self._weekly = w
+                # Removing the placeholder dropped the current tab back to
+                # Daily; put Weekly back into view so pressing "W" lands there.
+                tabs.setCurrentIndex(1)
+        tabs.currentChanged.connect(_ensure_weekly)
 
         # Hotkeys: D = Daily, W = Weekly.
         QShortcut(QKeySequence("D"), self, activated=lambda: tabs.setCurrentIndex(0))

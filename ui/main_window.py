@@ -49,6 +49,8 @@ class MainWindow(QMainWindow):
         self._meta_cache = {}
         self._screeners_need_meta_rerun = False
         self._busy = False            # a download / screener run is in flight
+        self._chart_open = False      # a modal chart dialog is currently open
+        self._pending_finalize = False  # a run finished while a chart was open
         self._last_market_code = None
         self._retry_cb = None         # callback for the status-bar Retry button
         self._really_quit = False     # set by Quit (tray menu / Ctrl+Q); X button still docks to tray
@@ -258,7 +260,7 @@ class MainWindow(QMainWindow):
     # ── Slots ─────────────────────────────────────────────────────────────
 
     def _on_run_screeners(self):
-        if self._busy:
+        if self._busy or self._chart_open:
             return
         if not self.data:
             params = self.sidebar.get_params()
@@ -461,6 +463,12 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Ready")
 
     def _finalize_results(self):
+        if getattr(self, "_chart_open", False):
+            # A modal chart is up: deferring the table rebuild here stops the
+            # app harness from stealing frame time from the chart (the exact
+            # stutter we are fixing). Re-run on chart close (see _open_chart).
+            self._pending_finalize = True
+            return
         # Attach ROE + sector to each result DataFrame (in-place, fast)
         # Use the Bursa-native override (tickers/sector_map.csv) first, so
         # sectors like "Plantation" show instead of Yahoo's broad GICS label.
@@ -689,11 +697,34 @@ class MainWindow(QMainWindow):
             return
         try:
             from ui.chart_view import ChartDialog
+            self._chart_open = True
+            # A modal chart runs a nested event loop, so the app's background
+            # harness (auto-refresh timer + any in-flight download/screener
+            # finishing) would keep churning the shared GUI thread and make the
+            # chart stutter / freeze. Pause auto-refresh and block new runs
+            # while the chart is open; restore on close.
+            timer_running = self._refresh_timer.isActive()
+            if timer_running:
+                self._refresh_timer.stop()
             dlg = ChartDialog(ticker, name, d, self)
-            dlg.exec()
+            try:
+                dlg.exec()
+            finally:
+                self._chart_open = False
+                if timer_running and self.sidebar.auto_refresh.isChecked():
+                    self._refresh_timer.start(300000)
+                # A run finished while the chart was open; we deferred the
+                # table rebuild so it didn't stutter the chart. Do it now.
+                if self._pending_finalize:
+                    self._pending_finalize = False
+                    self._finalize_results()
         except Exception as e:
             logger.exception("Chart dialog failed for %s", ticker)
+            self._chart_open = False
             self._show_error("Chart failed: " + str(e))
+            if self._pending_finalize:
+                self._pending_finalize = False
+                self._finalize_results()
 
     def _on_worker_cancelled(self):
         self.status_label.setText("Cancelled")
@@ -710,7 +741,7 @@ class MainWindow(QMainWindow):
         self._show_error("Download failed: " + msg, _retry_download)
 
     def _on_market_changed(self, market_code):
-        if self._busy:
+        if self._busy or self._chart_open:
             return
         self.status_label.setText(
             "Market changed to " + market_code + " - re-downloading...")
@@ -720,7 +751,7 @@ class MainWindow(QMainWindow):
         self._start_download(market_code)
 
     def _on_refresh(self):
-        if self._busy:
+        if self._busy or self._chart_open:
             return
         params = self.sidebar.get_params()
         # Refresh Data / F5 / auto-refresh must always fetch fresh data,
