@@ -95,6 +95,15 @@ class ResultsPanel(QWidget):
         head.addWidget(self.guide_btn)
         layout.addLayout(head)
 
+        # Ignition-only hint: explains when the Min Closing Strength filter
+        # caps the result below the requested Top N (hidden by default).
+        self.filter_note = QLabel("")
+        self.filter_note.setObjectName("filterNote")
+        self.filter_note.setStyleSheet(
+            "color:#f4b83a; font-size:12.5px; padding:2px 2px 4px 2px;")
+        self.filter_note.hide()
+        layout.addWidget(self.filter_note)
+
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -142,6 +151,14 @@ class ResultsPanel(QWidget):
         if tab_key not in self.tables:
             return
         idx = self._tab_index[tab_key]
+        # Surface the CLV-filter hint on the Ignition tab (hidden elsewhere).
+        note = df.attrs.get("filter_note") if isinstance(df, pd.DataFrame) else None
+        self._filter_note_text = str(note) if note else ""
+        if self._filter_note_text:
+            self.filter_note.setText(self._filter_note_text)
+            self.filter_note.show()
+        else:
+            self.filter_note.hide()
         if df is not None and not df.empty:
             self.tables[tab_key].set_dataframe(df)
             self.tabs.widget(idx).setCurrentIndex(1)
@@ -192,6 +209,12 @@ class ResultsPanel(QWidget):
             table.set_filter(text)
 
     def _on_tab_changed(self, index):
+        # Keep the CLV hint only on the Ignition tab; restore it on return.
+        if self.current_tab_key() == "phase1" and getattr(self, "_filter_note_text", ""):
+            self.filter_note.setText(self._filter_note_text)
+            self.filter_note.show()
+        else:
+            self.filter_note.hide()
         # Re-apply the search text to the newly visible tab.
         table = self._current_table()
         if table:

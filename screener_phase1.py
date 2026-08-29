@@ -168,11 +168,11 @@ def classify(strength: float, setup: float, trigger: float,
         # R:R unacceptable — the trigger is firing but the trade is not;
         # downgrade so the user sees "setup present, risk unconfirmed".
         return "SETUP"
-    if setup >= 60 and strength >= 50:
-        return "SETUP"
-    if extension is not None and extension >= EXTENDED_PCT and strength >= 70:
-        return "STRONG BUT EXTENDED"
-    # ── Leadership axis: rs_rank only ────────────────────────────────────
+    # ── Leadership axis FIRST (per spec: it ALONE decides Leader / Emerging
+    # Leader / Weakening) — only when a rank actually exists. A stock whose
+    # rank is unavailable (penny/tick-guarded or too young) must not be judged
+    # by `strength` alone, which is why the structure labels BELOW accept
+    # setup/trigger instead of only `strength`.
     if rs_rank is not None:
         if rs_rank_chg20 is not None and rs_rank_chg20 <= -10:
             return "WEAKENING"          # was strong, now rolling over (A: 95→90)
@@ -180,13 +180,22 @@ def classify(strength: float, setup: float, trigger: float,
             return "LEADER"             # high rank AND holding
         if 55 <= rs_rank < 85 and rs_rank_chg20 is not None and rs_rank_chg20 >= 10:
             return "EMERGING LEADER"    # mid-high rank AND climbing fast (B)
-    # fall through to structure-based labels (no RS info or inconclusive)
     if rs_momentum is not None and rs_momentum > 0 and strength >= 70:
         return "EMERGING LEADER"
+    # ── Structure-based labels (no RS rank, or inconclusive) ─────────────
+    # A REAL setup must be called SETUP even when the cross-sectional rank is
+    # unavailable, instead of collapsing to WEAKENING/LAGGARD purely because
+    # the rank-driven `strength` collapsed to its low fallback.
     if strength >= 80:
         return "LEADER"
+    if extension is not None and extension >= EXTENDED_PCT and strength >= 70:
+        return "STRONG BUT EXTENDED"
+    if setup >= 60 and (strength >= 45 or trigger >= 40 or rs_rank is None):
+        return "SETUP"
     if strength >= 45:
         return "BASE"
+    if setup >= 45:
+        return "SETUP"
     if strength >= 30:
         return "WEAKENING"
     return "LAGGARD"

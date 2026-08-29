@@ -1,4 +1,6 @@
-PyQt6>=6.5.0
+# PyQt6 6.8+/6.11 cannot be frozen by PyInstaller 6.22 (QtCore "DLL load failed:
+# specified procedure could not be found"). Pin to a freezable version.
+PyQt6>=6.7,<6.8
 pandas>=2.0.0
 numpy>=1.24.0
 requests>=2.31.0

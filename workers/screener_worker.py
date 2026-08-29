@@ -193,7 +193,18 @@ class ScreenerWorker(QThread):
                     session=_session,
                 )
                 self.progress.emit(99, f"Ignition done ({_session} mode)")
-                self.result.emit("phase1", self._to_df(r6))
+                _p1df = self._to_df(r6)
+                # Top N is an UPPER bound, not a guarantee: the Min Closing
+                # Strength filter (clv_min) runs first and can leave fewer rows
+                # than requested. Attach a hint so the Ignition tab can explain
+                # "I asked for 300 but only 200 fit the 0.8 close-strength rule".
+                if 0 < len(_p1df) < p.get("score_top_n", SCORE_TOP_N) and p.get("clv_min", 0.8) > 0:
+                    _p1df.attrs["filter_note"] = (
+                        f"Showing {len(_p1df)} of top {p.get('score_top_n', SCORE_TOP_N)}"
+                        f" — only {len(_p1df)} pass the {p.get('clv_min', 0.8):.2f}"
+                        " closing-strength filter. Lower Min Closing Strength to see more."
+                    )
+                self.result.emit("phase1", _p1df)
                 try:
                     self._write_journal(r6)
                 except Exception:
