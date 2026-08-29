@@ -57,6 +57,40 @@ build.bat                    # PyInstaller onefile exe -> dist\StockScreenerPro.
 
 `StockScreenerPro.spec` is the canonical PyInstaller config (also git-tracked now).
 
+## RELEASE SOP — every time you publish an update (DO NOT SKIP)
+
+Buyers download straight from the landing page, so the page version MUST match
+the release asset. Run these steps in order after any code change you want
+shipped:
+
+1. **Bump version everywhere**: `installer.iss` AppVersion + `ui/splash_screen.py`
+   (if it shows a version) + `ui/main_window.py` About dialog.
+2. **Build**: `python -m PyInstaller --noconfirm StockScreenerPro.spec`
+   → `dist/StockScreenerPro.exe`.
+3. **Installer**: `ISCC.exe installer.iss` (path:
+   `C:\Users\ediso\AppData\Local\Programs\Inno Setup 6\ISCC.exe`)
+   → `installer/StockScreenerPro_Setup.exe`.
+4. **Release**: `gh release create vX.Y.Z "installer\StockScreenerPro_Setup.exe" --title "..." --notes "..."` —
+   or overwrite if the tag exists:
+   `gh release upload vX.Y.Z "installer\StockScreenerPro_Setup.exe" --clobber`.
+5. **Update the web pages**: replace the version in
+   `../vercel-license-generator/index.html` + `download.html`
+   (Python one-liner with UTF-8 — NEVER `Set-Content` in PowerShell, it shreds emoji):
+   ```python
+   t = open(p, encoding='utf-8').read()
+   open(p, 'w', encoding='utf-8', newline='').write(t.replace('vX.Y.Z-old', 'vX.Y.Z'))
+   ```
+6. **Deploy**: `cd ../vercel-license-generator && vercel --prod --yes`.
+7. **VERIFY (mandatory)**: `python tools/verify_release.py --version vX.Y.Z`
+   — exits 0 only when the page link, the GitHub asset and the local installer
+   all agree. A mismatch means customers would download an old build; fix and
+   re-upload before telling anyone.
+8. **Commit & push** both repos (`stock-screener` + `vercel-license-generator`).
+
+The landing/download pages are static; if you forget step 5-7, the page keeps
+pointing at an older tag. `verify_release.py` is the safety net — run it
+every time.
+
 ## Project layout
 
 ```
