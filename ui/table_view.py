@@ -133,6 +133,30 @@ class SortFilterProxy(QSortFilterProxyModel):
     Sorting compares the raw values (Qt.UserRole) so formatted display
     strings ("1.2M", "12.30%") never break numeric ordering.
     """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._needle = ""
+
+    def setFilterFixedString(self, text: str):
+        """Store the lowercase needle and let Qt re-run the row filter.
+
+        The actual match happens in filterAcceptsRow() against each row's
+        precomputed search key — a single Python substring test per row,
+        NOT a per-cell scan of every column (which was the search-input lag:
+        ~280ms per keystroke on a 1000-row table).
+        """
+        self._needle = (text or "").strip().lower()
+        super().setFilterFixedString(text)
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        if not self._needle:
+            return True
+        m = self.sourceModel()
+        if hasattr(m, "search_key"):
+            return self._needle in m.search_key(source_row)
+        # Fallback: no search-key support → behave like an unfiltered row.
+        return True
+
     def lessThan(self, left, right):
         lv = left.data(Qt.ItemDataRole.UserRole)
         rv = right.data(Qt.ItemDataRole.UserRole)

@@ -180,6 +180,45 @@ class PandasModel(QAbstractTableModel):
         self._colour_map = colour_map or {}
         self._sort_col = None
         self._sort_order = Qt.SortOrder.AscendingOrder
+        # Per-row lowercase search key (code + name + text columns) so the
+        # proxy can filter with ONE fast string test per row instead of
+        # scanning every cell with Qt's per-column substring match.
+        self._search_keys: list[str] | None = None
+        self._build_search_keys()
+
+    def _build_search_keys(self) -> None:
+        """Precompute a lowercase search key per row (text columns only)."""
+        df = self._df
+        if df is None or df.empty:
+            self._search_keys = None
+            return
+        # Text-like columns (code / name / sector / why / setup type): these
+        # are what a trader actually searches. Numeric columns are excluded so
+        # typing "0" can't match a random "0.50" price, and so the filter is a
+        # cheap per-row string test instead of an all-cells scan.
+        # pandas 3.0 stores string columns as `str`/`string` (not `object`),
+        # so detect text columns robustly rather than by ``== object``.
+        text_col_positions = [
+            i for i, c in enumerate(df.columns)
+            if pd.api.types.is_string_dtype(df[c])
+            or pd.api.types.is_object_dtype(df[c])
+        ]
+        if not text_col_positions:
+            self._search_keys = [""] * len(df)
+            return
+        self._search_keys = [
+            " ".join(str(df.iat[r, ci]) for ci in text_col_positions).lower()
+            for r in range(len(df))
+        ]
+
+    def search_key(self, row: int) -> str:
+        """Lowercase searchable text for a row (code/name/text columns)."""
+        if self._search_keys is None:
+            return ""
+        try:
+            return self._search_keys[row]
+        except IndexError:
+            return ""
 
     # ── Core QAbstractTableModel overrides ─────────────────────────────────
 
@@ -247,6 +286,7 @@ class PandasModel(QAbstractTableModel):
             pass
         self._sort_col = column
         self._sort_order = order
+        self._build_search_keys()
         self.layoutChanged.emit()
 
     # ── Public API ────────────────────────────────────────────────────────
@@ -255,6 +295,7 @@ class PandasModel(QAbstractTableModel):
         """Replace underlying DataFrame and reset the view."""
         self.beginResetModel()
         self._df = df if df is not None else pd.DataFrame()
+        self._build_search_keys()
         self.endResetModel()
 
     def dataframe(self) -> pd.DataFrame:
