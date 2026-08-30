@@ -96,6 +96,8 @@ COLUMN_HELP = {
     "rs_momentum": "RS acceleration / momentum",
     "sector_strength": "Sector strength (0-100)",
     "sector_rs_20d": "Stock vs its own sector, 20 days",
+    "range_atr": "Today's range / ATR20. < 0.8 = low significance (a high close here is weak).",
+    "meaningful_range": "True when today's range is >= 0.8x ATR20 — a real move, not a dead bar.",
     "market_regime": "Whole-market RISK_ON / NEUTRAL / RISK_OFF",
     "pivot_distance_pct": "% from the nearest pivot",
     "base_range_pct": "Base width (% range)",

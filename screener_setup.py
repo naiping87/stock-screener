@@ -33,6 +33,7 @@ PIVOT_WINDOW = 5              # bars each side to confirm a swing high
 CLV_MIN = 0.8                 # default filter threshold (user-adjustable)
 EXTENSION_ALERT = 15.0        # % above 20-EMA that flags "extended"
 R_R_MIN = 1.5                 # minimum risk/reward to consider a trade
+MEANINGFUL_RANGE_ATR = 0.8    # range / ATR20 threshold for "the day actually moved"
 
 
 # ── Pivot ───────────────────────────────────────────────────────────────────
@@ -202,6 +203,56 @@ def closing_strength(high: pd.Series, low: pd.Series, close: pd.Series) -> float
     if rng <= 0:
         return None
     return round(min(1.0, max(0.0, (c - lo) / rng)), 3)
+
+
+# ── Meaningful range (range / ATR) ────────────────────────────────────────
+
+def _wild_atr(high: pd.Series, low: pd.Series, close: pd.Series,
+              n: int = 20) -> pd.Series:
+    """Wilder ATR series. Causal: each value only uses bars up to itself.
+    m is the period; alpha = 1/m gives the standard Wilder smoothing."""
+    pc = close.shift(1)
+    tr = pd.concat([(high - low), (high - pc).abs(), (low - pc).abs()],
+                   axis=1).max(axis=1)
+    return tr.ewm(alpha=1.0 / n, adjust=False).mean()
+
+
+def meaningful_range(high: pd.Series, low: pd.Series, close: pd.Series,
+                     n: int = 20, offset: int = 0) -> dict[str, Any]:
+    """range / ATR(n) for the bar at index [-1 - offset].
+
+    A value >= MEANINGFUL_RANGE_ATR means the day expanded enough that a
+    high close (strong CLV) is actually informative — otherwise CLV can read
+    ~1.0 on a tiny-range bar and look strong when nothing really happened.
+
+    offset=0 → the current (last) bar; offset=1 → the previous bar, which is
+    what intraday mode uses so it lines up with ``yesterday_clv``.
+
+    Causal: ATR is computed only on data sliced up to that bar, so no future
+    bar can leak in. Returns None where the bar has no range or the window is
+    too short.
+    """
+    if high is None or low is None or close is None:
+        return {"range_atr": None, "meaningful": False}
+    k = len(close) - 1 - offset
+    if k < n or k < 1:
+        return {"range_atr": None, "meaningful": False}
+    h = high.iloc[:k + 1]
+    lo = low.iloc[:k + 1]
+    c = close.iloc[:k + 1]
+    if h.isna().any() or lo.isna().any() or c.isna().any():
+        return {"range_atr": None, "meaningful": False}
+    hi = float(h.iloc[-1])
+    lo_ = float(lo.iloc[-1])
+    rng = hi - lo_
+    atr = float(_wild_atr(h, lo, c, n).iloc[-1])
+    if not (np.isfinite(rng) and np.isfinite(atr)) or rng <= 0 or atr <= 0:
+        return {"range_atr": None, "meaningful": False}
+    ratio = rng / atr
+    return {
+        "range_atr": round(ratio, 3),
+        "meaningful": bool(ratio >= MEANINGFUL_RANGE_ATR),
+    }
 
 
 def clv_series(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:

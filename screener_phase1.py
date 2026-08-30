@@ -44,6 +44,7 @@ from screener_setup import (
     failed_breakdown,
     failed_breakout,
     intraday_position,
+    meaningful_range,
     nearest_pivot,
     nearest_support,
     next_resistance,
@@ -96,12 +97,14 @@ _T_ZH = {
     "Failed breakout {bars}d": "⚠ 假突破 (Failed Breakout {bars}天)",
     "EMA reclaim near EMA{slow} ({pct}%)": "EMA{slow} 回踩+收复 ({pct}%)",
     "Strong close CLV={clv}": "收盘强势 CLV={clv}",
+    "High close, low significance CLV={clv}": "收盘高但波动不足 CLV={clv}",
     "Shakeout {bars}d": "洗盘回踩 (Shakeout {bars}天)",
     "Near Pivot ({pct}%)": "逼近 Pivot ({pct}%)",
     "Volume expansion": "放量收涨",
     "Potential Supply (high vol, no gain)": "⚠ 放量滞涨 (Potential Supply)",
     "R:R low ({rr})": "R:R 偏低 ({rr})",
 }
+
 _T_MS = {
     # Bahasa Melayu (best-effort; falls back to English when a string is new)
     "RS rank #{rank}/100": "Kedudukan RS #{rank}/100",
@@ -423,9 +426,15 @@ def run_phase1_screener(
         clv = closing_strength(high, low, close)
         y_clv = yesterday_clv(high, low, close)
         ipos = intraday_position(high, low, close)
+        intraday = session == "intraday"
+        # Meaningful range: does the day actually MOVE, or is CLV just a high
+        # print on a dead bar? Only meaningful when range/ATR20 >= threshold.
+        # intraday uses offset=1 so it lines up with yesterday_clv.
+        mr = meaningful_range(high, low, close, n=20, offset=1 if intraday else 0)
+        range_atr = mr["range_atr"]
+        meaningful = mr["meaningful"]
         ext = price_extension(close, window=20)
         effort = effort_vs_result(high, low, close, vol)
-        intraday = session == "intraday"
         if intraday:
             # Volume is partial (only a fraction of the day has traded);
             # effort_vs_result compares today's partial volume against a
@@ -535,8 +544,16 @@ def run_phase1_screener(
         # and can swing -1→+1 minute-to-minute (#sunway case).
         clv_ref = y_clv if intraday else clv
         if clv_ref is not None and clv_ref >= 0.8:
-            trigger_score += 30.0
-            parts_t.append(_t("Strong close CLV={clv}", clv=f"{clv_ref:.2f}"))
+            if meaningful:
+                # closed strongly AND the day actually moved — real strength
+                trigger_score += 30.0
+                parts_t.append(_t("Strong close CLV={clv}", clv=f"{clv_ref:.2f}"))
+            else:
+                # CLV high but range/ATR too small — no real price expansion,
+                # keep a small credit so it is not ignored, never call it strong
+                trigger_score += 10.0
+                parts_t.append(_t(
+                    "High close, low significance CLV={clv}", clv=f"{clv_ref:.2f}"))
         elif clv_ref is not None and clv_ref >= 0.6:
             trigger_score += 15.0
         if shake.get("detected"):
@@ -644,6 +661,8 @@ def run_phase1_screener(
             "clv": clv,
             "yesterday_clv": y_clv,
             "intraday_position": ipos,
+            "range_atr": range_atr,
+            "meaningful_range": meaningful,
             "session": session,
             "extension_pct": ext,
             # structure
