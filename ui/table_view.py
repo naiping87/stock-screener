@@ -190,10 +190,14 @@ class TableView(QTableView):
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self.setShowGrid(False)
-        # cell hover tooltips (the model returns ToolTipRole = column explanation)
+        # Header-only tooltips: show a column explanation ONLY when hovering the
+        # header (eventFilter), never a per-cell popup. Per-cell tooltips made
+        # every grid cell flash a "ColumnName: ..." box and re-created the
+        # tooltip on every mouse move (the lag). So disable cell tooltips and
+        # keep the header path.
         self.setMouseTracking(True)
         if hasattr(self, "setToolTipsVisible"):
-            self.setToolTipsVisible(True)
+            self.setToolTipsVisible(False)
         # reliable per-column header tooltips via an event filter on the header.
         self.horizontalHeader().viewport().installEventFilter(self)
         self.verticalHeader().setVisible(False)

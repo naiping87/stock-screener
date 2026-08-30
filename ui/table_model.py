@@ -257,10 +257,6 @@ class PandasModel(QAbstractTableModel):
                 return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-        elif role == Qt.ItemDataRole.ToolTipRole:
-            help_text = _column_help(col_name) or str(col_name)
-            return f"{col_name}: {help_text}"
-
         return None
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
