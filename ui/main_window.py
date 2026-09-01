@@ -778,7 +778,7 @@ class MainWindow(QMainWindow):
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.about(
             self, "About Stock Screener Pro",
-            "<h3>Stock Screener Pro v1.0.0</h3>"
+            "<h3>Stock Screener Pro v1.2.4</h3>"
             "<p>Multi-market stock screening terminal.</p>"
             "<p><b>Markets:</b> Bursa MY, NYSE, NASDAQ, AMEX, SSE</p>"
             "<p><b>Screeners:</b> EMA Compression (Daily/Hourly/Weekly), KDJ Cross, "
