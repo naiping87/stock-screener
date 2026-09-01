@@ -13,7 +13,7 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QDialog, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from screener import KDJ_PERIOD, KDJ_SIGNAL, _calc_kdj
-from screener_setup import nearest_pivot, closing_strength
+from screener_setup import nearest_pivot, nearest_support, closing_strength
 
 # ── TradingView palette ──────────────────────────────────────────────────
 BG = "#131722"

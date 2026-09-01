@@ -27,7 +27,7 @@ from licensing.license_manager import LicenseManager
 from utils import cache_dir
 from workers.alert_worker import AlertWorker
 from workers.download_worker import DownloadWorker
-from workers.meta_worker import MetaWorker
+from workers.meta_worker import MetaWorker, load_meta_cache, save_meta_cache
 from workers.screener_worker import ScreenerWorker
 
 from .results_panel import ResultsPanel
@@ -46,7 +46,10 @@ class MainWindow(QMainWindow):
         self.data = {}
         self.ticker_names = {}
         self._result_dfs = {}
-        self._meta_cache = {}
+        # Restore previously-fetched ROE/Sector so we don't refetch hundreds
+        # of quoteSummary calls on every app launch, and so the Phase-1 sector
+        # axis has data available on the first run after a relaunch.
+        self._meta_cache = load_meta_cache()
         self._screeners_need_meta_rerun = False
         self._busy = False            # a download / screener run is in flight
         self._chart_open = False      # a modal chart dialog is currently open
@@ -453,6 +456,7 @@ class MainWindow(QMainWindow):
 
     def _on_meta_loaded(self, meta):
         self._meta_cache.update(meta)
+        save_meta_cache(self._meta_cache)
         # Results are already on screen; only re-attach ROE/Sector columns.
         # Guard: if a NEW run replaced the results while meta was fetching,
         # don't stomp them — just flag the status (the next run re-attaches).

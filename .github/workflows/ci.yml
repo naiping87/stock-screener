@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Qt runtime libraries (headless PyQt6 import)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon0 libxcb-cursor0
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Keep the pinned PyQt6 (<6.8) so imports match the desktop build,
+          # and install only what the test suite / import chain needs.
+          python -m pip install \
+            "PyQt6>=6.7,<6.8" pyqtgraph pandas numpy requests cryptography pytest
+
+      - name: Run unit tests (no network)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: Import-chain smoke (desktop app modules)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "import i18n, pyqtgraph, ui.chart_view, ui.main_window, workers.meta_worker; print('IMPORT-CHAIN OK')"

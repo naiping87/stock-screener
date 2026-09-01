@@ -179,8 +179,13 @@ def classify(strength: float, setup: float, trigger: float,
     if rs_rank is not None:
         if rs_rank_chg20 is not None and rs_rank_chg20 <= -10:
             return "WEAKENING"          # was strong, now rolling over (A: 95→90)
-        if rs_rank >= 80 and (rs_rank_chg20 is None or rs_rank_chg20 > -5):
-            return "LEADER"             # high rank AND holding
+        # A data gap in rs_rank_chg20 (the 20d-ago rank snapshot is missing,
+        # e.g. a fresh listing or a Yahoo data hole) must NOT be read as
+        # "holding". That silently let a high-rank but unverified stock pass
+        # as LEADER (the INARI case flagged in AGENTS.md). LEADER now requires
+        # an actual, non-None chg20 so a gap can never fabricate a leader.
+        if rs_rank >= 80 and rs_rank_chg20 is not None and rs_rank_chg20 > -5:
+            return "LEADER"             # high rank AND confirmed holding
         if 55 <= rs_rank < 85 and rs_rank_chg20 is not None and rs_rank_chg20 >= 10:
             return "EMERGING LEADER"    # mid-high rank AND climbing fast (B)
     if rs_momentum is not None and rs_momentum > 0 and strength >= 70:

@@ -1,6 +1,8 @@
 """Background worker for fetching ROE + Sector + Industry from Yahoo Finance."""
 
 import logging
+import os
+import pickle
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -8,11 +10,38 @@ import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from screener import DownloadCancelled
+from utils import cache_dir
 
 logger = logging.getLogger(__name__)
 
 YAHOO_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 MODULES = "financialData,assetProfile"
+
+
+def meta_cache_path() -> str:
+    """Persist ROE/Sector meta so it survives an app relaunch (no re-fetch)."""
+    return os.path.join(cache_dir(), "meta_cache.pkl")
+
+
+def load_meta_cache() -> dict:
+    """Return the on-disk ROE/Sector cache; never raises (empty dict on miss)."""
+    try:
+        with open(meta_cache_path(), "rb") as f:
+            data = pickle.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_meta_cache(meta: dict) -> None:
+    """Best-effort write; a failed cache write must never break the app."""
+    if not meta:
+        return
+    try:
+        with open(meta_cache_path(), "wb") as f:
+            pickle.dump(meta, f, protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception:
+        pass
 
 
 def _fetch_one(tkr, crumb, cookies):
