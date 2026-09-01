@@ -1,170 +1,476 @@
-# AGENTS.md — Stock Screener Pro (working manual for the coding agent)
+# AGENTS.md — Stock Screener Pro
 
-> Read this FIRST before touching the repo. It is the agent-side index so the
-> workspace context is recoverable in seconds instead of re-grepping the tree.
-> This file is NOT user-facing docs; it is a work manual. Keep it updated when
-> structure, tooling, or a hard-won gotcha changes.
+> Read this FIRST before touching the repo. It is the agent-side working manual,
+> not user-facing docs. Ground rules are derived from the actual source; where a
+> rule is a product decision (not derivable from code) it is labelled as such.
+> Keep it updated when structure, tooling, or a hard-won gotcha changes.
 
-## Project & owner
+---
 
-- Git repo, owner: **naiping87** (GitHub + Vercel). Canonical repo:
-  `https://github.com/naiping87/stock-screener`.
-- Product: **Stock Screener Pro** — PyQt6 desktop app (primary) + a
-  Streamlit web version (`streamlit_app.py`).
-- User preferences (respect strictly):
-  - Audit first / get evidence — **never guess**. Find root cause before editing.
-  - **Minimal changes only.** Do not rewrite screening / scoring / indicators /
-    UI design / DB structure.
-  - After a fix: **push + rebuild exe + rebuild installer + update GitHub
-    Release + (when web changed) deploy Vercel**.
-  - Explain *why* in the reply.
-  - Non-technical UI preferred for the user-facing answer.
+## 1. Project Overview
 
-## Env / toolchain (hard-won — do not "fix" these)
+**What it is:** Stock Screener Pro — a multi-market stock screening *terminal*
+for Bursa Malaysia (primary) plus US and Shanghai A-shares. It is a **PyQt6
+desktop app (primary product, packaged with PyInstaller + Inno Setup)** and a
+**Streamlit web version** (`streamlit_app.py`). It is **not** an Electron app
+(no `package.json`, no Node runtime; `licensing/license_manager.py`'s
+`platform.node()` is machine-binding for activation, not Node.js).
 
-- Local Python: `C:\Users\ediso\AppData\Local\Programs\Python\Python312\python.exe`.
-- **PyQt6 MUST stay `>=6.7,<6.8` (currently 6.7.1).** PyInstaller 6.22 cannot
-  freeze PyQt6 6.8+/6.11 → exe crashes on launch with
+**Primary purpose:** identify stocks that are *accumulating strength* —
+Relative Strength, improving Price Action, Volume/Effort confirmation — that may
+form a **breakout setup**. It is **not** "today's biggest gainers" (see §3).
+
+**Target user:** a discretionary Bursa trader/researcher who wants a
+TradingView-style, explainable shortlist. Every signal row carries a `reasons`
+list explaining *why* it was selected.
+
+**Architecture:** local, pure-function screening engine (causal, no lookahead) +
+network data provider (Yahoo Finance, AkShare) + QThread background workers +
+PyQt6 UI. No separate backend/server; offline Ed25519 activation.
+
+**Core features (real, from source):**
+- Markets: `markets/bursa.py` (`my`, `.KL`), `markets/us.py` (`us`, no suffix),
+  `markets/shanghai.py` (`sh`, `.SS`, `data_provider="akshare"`).
+- Screeners (**8**: EMA Compression Daily/Hourly/Weekly, KDJ Divergence,
+  Weekly/Daily KDJ Golden Cross, 11-factor Scoring, and **Phase-1 "Ignition"** —
+  RS + sector + setup + CLV + breakout + R:R). The additional **Top Movers** and
+  **New Picks** tabs are boards, not screeners (per `ui/results_panel.py`).
+- Chart drill-down (pyqtgraph candlestick + EMA + volume + KDJ, Daily/Weekly).
+- Weekly KDJ golden-cross tray alerts, "New Picks" first-time board, Top Movers.
+- Live search, sector filter, CSV export, cancel/retry, single-instance lock,
+  language switch (en/ms/zh), offline signed-key activation.
+
+---
+
+## 2. Development Principles
+
+**DO**
+- Understand the existing architecture/data flow before editing (read the source;
+  `AGENTS.md` is the index, but verify against code — never guess).
+- Keep existing features; extend rather than replace.
+- Fix root cause; make small, verifiable edits.
+- Keep screener calculations **deterministic** and **causal** (no lookahead).
+- Reuse existing utilities/services (`utils.resource_path/cache_dir`,
+  `screener._calc_kdj`, `indicators.gm_kdj`, `screener_rs`, `screener_setup`).
+- Be extra cautious in performance-sensitive code (download, per-stock loops).
+- After touching core logic: run `pytest`, import chain, then check affected UI.
+
+**DON'T**
+- Don't rewrite a whole module without a stated reason and user approval.
+- Don't add dependencies without need (see `requirements.txt` — it is pinned
+  for a reason, e.g. `PyQt6>=6.7,<6.8`).
+- Don't delete existing features.
+- Don't hide real problems with mock/stubbed data.
+- Don't hard-code stock results.
+- Don't change `run_scoring_screener` behavior — it is test-locked.
+- Don't make a build pass by weakening correctness or dropping data.
+- Don't silently swallow errors (the codebase has some `try/except: pass`; fix
+  them to at least log, and never let a real failure vanish).
+
+---
+
+## 3. Stock Screener Philosophy
+
+This is the most important section. **The goal is not "find the stock that rose
+the most today."** It is to find stocks that are **building the conditions for a
+move**: Relative Strength vs market/sector, improving Price Action, and
+Volume/Effort **confirming** the move — the kind that precede a **breakout
+setup**.
+
+Concrete axes used (all real, in `screener_phase1.run_phase1_screener`):
+- **Price** — trend, consolidation/base (`base_quality`), breakout
+  (`breakout_quality`), pullback/reclaim (`ema_pullback_reclaim`), support
+  (`nearest_support`) & resistance (`nearest_pivot`, `next_resistance`),
+  price strength (`closing_strength`/CLV, `price_extension`).
+- **Volume** — expansion/contraction/MA in `run_scoring_screener` (vol MA20>MA60,
+  spike, MA threshold) and `screener_setup` (vol dry-up, vol ratio).
+- **Price Effort** — `effort_vs_result()` (`vol_ratio`/`price_move`/`upper_wick`
+  → `accumulation` / `potential_supply` / `high_vol_ambiguous`). **Volume big does
+  not mean good:** high volume with no price progress + long upper wick is
+  `potential_supply` (distribution-ish), not a buy.
+- **Relative Strength** — stock vs market (`stock_rs`), stock vs own sector
+  (`stock_vs_sector_rs`), cross-sectional rank (`rs_rank`, `rs_rank_chg20/60`),
+  sector strength (`sector_rank`).
+- **Classification** — `classify()` maps the sub-scores to 12 setup labels (§7).
+
+> Rule: do not simplify "strength" to a single metric. A valid setup requires
+> Price + Volume + Effort + RS to agree; the score decomposes these explicitly.
+
+---
+
+## 4. Relative Strength
+
+**RS ≠ RSI.** RS is *relative performance vs a benchmark* (FBMKLCI `^KLSE` for
+`my`, `^GSPC` for `us`) and vs the stock's own sector. Implementation:
+`screener_rs.py`:
+- `stock_rs(close, bench, lookbacks=(5,20,60,120))`: `rs_Nd = stock %ret − bench
+  %ret` on **aligned** dates (`_aligned`), NaN gaps dropped, returns from last-two
+  valid prices (`_pct_change`) so suspensions never poison a number.
+- Cross-sectional rank (`rs_rank_history` → `_rank_snapshot`): percentile (0-100)
+  of RS20 across the whole universe at the same date; `rs_rank`, `rs_rank_m20/40/60`,
+  `rs_rank_chg20/60`. **Penny guard:** price < RM0.20 excluded from rank; a single
+  tick ≥ half the return with <2% move excluded (`_tick_size`).
+- `stock_vs_sector_rs`: stock − equal-weight sector avg. `sector_rank`: sector
+  strength = `rel_score_20d*0.6 + rel_score_60d*0.4` (momentum carried separately).
+- `rs_momentum_batch` / `compute_rs_momentum`: now-vs-`window`-ago 5d RS.
+- **Rule:** RS is the *leadership axis*. `classify()` derives
+  LEADER/EMERGING LEADER/WEAKENING from `rs_rank`/`rs_rank_chg20` alone.
+- **Do not change the RS definition** unless it is confirmed a bug; if you think
+  RS is wrong, report it first, never silently redefine.
+
+---
+
+## 5. CLV (Close Location Value)
+
+**CLV ≠ "higher close = stronger".** Implemented in `screener_setup.py`:
+- `closing_strength(high, low, close)` = `(close − low) / (high − low)`, clamped
+  0..1; **returns `None` when the day has no range (high == low)** or the last
+  bar is non-finite — never a false strength.
+- `meaningful_range(high, low, close, n=20, offset=0)` = `range / ATR20`
+  (`_wild_atr`, Wilder, causal). Threshold `MEANINGFUL_RANGE_ATR = 0.8`.
+- **The anti-mislabel fix:** in Phase-1, `clv >= 0.8` only gets the big
+  `trigger_score +30` when `meaningful` is True; if CLV is high but the day
+  barely moved (range/ATR < 0.8) it gets only **+10** ("High close, low
+  significance") so a low-volatility micro-tick can't earn a big score.
+- `yesterday_clv` (last completed day — used in **intraday** mode where today's
+  close is unfinished and unreliable), `intraday_position` (info), `clv_series`
+  (backtests). Filtering: `clv_min` (default 0.8) hard-filters in **EOD** mode
+  only; skipped intraday.
+- **If you suspect CLV mislabels:** mark as a potential issue and report — do not
+  rewrite the CLV definition, and never remove the meaningful-range gate.
+
+---
+
+## 6. Price Action
+
+Detected in `screener_setup.py`, all **causal** (only bars up to current):
+- **Breakout:** `breakout_quality()` (score vs nearest pivot: close-through 40%,
+  volume 20%, CLV 15%, RS 15%, no-failed-breakout 10%).
+- **Failed breakout:** `failed_breakout()` (traded above pivot on volume, closed
+  back below) → subtracts from `trigger_score`.
+- **Pullback/reclaim:** `ema_pullback_reclaim()` (EMA60 rising + run-up + pullback
+  within ±4% of EMA60 + volume dry-up + fresh reclaim ≤5 bars + upper-half close).
+- **Accumulation/distribution:** `base_quality()` (range %, higher-low, vol
+  dry-up, ATR slope), `shakeout_check()` / `failed_breakdown()` (support undercut
+  with volume then reclaimed + close in upper half).
+- **Support/resistance/compression:** `nearest_support()`, `nearest_pivot()`,
+  `next_resistance()` (measured-move target, not the pivot itself), `detect_pivots()`
+  (5-bar-each-side swing highs/lows).
+- **Rule:** Price Action must be judged **together** with Price + Volume + Effort +
+  RS — never from a single indicator. `run_phase1_screener` combines them into
+  `strength/setup/trigger/breakout` sub-scores.
+
+---
+
+## 7. Setup Classification
+
+**Use the real labels from `screener_phase1.classify()`** — the 12 labels, in
+priority order:
+
+```
+BREAKOUT > EXPANSION > EMA RECLAIM > TRIGGER WATCH > SETUP
+  > STRONG BUT EXTENDED > LEADER > EMERGING LEADER > WEAKENING > BASE > LAGGARD
+```
+
+- `breakout.attempt & score >= 75` → BREAKOUT; `>= 60` → EXPANSION.
+- `ema_reclaim.detected & strength >= 40` → EMA RECLAIM (just under a real breakout).
+- `trigger >= 80 & setup >= 50 & pivot_distance <= 5%` → TRIGGER WATCH, but R:R<1.0
+  downgrades to SETUP.
+- Leader axis: `rs_rank_chg20 <= -10` → WEAKENING; `rs_rank >= 80 & confirmed
+  holding` → LEADER; rank in [55,85) & climbing → EMERGING LEADER. **A rank
+  without a chg20 is NOT read as holding** (this was the INARI data-gap bug — now
+  fixed in the working tree; LEADER requires non-None chg20).
+- Structure fallbacks: `strength>=80` → LEADER; `extension>=15% & strength>=70` →
+  STRONG BUT EXTENDED; `setup>=60 & ...` → SETUP; `strength>=45` → BASE; `setup>=45`
+  → SETUP; `strength>=30` → WEAKENING; else LAGGARD.
+- **Not implemented (per source):** ADX/DMI, and a user "Watchlist"/saved-list
+  feature. A stock that fails screeners is simply absent from results — there is
+  no Weak/Avoid tier (the "Ignition" tab only lists what passes).
+- **Before changing classification:** explain (1) original logic, (2) new logic,
+  (3) why, (4) effect on false positives/negatives.
+
+---
+
+## 8. Performance Rules
+
+Target scale: **1000+ Bursa** (~1009 in `tickers.csv`), 2500 US, ~1700 A-shares.
+- Never do heavy computation on the UI/main thread — download/screeners/meta run
+  in `workers/*` QThreads (their `*Worker` classes).
+- Avoid repeated indicator computation: the 11-factor scorer is called **once per
+  universe** in `run_phase1_screener`; RS/rank/sector tables are batched once.
+  Still, `detect_pivots` is recomputed per stock per axis (nearest_pivot/support/
+  next_resistance) — a known CPU cost, in a background thread.
+- Avoid duplicate API requests: day-cache (`cache/{market}_{date}.pkl`) + Web
+  `@st.cache_data(ttl=3600)` + meta cache (`meta_cache.pkl`). But per the product
+  decision (**Option A**), the desktop app still downloads daily+hourly+weekly for
+  every run and **auto-refresh forces a full re-download every 5 min**
+  (`main_window._on_refresh` → `force_refresh=True`). That is the accepted
+  freshness-vs-cost trade-off; do not silently switch it to daily-only unless
+  asked (it would break the Hourly/Weekly tabs).
+- Search: desktop uses a **precomputed per-row lowercase text key**
+  (`ui/table_model._build_search_keys`) so `SortFilterProxy.filterAcceptsRow` is
+  one substring test per row (~1.2ms/keystroke, was ~280ms). Web uses AgGrid's
+  client-side column filter. Do not regress to an all-cells scan.
+- Charts: pyqtgraph; crosshair uses `np.searchsorted` (O(log n)); weekly tab is
+  lazy; background runs / auto-refresh are **paused while a chart is open**
+  (`_open_chart` stops the timer + defers `_finalize_results`).
+- Before optimizing: find the real bottleneck (profile). Do not fake a speedup by
+  asking for fewer tickers or dropping data.
+
+---
+
+## 9. Data Integrity
+
+Financial data — treat it carefully:
+- Do not mutate real market data (no rewriting OHLCV).
+- Do not silently forward-fill; do not propagate NaN blindly. Data holes
+  (suspensions, missing prints) are handled by `_aligned`/`_pct_change`
+  (last-two-valid-prices) and `close.dropna()` — preserve that intent.
+- Don't confuse trading date / session: `market_session.py` distinguishes
+  **EOD** (completed day; CLV/volume final, `clv_min` applies) from **intraday**
+  (unfinished; use `yesterday_clv`, no CLV hard-filter, volume verdict neutralized).
+- Yahoo returns recent bars with `timestamp` but `null` OHLC (e.g. a day whose
+  `close` is `None`). The code drops any bar without full OHLCV via the OHLCV
+  index intersection — this is intentional (no invented prices). Do not fabricate
+  a close; note when data lags (e.g. "as of 08-28; Yahoo hasn't posted 9-1 close").
+- Use the correct timeframe per indicator; derive weekly from daily only in the
+  `daily_only` A-share path (which skips the 1w/1h network calls and resamples).
+
+---
+
+## 10. Financial Logic Safety
+
+- Never present results as a guarantee of gains or a deterministic prediction.
+- "Setup" is a **watch/analysis label, not a buy signal**. Keep the disclaimer
+  ("Data is for reference only — not investment advice") and any risk text.
+- Keep calculations **transparent/explainable** (every Phase-1 row has `reasons`);
+  don't hide the basis for a label. Do not delete risk annotations.
+
+---
+
+## 11. Coding Rules
+
+- **Language/runtime:** Python 3.12 target (`pyproject` `requires-python >=3.10`,
+  `ruff.target-version = py312`); PyQt6 pinned `<6.8` (see §Env). PowerShell shell.
+- **Naming:** snake_case functions/modules; `_`-prefixed private helpers; constants
+  UPPER_SNAKE. UI column display names are Title Case (`Code`, `Setup Type`).
+- **Components:** PyQt6 widgets in `ui/` (each file = one concern); QThread workers
+  in `workers/` with `progress/finished/error/cancelled` signals convention.
+- **Services:** pure engine functions in `screener*.py` / `indicators/` (no network,
+  no side effects, causal); network/data in `screener.py` + `workers/*`; market
+  config in `markets/base.py` (dataclass + registry).
+- **State management:** desktop = `QSettings("StockScreenerPro", ...)` for
+  persistence (language, window geometry, alert toggle) + in-memory
+  `self._meta_cache`/`_result_dfs`; file caches in `utils.cache_dir()` (pickle for
+  data/meta, JSON for alert/new-picks state); web = `st.session_state` +
+  `@st.cache_data`.
+- **Error handling:** validate inputs → return `None`/empty rather than crashing
+  (see the engine's "never raises" convention). Don't swallow errors silently —
+  use `logger.warning/exception`. `DownloadCancelled` is a control-flow exception.
+- **Async/threading:** `QThread` + signals; cooperative cancellation via a
+  `threading.Event` / `requestInterruption()` checked between steps.
+- **Typing:** type hints used across the engine (`float | None`, `dict[str, Any]`).
+- **Testing:** pytest in `tests/` (offline, deterministic; `conftest.py` adds root
+  to `sys.path`). Core engine tests are pure-function (no network). See §Tests.
+- **Logging:** `logging` to `cache/app.log` + console (`main._setup_logging`).
+- **File organization:** engine (`screener*.py`), indicators (`indicators/`),
+  markets (`markets/`), workers (`workers/`), UI (`ui/`), tools (`tools/`),
+  tests (`tests/`), licensing (`licensing/`, `seller_tools/`).
+
+---
+
+## 12. Change Management
+
+Before changing core logic:
+1. Find the relevant implementation (grep; use `rg`).
+2. Understand the data flow (read the function + its callers/tests).
+3. Find dependencies (what calls it, what it calls, what tests lock it).
+4. Make the minimal change.
+5. Run `pytest` (and, if relevant, the import chain / `ruff`).
+6. Check the affected feature in the UI (or reproduce with a cached snapshot).
+7. Report: what changed, why, files affected, tests run, remaining risks.
+
+---
+
+## 13. Git Rules
+
+Protect the user's existing work. Do **not**:
+- `git reset --hard`, `git checkout --`, force-push, or overwrite user changes —
+  unless the user explicitly asked.
+- Delete uncommitted changes. There may be in-development local work; preserve it.
+- Work destructively over broad paths (`$HOME`, repo root) when deleting.
+- Push to `origin/main` without the user's go-ahead (it is a published repo).
+
+---
+
+## 14. Debugging Rules
+
+Follow **Reproduce → Trace → Identify Root Cause → Fix → Verify**. Do not patch a
+symptom. If you cannot determine the root cause, state plainly what is uncertain —
+**never guess/hand-wave**. (Example from this repo: "data stuck at 08-28" was traced
+to Yahoo returning `close: null` for the last bar, not a rate-limit or a code bug.)
+
+---
+
+## 15. AI Agent Behavior
+
+On any task: (1) understand the problem → (2) search the relevant code → (3)
+confirm architecture & data flow → (4) propose a change plan → (5) implement the
+minimal change → (6) verify → (7) summarize (Changed / Why / Files affected / Tests
+/ Remaining risks). For large changes, present a plan to the user first; do not
+launch a large refactor unilaterally.
+
+---
+
+## 16. Project-Specific Priorities
+
+1. **Correctness**
+2. **Financial calculation integrity**
+3. **Screener signal quality**
+4. **Performance**
+5. **Maintainability**
+6. **UI polish**
+
+Never sacrifice screener correctness for UI aesthetics. (Examples: CLV is gated by
+`meaningful_range` to avoid mislabeling; the penny-stock guards prevent a RM0.05
+tick from ranking above a RM5 name.)
+
+---
+
+## 17. Documentation
+
+When behavior is uncertain, **read the source and existing docs first** — do not
+invent new behavior. Keep `AGENTS.md` current when structure/tooling/gotchas change.
+
+---
+
+## Environment / Toolchain (hard-won — do not "fix" these)
+
+- Local Python 3.12 path on the seller's machine:
+  `C:\Users\ediso\AppData\Local\Programs\Python\Python312\python.exe`.
+- **PyQt6 MUST stay `>=6.7,<6.8` (6.7.1).** PyInstaller 6.22 cannot freeze
+  PyQt6 6.8+/6.11 — the exe crashes at launch with
   `DLL load failed while importing QtCore: The specified procedure could not be found`.
-- Inno Setup compiler: `C:\Users\ediso\AppData\Local\Programs\Inno Setup 6\ISCC.exe`
-  (script at repo root: `installer.iss`).
-- `gh` CLI signed in as `naiping87`. `vercel` CLI signed in as `naiping87`.
-- Shell is PowerShell. `head`/`test` are NOT available; use `Get-Content`,
-  `Test-Path`, `Select-Object -First`.
-- `py -m PyInstaller` from the repo root. Clean build first only when necessary.
+- Inno Setup: `C:\Users\ediso\AppData\Local\Programs\Inno Setup 6\ISCC.exe`
+  (`installer.iss` at repo root). `gh` and `vercel` CLIs signed in as `naiping87`.
+- Shell = PowerShell (`head`/`test` unavailable; use `Get-Content`,
+  `Test-Path`, `Select-Object -First`). Build: `py -m PyInstaller --noconfirm
+  StockScreenerPro.spec` (repo root).
 
-## Build / release SOP (use every time)
+## Build / Release SOP (follow every release)
 
-1. `git add <files> && git commit` then `git push origin main`.
-2. Build exe: `py -m PyInstaller --noconfirm StockScreenerPro.spec` (repo root).
-3. **Launch `dist\StockScreenerPro.exe`** and confirm the main-window title is
-   exactly **"Stock Screener Pro"** and the process `Responding=True`. If the
-   title is empty / it exits, the bundle is broken — do NOT build the installer.
-4. Build installer: `"C:\...\Inno Setup 6\ISCC.exe" installer.iss`
-   (output: `installer\StockScreenerPro_Setup.exe`).
-5. Upload: `gh release upload <version> "dist\StockScreenerPro.exe" "installer\StockScreenerPro_Setup.exe" --clobber`.
-6. Verify digest matches:
-   `gh release view <version> --json assets --jq '.assets[].digest'` vs local
-   `(Get-FileHash <file> -Algorithm SHA256).Hash`.
-7. Web (only if the landing page changed): the site is a **non-git** folder
-   `C:\Users\ediso\OneDrive\Documents\harness\vercel-license-generator`;
-   deploy with `cd ..\harness\vercel-license-generator && vercel --prod --yes`.
+1. `git add <files> && git commit`, then `git push origin main`.
+2. `py -m PyInstaller --noconfirm StockScreenerPro.spec` → `dist/StockScreenerPro.exe`.
+3. Launch `dist\StockScreenerPro.exe`; confirm the main-window title is exactly
+   "Stock Screener Pro" and the process `Responding=True`. If empty/exit → bundle
+   is broken; do NOT build the installer.
+4. `"...\Inno Setup 6\ISCC.exe" installer.iss` → `installer/StockScreenerPro_Setup.exe`.
+5. `gh release create vX.Y.Z ...` (or `gh release upload <ver> ... --clobber`) with
+   the exe + installer.
+6. Verify digest: `gh release view <ver> --json assets --jq '.assets[].digest'` vs
+   local `(Get-FileHash <file> -Algorithm SHA256).Hash`.
+7. If the landing page changed: the site is a **non-git** folder
+   `C:\Users\ediso\OneDrive\Documents\harness\vercel-license-generator`; bump the
+   version there and `cd ..\harness\vercel-license-generator && vercel --prod --yes`.
+8. Sanity: `python tools/verify_release.py --version vX.Y.Z` (exits 0 only when the
+   page link, GitHub asset, and local installer all agree).
 
-Current release tag/digests live in the reference snippet below; bump `AppVersion`
-in `installer.iss` (and `version` in `pyproject.toml` if relevant) before release.
+Bump `AppVersion` in `installer.iss` (and `version` in `pyproject.toml` if relevant)
+before release.
 
-## Repo layout (agent index — key files)
+## Repo Layout (agent index)
 
-Core engine (pure functions, causal, no network):
-- `screener_setup.py` — PRE-BREAKOUT structure detectors. **Everything here is
-  causal** (reads only bars up to current). Key fns:
-  - `closing_strength()` (CLV, returns None on zero-range day),
-    `yesterday_clv()`, `intraday_position()`.
-  - `_wild_atr()` (causal Wilder ATR) + `meaningful_range()` (range/ATR20, the
-    "did the day actually move" gate). Threshold `MEANINGFUL_RANGE_ATR = 0.8`.
-  - `effort_vs_result()` → `vol_ratio / price_move / upper_wick / verdict`
-    (`accumulation` / `potential_supply` / `high_vol_ambiguous`).
-  - `base_quality()`, `shakeout_check()`, `breakout_quality()`,
-    `failed_breakdown()`, `failed_breakout()`, `ema_pullback_reclaim()`,
-    `nearest_pivot()`, `nearest_support()`, `next_resistance()`,
-    `risk_reward()`, `price_extension()`.
-- `screener_rs.py` — RS + sector engine. `stock_rs_batch`, `rs_rank_history`
-  (cross-sectional rank: `rs_rank`, `rs_rank_chg20/60`), `sector_rank`,
-  `stock_vs_sector_rs` (stock vs OWN sector), RS momentum, `apply_sector_override`.
-- `screener_phase1.py` — the **Phase-1 pulse detector** built on top of the
-  existing 11-factor scorer. Produces the "Ignition" tab. Key fns:
-  - `classify()` → one of the setup labels, priority order: BREAKOUT >
-    EXPANSION > EMA RECLAIM > TRIGGER WATCH > SETUP > STRONG BUT EXTENDED >
-    LEADER > EMERGING LEADER > WEAKENING > BASE > LAGGARD. **Leadership axis**
-    (`rs_rank`/`rs_rank_chg20`) alone decides Leader/Emerging/Weakening.
-  - `run_phase1_screener(...)` → returns rows with `strength_score`,
-    `setup_score`, `trigger_score`, `breakout_score`, `master_score`,
-    `master_rr`, `classification`, plus `clv`, `range_atr`, `meaningful_range`,
-    RS/sector columns, `reasons`.
-  - Weights: `W_STRENGTH=0.30, W_SETUP=0.25, W_TRIGGER=0.25, W_BREAKOUT=0.20`.
-    `master_rr = master * rr_mult` (R:R <1.0 → ×0.6, <1.5 → ×0.9).
-  - `set_lang("en"|"ms"|"zh")` changes the `reasons` language.
-- `screener.py` — legacy/market engine: `load_tickers()`, `_build_session()`,
-  `_fetch_chart()` (Yahoo), `run_scoring_screener()` (the 11-factor scorer —
-  **do not change its behavior; tests depend on it**), benchmark `^KLSE`.
+Core engine (pure, causal, no network):
+- `screener_setup.py` — pre-breakout structure detectors: `closing_strength`,
+  `yesterday_clv`, `intraday_position`, `_wild_atr`, `meaningful_range`,
+  `effort_vs_result`, `base_quality`, `shakeout_check`, `breakout_quality`,
+  `ema_pullback_reclaim`, `failed_breakdown`, `failed_breakout`,
+  `nearest_pivot`, `nearest_support`, `next_resistance`, `risk_reward`,
+  `price_extension`, `detect_pivots`.
+- `screener_rs.py` — RS + sector: `stock_rs`, `stock_rs_batch`,
+  `rs_rank_history`, `rs_momentum_batch`, `stock_vs_sector_rs`, `sector_rank`,
+  `sector_performances`, `apply_sector_override`, penny/tick guards.
+- `screener_phase1.py` — `run_phase1_screener`, `classify`, `set_lang`;
+  weights `W_STRENGTH=0.30, W_SETUP=0.25, W_TRIGGER=0.25, W_BREAKOUT=0.20`;
+  `master_rr = master * rr_mult`.
+- `screener.py` — legacy/market engine: `load_tickers`, `_build_session`,
+  `_fetch_chart`, `_fetch_ticker`, `download_data`, `_download_yahoo`
+  (supports `daily_only`), `_download_akshare`, the 5 legacy screeners,
+  `run_scoring_screener` (11-factor, **test-locked**), `run_*_kdj_screener`,
+  `backtest_scoring`.
+- `indicators/gm_kdj.py` — Pine-parity KDJ (`gm_kdj`, `kdj_cross`,
+  `kdj_divergence`, `kdj_state`); `screener._calc_kdj` delegates here.
+- `market_regime.py` (RISK_ON/NEUTRAL/RISK_OFF), `market_session.py` (eod/intraday).
 
-UI (PyQt6):
-- `ui/main_window.py` — top-level window, wires screeners + chart open/close.
-  Chart-open pauses auto-refresh and blocks background run/market switches;
-  `_finalize_results` is deferred until the chart closes.
-- `ui/chart_view.py` — pyqtgraph candlestick. Crosshair uses `np.searchsorted`
-  (O(log n)); OHLCV labels rebuilt only on K-line change; weekly tab lazy.
-- `ui/table_model.py` — `PandasModel` + `SortFilterProxy`. **Search uses a
-  precomputed per-row lowercase key over TEXT columns only** (fixed ~280ms →
-  ~1.2ms per keystroke). `COLUMN_HELP` maps column names → hover tooltips.
-- `ui/table_view.py`, `ui/results_panel.py` — table + the tab container.
-  `results_panel._tab_index` holds tab keys; `set_results(tab, df)` populates.
-- `ui/sidebar.py`, `ui/welcome.py`, `ui/activation.py`, `ui/splash_screen.py`,
-  `ui/system_tray.py`, `ui/styles.py`.
+UI (PyQt6): `ui/main_window.py` (orchestration, chart-open pause, benchmark,
+top movers), `ui/sidebar.py`, `ui/results_panel.py` (tabs: Top Movers, Daily/Hourly/
+Weekly EMA, KDJ Div, Weekly/Daily KDJ, Scoring, **Ignition**, New Picks),
+`ui/table_model.py` (precomputed text-key search, `COLUMN_HELP`), `ui/table_view.py`
+(`SortFilterProxy`), `ui/chart_view.py` (pyqtgraph + `np.searchsorted` crosshair,
+pivot/CLV annotations), `ui/styles.py`, `ui/splash_screen.py`, `ui/welcome.py`,
+`ui/system_tray.py`, `ui/activation.py`.
 
-Workers:
-- `workers/screener_worker.py` — runs `run_phase1_screener`, then **renames
-  phase1 columns to friendly names** and reorders them: `Code, Name, Setup Type,
-  Value(master_rr), Master(master_score), Strength, Setup, Trigger, Breakout,
-  RS Rank(rs_rank), CLV, R:R(rr), Score(score), Sector, Price(close)` followed
-  by remaining raw columns. Changing friendly naming here changes the UI table.
-- `workers/meta_worker.py` (sector/name meta), `download_worker.py`,
-  `alert_worker.py` (KDJ golden-cross tray alerts).
+Workers (`workers/`): `download_worker.py` (day-cache pickle), `screener_worker.py`
+(8 screeners + Phase-1 column renaming + signal journal), `meta_worker.py`
+(ROE/sector + `meta_cache.pkl`), `alert_worker.py` (weekly KDJ tray alerts).
 
-Others:
-- `markets/` — `base.py` (`data_provider`), `bursa.py`, `us.py`, `shanghai.py`.
-- `indicators/gm_kdj.py` — KDJ (daily/weekly). `market_regime.py` —
-  RISK_ON/NEUTRAL/RISK_OFF. `market_session.py` — eod vs intraday.
-- `licensing/license_manager.py` — Ed25519 offline activation.
-- `i18n.py`, `utils.py` (cache_dir, resource_path), `conftest.py`.
+Others: `markets/` (base/bursa/us/shanghai), `i18n.py` (en/ms/zh),
+`licensing/license_manager.py` (Ed25519 offline activation), `seller_tools/`,
+`utils.py` (`cache_dir`, `resource_path`), `tools/` (backtests, e2e/golden/smoke/
+verify scripts, `signal_journal.py`, `new_stock_monitor.py`), `tests/`.
 
 ## Cached market data (test without network)
 
-- `cache\my_<YYYY-MM-DD>.pkl` — `pickle.load` → `(instr, meta)` tuple.
-  - `instr` = `{ticker: {"close","high","low","volume","name", ...}}` (daily + hourly + weekly).
+- `cache/{market}_{YYYY-MM-DD}.pkl` → pickle `(instr, meta)`:
+  - `instr` = `{ticker: {close, high, low, volume, name, close_hourly, ...,
+    close_weekly, ...}}`.
   - `meta` = `{ticker: company_name}`.
-- As of a 2026-08-30 cache: ~959 Bursa tickers; INARI = `0166.KL`,
-  KLK = `2445.KL`. Ticker list: `tickers.csv` (no `.KL` suffix in the file;
-  suffix appended by loader). Sector map: `tickers/sector_map.csv`
-  (`CODE,SECTOR`, applied by raw code).
+- `cache/meta_cache.pkl` → `{ticker: {roe, sector, industry}}` (persisted by
+  `workers/meta_worker`).
+- `cache/alerts_state.json` (weekly-KDJ notified set), `cache/picks_state.json` /
+  `cache/picks_board.json` (New Picks board).
+- Ticker lists: `tickers.csv` (no `.KL` suffix; loader appends it),
+  `tickers/us.csv`, `tickers/shanghai_1700.csv`; sector override:
+  `tickers/sector_map.csv` (`CODE,SECTOR`).
 
-## Known gotchas / past fixes (reference, do not reintroduce)
+## Known gotchas / past fixes (do not reintroduce)
 
-- **CLV alone mislabels**: a high CLV (~1.0) on a tiny-range bar looks strong
-  but is not. Fixed by gating the strong-close `trigger_score` bonus behind
-  `meaningful_range` (range/ATR20 >= 0.8). Low-significance bars get +10
-  ("High close, low significance CLV=…"), real moves get +30.
-- **Search lag**: `QSortFilterProxyModel.setFilterFixedString` over all columns
-  was ~280ms/keystroke. Fixed with per-row lowercase text-key precompute.
-- **Chart stutter**: auto-refresh / background run during an open chart caused
-  repaints; fixed by pausing refresh + deferring `_finalize_results`.
-- **Ignition classification**: penny / tick-guarded stocks that get no
-  `rs_rank` should not collapse to WEAKENING; setup90/trig75 stay SETUP when
-  rank is missing.
-- **CLV cap hint**: Top N is a ceiling only; `Min Closing Strength` (default
-  0.8) filters first, so 300 request can return ~200. The Ignition tab shows a
-  yellow hint when this happens.
-- **Known open question (NOT fixed)**: INARI `rs_rank_chg20 = None` (20d-ago
-  rank is a data gap) is treated as "holding" in `classify()`, so a high
-  `rs_rank` can silently pass as LEADER. Out of scope for CLV; flagged to user.
-
-## Keys to the Ignition score (for the user-facing explanation)
-
-- **`Value` = the ranking score** (`master_rr`, R:R-adjusted composite).
-- **`Setup Type`** = one-line label (BREAKOUT/TRIGGER WATCH/SETUP/LEADER/…).
-- **`RS Rank`** = cross-sectional RS percentile (0-100), the leadership axis.
-- `Strength` (30%) + `Setup` (25%) + `Trigger` (25%) + `Breakout` (20%)
-  decompose `Value`. `Why` lists per-stock reasons. `CLV` = today close
-  location; `R:R` = risk/reward.
-- Default reading rule: **sort by `Value`, judge by `Setup Type`**, drill into
-  `Why`/components only to understand a pick.
+- **CLV mislabel:** gated by `meaningful_range` (range/ATR20 ≥ 0.8). Real strength
+  +30, high-close-but-tiny +10. Do not remove the gate.
+- **Search lag:** was `setFilterFixedString` over all columns (~280ms/keystroke);
+  fixed with per-row lowercase text-key precompute (~1.2ms).
+- **Chart stutter:** fixed by pausing auto-refresh + deferring `_finalize_results`
+  while a modal chart is open.
+- **Ignition classification:** penny/tick-guarded stocks with no `rs_rank` must not
+  collapse to WEAKENING; set-up triggers stay SETUP when rank is missing.
+- **Top N is a ceiling, not a guarantee**: `Min Closing Strength` (default 0.8)
+  filters first, so a 300 request can return ~200; Ignition shows a yellow hint.
+- **INARI `rs_rank_chg20=None`→LEADER bug:** fixed in the working tree —
+  `classify()` now requires a non-None chg20 for LEADER. If you see code re-adding
+  `ors_rank_chg20 is None` in the LEADER condition, that is the regression.
 
 ## Tests / sanity
 
-- Unit tests: `py -m pytest -q` (currently 36/36 green).
-- Import chain check:
-  `py -c "import i18n,pyqtgraph,ui.chart_view,ui.main_window; print('OK')"`.
-- A quick engine smoke: `py tools/smoke_phase1.py`.
-- To reproduce the CLV/meaningful-range behavior on a real snapshot, load
-  `cache\my_<date>.pkl` and feed `run_phase1_screener` with the `^KLSE`
-  benchmark (fetch via `_fetch_chart(sess, "^KLSE", ...)`).
+- `py -m pytest -q` (currently **53 passing**, incl. `tests/test_phase1.py` which
+  locks `classify`, `closing_strength`, `meaningful_range`, `effort_vs_result`,
+  `price_extension`, `risk_reward`).
+- Import chain: `python -c "import i18n,pyqtgraph,ui.chart_view,ui.main_window,workers.meta_worker; print('OK')"`.
+- Engine smoke: `python tools/smoke_phase1.py` (needs network).
+- Reproduce CLV/meaningful-range on a real snapshot: load `cache/my_<date>.pkl`,
+  feed `run_phase1_screener` with the `^KLSE` benchmark.
+- CI: `.github/workflows/ci.yml` runs pytest + import chain on push/PR (Python 3.12,
+  PyQt6<6.8, `QT_QPA_PLATFORM=offscreen`).
+
+## Known gaps / caveats (from source, not fixes)
+
+- **ADX / DMI: not implemented.**
+- **User Watchlist / saved-list: not implemented** (the only "portfolio" refs are
+  backtest NAV, not a product feature).
+- **Desktop engine** is PyQt6 (not Electron); the web version is Streamlit.
+- `main_window._get_benchmark` handles `my`/`us`/`cn` symbols (`^KLSE`/`^GSPC`/
+  `000001.SS`), but the A-share market code is registered as **`sh`**, so the
+  desktop benchmark returns `None` for Shanghai (RS degrades to None there).
+- **Download behavior (Option A, product decision):** full daily+hourly+weekly per
+  run + 5-min forced re-download on auto-refresh. Do not silently change this.
+  Episodic "data looks stale" is usually Yahoo returning `close:null` for the latest
+  bar (see Data Integrity), not a code bug.
