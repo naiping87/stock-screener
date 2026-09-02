@@ -359,6 +359,84 @@ def effort_vs_result(high: pd.Series, low: pd.Series, close: pd.Series,
             "price_move": round(move, 2), "upper_wick": upper_wick}
 
 
+# ── Liquidity (ADTV = close × volume) ───────────────────────────────────────
+
+ADTV_WINDOW = 20            # recent-activity window (exposed as a reference column)
+ADTV_STRUCT_WINDOW = 60     # structural-liquidity window used for the gate/tiers
+LIQ_HARD_FLOOR = 20_000     # RM; below this a name is not a tradeable Ignition (🔴)
+
+
+def average_daily_traded_value(close: pd.Series | None, volume: pd.Series | None,
+                               window: int = ADTV_STRUCT_WINDOW) -> float | None:
+    """Average Daily Traded Value = SMA(close × volume, `window`) in RM.
+
+    Causal (only the last `window` bars) and robust to Bursa/Yahoo data holes:
+    a bar missing either a close or a volume is dropped, so a NaN tail never
+    poisons the average the way a naive rolling() does (see AGENTS.md data
+    integrity notes). Returns None when there are too few valid bars.
+    """
+    if close is None or volume is None or len(close) < window:
+        return None
+    frame = pd.DataFrame({"close": close, "volume": volume}).dropna(
+        subset=["close", "volume"])
+    frame = frame[frame["close"] > 0]
+    if len(frame) < window:
+        return None
+    amt = frame["close"] * frame["volume"]
+    val = amt.rolling(window).mean().iloc[-1]
+    if pd.isna(val):
+        return None
+    return float(val)
+
+
+def liquidity_tier(adtv: float | None,
+                   hard_floor: float = LIQ_HARD_FLOOR) -> dict[str, Any]:
+    """Map an (usually structural) ADTV value to a liquidity bucket.
+
+    Returns {tier, label, emoji, mult, gate}:
+      tier  — ILLIQUID / LOW / TRADABLE / GOOD / HIGH (None when no data)
+      emoji — 🔴 🟠 🟡 🟢 🔥 for the UI status column
+      mult  — a score multiplier applied to master_rr (the ranking) so liquidity
+              tempers confidence WITHOUT replacing price action: ILLIQUID is
+              heavily down-weighted, LOW is softened, HIGH only gets a small lift.
+      gate  — True when below `hard_floor`: "not a tradeable Ignition".
+    """
+    if adtv is None or not np.isfinite(adtv):
+        return {"tier": None, "label": "No Data", "emoji": "—",
+                "mult": 1.0, "gate": False}
+    if adtv < hard_floor:
+        return {"tier": "ILLIQUID", "label": "Illiquid", "emoji": "🔴",
+                "mult": 0.35, "gate": True}
+    if adtv < 100_000:
+        return {"tier": "LOW", "label": "Low Liquidity", "emoji": "🟠",
+                "mult": 0.70, "gate": False}
+    if adtv < 1_000_000:
+        return {"tier": "TRADABLE", "label": "Tradable", "emoji": "🟡",
+                "mult": 1.00, "gate": False}
+    if adtv < 3_000_000:
+        return {"tier": "GOOD", "label": "Good Liquidity", "emoji": "🟢",
+                "mult": 1.05, "gate": False}
+    return {"tier": "HIGH", "label": "High Liquidity", "emoji": "🔥",
+            "mult": 1.10, "gate": False}
+
+
+def volume_participation(vol_ratio: float | None) -> str | None:
+    """Label today's volume participation (today / 20d avg). Soft signal only."""
+    if vol_ratio is None or not np.isfinite(vol_ratio):
+        return None
+    if vol_ratio < 0.5:
+        return "Very Low"
+    if vol_ratio < 0.8:
+        return "Low"
+    if vol_ratio < 1.2:
+        return "Normal"
+    if vol_ratio < 1.5:
+        return "Confirming"
+    if vol_ratio < 2.0:
+        return "Strong"
+    return "Very Strong"
+
+
 # ── Base / consolidation ────────────────────────────────────────────────────
 
 def base_quality(high: pd.Series, low: pd.Series, close: pd.Series,

@@ -41,6 +41,7 @@ from screener import (
     VOL_MIN_HOURLY,
     WEEKLY_VOL_MIN,
 )
+from screener_setup import LIQ_HARD_FLOOR
 
 from .styles import (
     ACCENT,
@@ -296,6 +297,12 @@ class Sidebar(QWidget):
                             "top X% of today's range (CLV). 0.8 = close near day high. "
                             "0.0 = show all.")
         sl.addWidget(self.clv_min)
+        self.min_adtv = _sp(i18n.t("Min ADTV"), 0, 10_000_000, int(LIQ_HARD_FLOOR),
+                            5_000,
+                            "Liquidity floor (RM): stocks whose 60-day average traded "
+                            "value is below this are down-weighted and flagged 🔴 "
+                            "(not a tradeable Ignition). 0 = off.")
+        sl.addWidget(self.min_adtv)
         pl.addWidget(score)
 
         pl.addStretch()
@@ -430,6 +437,7 @@ class Sidebar(QWidget):
         self.score_min.slider.setValue(SCORE_MIN)
         self.score_top_n.row_widget.setValue(SCORE_TOP_N)
         self.clv_min.slider.setValue(int(0.8 / 0.05))
+        self.min_adtv.row_widget.setValue(int(LIQ_HARD_FLOOR))
 
     def _reset_params(self):
         self._apply_market_defaults(self.market_combo.currentData())
@@ -474,5 +482,6 @@ class Sidebar(QWidget):
             "score_min": self.score_min.slider.value(),
             "score_top_n": self.score_top_n.row_widget.value(),
             "clv_min": _sv(self.clv_min),
+            "min_adtv": self.min_adtv.row_widget.value(),
         }
 

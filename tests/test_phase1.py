@@ -12,11 +12,14 @@ import pandas as pd
 
 from screener_phase1 import classify
 from screener_setup import (
+    average_daily_traded_value,
     closing_strength,
     effort_vs_result,
+    liquidity_tier,
     meaningful_range,
     price_extension,
     risk_reward,
+    volume_participation,
 )
 
 
@@ -189,3 +192,45 @@ def test_risk_reward():
     assert bad["valid"] is False
     flat = risk_reward(10.0, 10.0, 12.0)
     assert flat["valid"] is False
+
+
+# ── Liquidity (ADTV = close × volume) ───────────────────────────────────────
+
+def test_average_daily_traded_value():
+    close = _s([10.0] * 30)
+    vol = _s([100_000.0] * 30)
+    assert average_daily_traded_value(close, vol, 20) == 10.0 * 100_000.0
+
+
+def test_average_daily_traded_value_drops_data_hole():
+    # A trailing NaN close (Yahoo data hole) must not poison the average.
+    close = _s([10.0] * 29 + [float("nan")])
+    vol = _s([100_000.0] * 30)
+    assert average_daily_traded_value(close, vol, 20) == 10.0 * 100_000.0
+
+
+def test_average_daily_traded_value_short_data():
+    assert average_daily_traded_value(_s([10.0] * 5), _s([100_000.0] * 5), 20) is None
+
+
+def test_liquidity_tier_buckets():
+    assert liquidity_tier(5_000)["tier"] == "ILLIQUID"
+    assert liquidity_tier(5_000)["gate"] is True
+    assert liquidity_tier(50_000)["tier"] == "LOW"
+    assert liquidity_tier(500_000)["tier"] == "TRADABLE"
+    assert liquidity_tier(2_000_000)["tier"] == "GOOD"
+    assert liquidity_tier(5_000_000)["tier"] == "HIGH"
+    assert liquidity_tier(None)["tier"] is None
+    assert liquidity_tier(None)["gate"] is False
+
+
+def test_liquidity_tier_hard_floor_override():
+    # Raising the hard floor re-buckets a normally-LOW name as ILLIQUID.
+    assert liquidity_tier(50_000, hard_floor=300_000)["tier"] == "ILLIQUID"
+
+
+def test_volume_participation():
+    assert volume_participation(0.3) == "Very Low"
+    assert volume_participation(1.0) == "Normal"
+    assert volume_participation(2.5) == "Very Strong"
+    assert volume_participation(None) is None

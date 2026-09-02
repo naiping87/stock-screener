@@ -93,6 +93,35 @@ def rr_colour(val) -> str | None:
         return None
 
 
+def liq_colour(val) -> str | None:
+    """Colour a liquidity status cell by its tier emoji."""
+    if not isinstance(val, str):
+        return None
+    v = val.strip()
+    if v.startswith("🔴"):
+        return RED
+    if v.startswith("🟠"):
+        return ORANGE
+    if v.startswith("🟡"):
+        return ORANGE
+    if v.startswith("🟢") or v.startswith("🔥"):
+        return GREEN
+    return None
+
+
+def adtv_colour(val) -> str | None:
+    """Colour ADTV60 (RM): below the hard floor red, low orange, else green."""
+    try:
+        v = float(val)
+        if v < 20_000:
+            return RED
+        if v < 100_000:
+            return ORANGE
+        return GREEN
+    except (ValueError, TypeError):
+        return None
+
+
 def chg_colour(val) -> str | None:
     """Green if change is positive, red if negative."""
     try:
@@ -123,6 +152,8 @@ DEFAULT_COLOUR_MAP = {
     "Breakout": score_colour,
     "RS Rank": score_colour,
     "CLV": clv_colour,
+    "Liq": liq_colour,
+    "ADTV60": adtv_colour,
     "R:R": rr_colour,
 }
 

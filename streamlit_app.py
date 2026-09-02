@@ -866,6 +866,13 @@ with st.sidebar:
             help="0.8 = only stocks that closed near the day's high",
             key="cfg_clv_min",
         )
+        min_adtv = st.number_input(
+            "Min ADTV (RM)", 0, 10_000_000, 20_000, 5_000,
+            help="Liquidity floor: stocks whose 60-day average traded value is below "
+                 "this are down-weighted and flagged 🔴 (not a tradeable Ignition). "
+                 "0 = off.",
+            key="cfg_min_adtv",
+        )
 
     with st.expander("🔄 Auto-Refresh", expanded=False):
         st.markdown('<div style="margin-bottom:0.25rem;font-size:0.7rem;color:#6e7681;display:flex;align-items:center;gap:0.25rem;">'
@@ -1545,13 +1552,16 @@ try:
     from screener_phase1 import run_phase1_screener, set_lang as p1_set_lang
     p1_set_lang("en")  # Streamlit builds are English; desktop owns 3-lang UI
     _clv = st.session_state.get("cfg_clv_min", 0.8)  # default: closing-strong lens
+    _min_adtv = st.session_state.get("cfg_min_adtv", 20_000)
     _p1_params = getattr(st.session_state, "_p1_params", None)
     _fp_clv = st.session_state.get("_p1_fp", None)
-    _cur_fp = (selected_code, str(bench is not None), sector_map and len(sector_map), _clv)
+    _cur_fp = (selected_code, str(bench is not None), sector_map and len(sector_map),
+               _clv, _min_adtv)
     if _fp_clv != _cur_fp or "results_phase1" not in st.session_state:
         results_p1 = run_phase1_screener(
             data, bench, sector_map, ticker_names=ticker_names,
             top_n=score_top_n, min_score_tech=score_min, clv_min=_clv,
+            min_adtv=_min_adtv,
         )
         st.session_state.results_phase1 = results_p1
         st.session_state._p1_fp = _cur_fp
@@ -1703,12 +1713,15 @@ if st.session_state.run_done:
                     "Name": r.get("name", ""),
                     "Price": r.get("close"),
                     "Type": _badge(r.get("classification", "")),
+                    "Liq": r.get("liquidity_status", ""),
                     "Value": r.get("master_rr"),
                     "Master": r.get("master_score"),
                     "Strength": r.get("strength_score"),
                     "Setup": r.get("setup_score"),
                     "Trigger": r.get("trigger_score"),
                     "Brk": r.get("breakout_score"),
+                    "ADTV60": _fmt(r.get("adtv60")),
+                    "Vol Ratio": _fmt(r.get("volume_ratio"), "x"),
                     "Regime": r.get("market_regime") or "",
                     "CLV": _fmt(r.get("clv")),
                     "EMA↺": "✓" if r.get("ema_reclaim") else "",

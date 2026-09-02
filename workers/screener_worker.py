@@ -26,6 +26,7 @@ from screener import (
     run_scoring_screener,
     run_weekly_kdj_screener,
 )
+from screener_setup import LIQ_HARD_FLOOR
 
 
 class ScreenerWorker(QThread):
@@ -189,6 +190,7 @@ class ScreenerWorker(QThread):
                     top_n=p.get("score_top_n", SCORE_TOP_N),
                     min_score_tech=p.get("score_min", SCORE_MIN),
                     clv_min=p.get("clv_min", 0.8),
+                    min_adtv=p.get("min_adtv", LIQ_HARD_FLOOR),
                     progress_cb=_p1_progress,
                     session=_session,
                 )
@@ -287,10 +289,16 @@ class ScreenerWorker(QThread):
                 "rr": "R:R",
                 "score": "Score",
                 "sector": "Sector",
+                "liquidity_status": "Liq",
+                "adtv60": "ADTV60",
+                "adtv20": "ADTV20",
+                "volume_ratio": "Vol Ratio",
+                "participation": "Part.",
             }
             df = df.rename(columns={k: v for k, v in p1_rename.items() if k in df.columns})
-            preferred = ["Code", "Name", "Setup Type", "Value", "Master", "Strength",
-                         "Setup", "Trigger", "Breakout", "RS Rank", "CLV", "R:R",
+            preferred = ["Code", "Name", "Setup Type", "Liq", "Value", "Master",
+                         "Strength", "Setup", "Trigger", "Breakout", "RS Rank",
+                         "CLV", "Vol Ratio", "ADTV60", "Part.", "R:R",
                          "Score", "Sector", "Price"]
             remaining = [c for c in df.columns if c not in preferred]
             df = df[preferred + remaining]

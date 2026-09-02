@@ -71,6 +71,7 @@ STRINGS = {
         # Phase-1 / Ignition (new)
         "Ignition": "Pencetus",
         "Min Closing Strength": "Kekuatan Penutupan Min",
+        "Min ADTV": "ADTV Minimum",
         "RS Rank": "Kedudukan RS",
         "RS Rank Chg": "Perubahan RS",
         "Target": "Sasaran",
@@ -170,6 +171,7 @@ STRINGS = {
         # Phase-1 / Ignition (new)
         "Ignition": "起爆点",
         "Min Closing Strength": "最低收盘强度",
+        "Min ADTV": "最低成交额",
         "RS Rank": "RS 排名",
         "RS Rank Chg": "RS 排名变化",
         "Target": "目标位",

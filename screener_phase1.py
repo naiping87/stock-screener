@@ -36,6 +36,10 @@ from screener_rs import (
     stock_rs_batch,
 )
 from screener_setup import (
+    ADTV_STRUCT_WINDOW,
+    ADTV_WINDOW,
+    LIQ_HARD_FLOOR,
+    average_daily_traded_value,
     base_quality,
     breakout_quality,
     closing_strength,
@@ -44,6 +48,7 @@ from screener_setup import (
     failed_breakdown,
     failed_breakout,
     intraday_position,
+    liquidity_tier,
     meaningful_range,
     nearest_pivot,
     nearest_support,
@@ -51,6 +56,7 @@ from screener_setup import (
     price_extension,
     risk_reward,
     shakeout_check,
+    volume_participation,
     yesterday_clv,
 )
 from screener_rs import stock_vs_sector_rs  # stock vs own-sector RS axis
@@ -103,6 +109,8 @@ _T_ZH = {
     "Volume expansion": "放量收涨",
     "Potential Supply (high vol, no gain)": "⚠ 放量滞涨 (Potential Supply)",
     "R:R low ({rr})": "R:R 偏低 ({rr})",
+    "Liquidity {emoji} {label} (ADTV60 {adtv})": "流动性 {emoji} {label} (ADTV60 {adtv})",
+    "Liquidity weight x{mult}": "流动性权重 x{mult}",
 }
 
 _T_MS = {
@@ -110,6 +118,8 @@ _T_MS = {
     "RS rank #{rank}/100": "Kedudukan RS #{rank}/100",
     "Volume Dry-up": "Kering Volum",
     "Near Pivot ({pct}%)": "Hampir Pivot ({pct}%)",
+    "Liquidity {emoji} {label} (ADTV60 {adtv})": "Kecairan {emoji} {label} (ADTV60 {adtv})",
+    "Liquidity weight x{mult}": "Pemberat kecairan x{mult}",
 }
 
 
@@ -218,6 +228,7 @@ def run_phase1_screener(
     top_n: int = 200,
     min_score_tech: int = 0,
     clv_min: float = 0.0,
+    min_adtv: float = LIQ_HARD_FLOOR,
     ext_pct: float = EXTENDED_PCT,
     base_max_range: float = BASE_MAX_RANGE,
     pivot_window: int = 5,
@@ -236,6 +247,12 @@ def run_phase1_screener(
                     Pass 0.0 to disable (show all).
                     IGNORED in intraday mode (see `session`) — an unfinished
                     bar's close strength is not a reliable filter.
+      min_adtv    — Liquidity floor (RM). Stocks whose structural ADTV60 is below
+                    this are NOT tradeable Ignition: they are heavily down-weighted
+                    (×0.35) and flagged 🔴 so they sink to the bottom of the ranking
+                    instead of surfacing as high-confidence. Default LIQ_HARD_FLOOR.
+                    The price-action / setup classification is left intact — liquidity
+                    gates the CONFIDENCE, it does not replace it (see AGENTS.md).
       min_score_tech — existing 11-factor score floor (0 = any).
       progress_cb — optional callable(done:int, total:int) invoked every 50
                     stocks so the UI can show stepwise progress (no-op when
@@ -449,6 +466,18 @@ def run_phase1_screener(
             if effort.get("verdict") is not None:
                 effort = {**effort, "verdict": None}
 
+        # ── Liquidity (ADTV) + participation ──────────────────────────
+        # Two ADTV windows: ADTV20 = recent activity (reference), ADTV60 =
+        # structural liquidity (the gate/tier input). Using the 60-day window for
+        # the gate means a healthy stock that is currently drying up inside a
+        # base (low today vol, but its OWN normal volume is fine) is NOT misread
+        # as illiquid — that separation is the whole point (AGENTS.md).
+        adtv20 = average_daily_traded_value(close, vol, window=ADTV_WINDOW)
+        adtv60 = average_daily_traded_value(close, vol, window=ADTV_STRUCT_WINDOW)
+        liq = liquidity_tier(adtv60, hard_floor=min_adtv)
+        vol_ratio = effort.get("vol_ratio")
+        participation = volume_participation(vol_ratio)
+
         # ── Structure: base + pivot/support + shakeout ───────────────────
         base = base_quality(high, low, close, vol, lookback=40)
         pv = nearest_pivot(high, low, close, window=pivot_window)
@@ -631,11 +660,24 @@ def run_phase1_screener(
                 rr_mult = 0.6      # risk > reward → heavily discounted
             elif rr_val < 1.5:
                 rr_mult = 0.9      # borderline → lightly discounted
-        master_rr = round(master * rr_mult, 1)
+        # Liquidity tempers the RANK (confidence) without rewriting the
+        # price-action setup label. ILLIQUID (×0.35) sinks to the bottom, LOW
+        # (×0.70) is softened, GOOD/HIGH get only a small boost so liquidity
+        # never becomes the dominant reason to buy (AGENTS.md).
+        master_rr = round(master * rr_mult * liq["mult"], 1)
 
         reasons: list[str] = []
         if include_reasons:
             reasons = parts_s + parts_u + parts_t
+            if liq["tier"] is not None:
+                adtv_str = f"RM{adtv60:,.0f}" if adtv60 is not None else "n/a"
+                reasons.append(_t(
+                    "Liquidity {emoji} {label} (ADTV60 {adtv})",
+                    emoji=liq["emoji"], label=liq["label"], adtv=adtv_str))
+                if liq["mult"] < 1.0:
+                    reasons.append(_t("Liquidity weight x{mult}", mult=liq["mult"]))
+                elif liq["mult"] > 1.0:
+                    reasons.append(_t("Liquidity weight x{mult}", mult=liq["mult"]))
 
         failure_type = ("failed_breakout" if fbo.get("failed")
                         else ("failed_breakdown" if fbd.get("detected") else ""))
@@ -678,6 +720,16 @@ def run_phase1_screener(
             "base_vol_dryup": base.get("vol_dryup"),
             "shakeout": shake.get("detected") or False,
             "effort_verdict": effort.get("verdict"),
+            # liquidity (ADTV) + participation
+            "adtv20": round(adtv20) if adtv20 is not None else None,
+            "adtv60": round(adtv60) if adtv60 is not None else None,
+            "liquidity_tier": liq["tier"],
+            "liquidity_status": liq["emoji"],
+            "liquidity_label": liq["label"],
+            "liquidity_gate": liq["gate"],
+            "liquidity_mult": liq["mult"],
+            "volume_ratio": vol_ratio,
+            "participation": participation,
             # new detectors
             "ema_reclaim": bool(ema_reclaim.get("detected")),
             "ema_pullback_pct": ema_reclaim.get("pullback_pct"),
