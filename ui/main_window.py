@@ -180,6 +180,11 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar()
         splitter.addWidget(self.sidebar)
+        # Restore the user's last market + its saved parameters (silently,
+        # no market_changed emission -> no startup download).
+        _last = self.sidebar.last_market()
+        if _last:
+            self.sidebar.restore_market(_last)
 
         self.results_panel = ResultsPanel()
         splitter.addWidget(self.results_panel)
@@ -265,6 +270,7 @@ class MainWindow(QMainWindow):
     def _on_run_screeners(self):
         if self._busy or self._chart_open:
             return
+        self.sidebar.save_params()  # remember the user's default options
         if not self.data:
             params = self.sidebar.get_params()
             self._start_download(params["market_code"])
@@ -792,6 +798,7 @@ class MainWindow(QMainWindow):
         self.close()
 
     def closeEvent(self, event):
+        self.sidebar.save_params()  # persist any last-minute tweaks
         settings = QSettings("StockScreenerPro", "MainWindow")
         settings.setValue("geometry", self.saveGeometry())
         if self._really_quit:

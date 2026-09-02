@@ -1,5 +1,8 @@
 """Sidebar — Apple-style parameter panel with card sections."""
 
+import json
+
+from PyQt6.QtCore import QSettings
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
@@ -408,11 +411,14 @@ class Sidebar(QWidget):
         self.sector_combo.setCurrentIndex(max(idx, 0))
         self.sector_combo.blockSignals(False)
 
-    def _apply_market_defaults(self, code):
+    def _apply_market_defaults(self, code, overlay_saved=True):
         """Apply the market's default parameters to all controls.
 
         Emits no signals, so it is safe to call at startup (no download is
         triggered) and from both the market combo and the Reset button.
+        When `overlay_saved` is True, any user-saved parameters for this
+        market are applied on top of the market defaults, so the user's
+        last settings survive across launches (AGENTS "remember defaults").
         """
         if not code:
             return
@@ -438,14 +444,22 @@ class Sidebar(QWidget):
         self.score_top_n.row_widget.setValue(SCORE_TOP_N)
         self.clv_min.slider.setValue(int(0.8 / 0.05))
         self.min_adtv.row_widget.setValue(int(LIQ_HARD_FLOOR))
+        # Overlay saved user params (startup / market switch), never on Reset.
+        if overlay_saved:
+            saved = self.load_params(code)
+            if saved:
+                self.set_params(saved)
 
     def _reset_params(self):
-        self._apply_market_defaults(self.market_combo.currentData())
+        code = self.market_combo.currentData()
+        self._apply_market_defaults(code, overlay_saved=False)
+        self.clear_params(code)  # Reset = factory defaults, forget saved ones
 
     def _on_market_changed(self, index):
         code = self.market_combo.currentData()
         if code:
             self._apply_market_defaults(code)
+            self._persist_last_market(code)
             self.market_changed.emit(code)
 
     # ── Param collector ────────────────────────────────────────────────
@@ -484,4 +498,130 @@ class Sidebar(QWidget):
             "clv_min": _sv(self.clv_min),
             "min_adtv": self.min_adtv.row_widget.value(),
         }
+
+    # ── Persist the user's default options across launches ────────────────
+    # Saved per-market so each market keeps its own settings, and restored on
+    # startup / market switch. Reset clears them (factory defaults).
+    def _settings(self) -> QSettings:
+        return QSettings("StockScreenerPro", "SidebarParams")
+
+    def save_params(self) -> None:
+        """Persist the current parameter panel state (per active market)."""
+        try:
+            params = self.get_params()
+            market = params.get("market_code", "my")
+            self._settings().setValue(f"params_{market}", json.dumps(params))
+            self._persist_last_market(market)
+        except Exception:
+            pass  # persistence is best-effort; never break a run
+
+    def load_params(self, code: str) -> dict | None:
+        raw = self._settings().value(f"params_{code}")
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
+    def clear_params(self, code: str) -> None:
+        try:
+            self._settings().remove(f"params_{code}")
+        except Exception:
+            pass
+
+    def last_market(self) -> str | None:
+        return self._settings().value("last_market")
+
+    def _persist_last_market(self, code: str) -> None:
+        try:
+            self._settings().setValue("last_market", code)
+        except Exception:
+            pass
+
+    def restore_market(self, code: str | None) -> None:
+        """Restore a market + its saved params silently (no download signal)."""
+        if not code:
+            return
+        idx = self.market_combo.findData(code)
+        if idx < 0:
+            return
+        self.market_combo.blockSignals(True)
+        self.market_combo.setCurrentIndex(idx)
+        self.market_combo.blockSignals(False)
+        self._apply_market_defaults(code)
+
+    # ── Apply a saved param dict back to the controls ─────────────────────
+    def set_params(self, d: dict) -> None:
+        if not isinstance(d, dict):
+            return
+
+        def _mul(w, vals):
+            try:
+                keep = set(int(v) for v in (vals or []))
+                for i, opt in enumerate(w.options):
+                    w.boxes[i].setChecked(int(opt) in keep)
+            except Exception:
+                pass
+
+        def _sld(w, v):
+            try:
+                s = w.step
+                if s < 1:
+                    w.slider.setValue(int(round(float(v) / s)))
+                else:
+                    w.slider.setValue(int(float(v)))
+            except Exception:
+                pass
+
+        def _sp(w, v):
+            try:
+                w.row_widget.setValue(int(float(v)))
+            except Exception:
+                pass
+
+        if "ema_periods" in d:
+            _mul(self.ema_periods, d["ema_periods"])
+        if "ema_threshold" in d:
+            _sld(self.divergence_pct, d["ema_threshold"])
+        if "compress_bars" in d:
+            _sld(self.compress_bars, d["compress_bars"])
+        if "vol_daily" in d:
+            _sp(self.vol_daily, d["vol_daily"])
+        if "vol_hourly" in d:
+            _sp(self.vol_hourly, d["vol_hourly"])
+        if "vol_weekly" in d:
+            _sp(self.vol_weekly, d["vol_weekly"])
+        if "vol_daily_kdj" in d:
+            _sp(self.vol_d_kdj, d["vol_daily_kdj"])
+        if "daily_vol_ratio" in d:
+            _sld(self.daily_vol_r, d["daily_vol_ratio"])
+        if "kdj_period" in d:
+            _sld(self.kdj_period, d["kdj_period"])
+        if "kdj_signal" in d:
+            _sld(self.kdj_signal, d["kdj_signal"])
+        if "div_lookback" in d:
+            _sld(self.div_lookback, d["div_lookback"])
+        if "score_trend_periods" in d:
+            _mul(self.score_trend_p, d["score_trend_periods"])
+        if "score_trend_div" in d:
+            _sp(self.score_trend_div, d["score_trend_div"])
+        if "score_slope_bars" in d:
+            _sld(self.score_slope, d["score_slope_bars"])
+        if "score_vol_p" in d:
+            _sld(self.score_vol_p, d["score_vol_p"])
+        if "score_vol_t" in d:
+            _sp(self.score_vol_t, d["score_vol_t"])
+        if "score_vol_ma_b" in d:
+            _sld(self.score_vol_ma_b, d["score_vol_ma_b"])
+        if "score_vol_ma_t" in d:
+            _sp(self.score_vol_ma_t, d["score_vol_ma_t"])
+        if "score_min" in d:
+            _sld(self.score_min, d["score_min"])
+        if "score_top_n" in d:
+            _sp(self.score_top_n, d["score_top_n"])
+        if "clv_min" in d:
+            _sld(self.clv_min, d["clv_min"])
+        if "min_adtv" in d:
+            _sp(self.min_adtv, d["min_adtv"])
 
