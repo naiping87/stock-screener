@@ -302,6 +302,15 @@ class ScreenerWorker(QThread):
                          "Score", "Sector", "Price"]
             remaining = [c for c in df.columns if c not in preferred]
             df = df[preferred + remaining]
+        # Price right after the stock name in EVERY result table — the single
+        # most useful quick-scan field. Kept as its own numeric column (so it
+        # sorts/formats/colours correctly) rather than baked into the name.
+        if "Name" in df.columns and "Price" in df.columns:
+            cols = list(df.columns)
+            if cols.count("Price") == 1:
+                cols.remove("Price")
+                cols.insert(cols.index("Name") + 1, "Price")
+                df = df[cols]
         return df
 
 
