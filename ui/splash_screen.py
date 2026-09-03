@@ -39,7 +39,7 @@ def create_splash() -> QSplashScreen:
     painter.setFont(font_ver)
     painter.setPen(QColor("#5d606b"))
     painter.drawText(pixmap.rect().adjusted(0, 180, 0, -20),
-                     Qt.AlignmentFlag.AlignHCenter, "v1.2.5  |  Bursa · NYSE · NASDAQ · SSE")
+                     Qt.AlignmentFlag.AlignHCenter, "v1.2.6  |  Bursa · NYSE · NASDAQ · SSE")
 
     painter.end()
 

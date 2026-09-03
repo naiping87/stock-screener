@@ -4,7 +4,7 @@
 
 [Setup]
 AppName=Stock Screener Pro
-AppVersion=1.2.5
+AppVersion=1.2.6
 AppPublisher=StockScreenerPro
 DefaultDirName={autopf}\StockScreenerPro
 DefaultGroupName=Stock Screener Pro
