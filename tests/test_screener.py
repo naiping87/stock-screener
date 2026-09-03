@@ -143,3 +143,38 @@ def test_scoring_top_n_cap_and_min_score():
     # min_score=0 keeps the plain top-N behaviour
     r_zero = list(screener.run_scoring_screener(data, names, top_n=300, min_score=0))
     assert r_zero == r_all
+
+
+# ── EOD quote-close backfill (screener._backfill_quote_close) ───────────────
+
+def _series(vals):
+    return pd.Series([float(v) for v in vals])
+
+
+def test_backfill_quote_close_last_bar():
+    # Last close is NaN but high/low are present -> fill from quote price (EOD).
+    close = _series([10.0, 10.2, float("nan")])
+    high = _series([10.1, 10.3, 10.4])
+    low = _series([9.9, 10.1, 10.0])
+    out = screener._backfill_quote_close(close, high, low, 10.35)
+    assert out.iloc[-1] == 10.35
+
+
+def test_backfill_quote_close_null_ohlc_bar_not_filled():
+    # A placeholder bar missing high/low (a "null OHLC" day) must NOT be filled.
+    close = _series([10.0, 10.2, float("nan")])
+    high = _series([10.1, 10.3, float("nan")])
+    low = _series([9.9, 10.1, float("nan")])
+    out = screener._backfill_quote_close(close, high, low, 10.35)
+    assert pd.isna(out.iloc[-1])
+
+
+def test_backfill_quote_close_no_quote_or_present_close():
+    # Missing quote price -> unchanged.
+    close = _series([10.0, float("nan"), float("nan")])
+    high = _series([10.1, 10.2, 10.3])
+    low = _series([9.9, 9.8, 9.7])
+    assert pd.isna(screener._backfill_quote_close(close, high, low, None).iloc[-1])
+    # Close already present -> unchanged.
+    close2 = _series([10.0, 10.2, 10.3])
+    assert screener._backfill_quote_close(close2, high, low, 99.0).iloc[-1] == 10.3

@@ -10,10 +10,12 @@ import os
 import pickle
 import threading
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from markets import get as get_market
+from market_session import session_mode
 from screener import DownloadCancelled, download_data, load_tickers
 from utils import cache_dir, resource_path
 
@@ -116,6 +118,17 @@ class DownloadWorker(QThread):
                     last_pct[0] = pct
                     self.progress.emit(pct, f"Downloading... {current}/{total}")
 
+            # EOD-only: complete a trailing null close from Yahoo's quote price
+            # so a post-market review isn't stuck on a prior valid day. Never
+            # backfill intraday (the daily bar isn't closed yet).
+            backfill_quote_close = False
+            try:
+                _tz = ZoneInfo(m.timezone)
+                _sess = session_mode(self.market_code, datetime.now(tz=_tz), m.timezone)
+                backfill_quote_close = (_sess == "eod")
+            except Exception:
+                backfill_quote_close = False  # conservative: no backfill if unsure
+
             data = download_data(
                 tickers,
                 progress_cb=progress_cb,
@@ -123,6 +136,7 @@ class DownloadWorker(QThread):
                 market_code=self.market_code,
                 data_provider=getattr(m, "data_provider", "yahoo"),
                 cancel_event=self._cancel_event,
+                backfill_quote_close=backfill_quote_close,
             )
 
             if self.cancel_requested:

@@ -194,6 +194,10 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars, timezone="Asia
                 "high": _to_series(highs, idx),
                 "low": _to_series(lows, idx),
                 "volume": _to_series(volumes, idx),
+                # Yahoo's own last price for the symbol. Used ONLY in EOD mode
+                # to complete a final bar whose historical `close` is null (the
+                # "data stuck at a previous day" case) WITHOUT an extra request.
+                "regular_market_price": r.get("meta", {}).get("regularMarketPrice"),
             }
             return result, name
 
@@ -204,13 +208,37 @@ def _fetch_chart(sess, tkr, period1, period2, interval, min_bars, timezone="Asia
     return None, ""
 
 
-def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w, timezone="Asia/Kuala_Lumpur", daily_only=False):
+def _backfill_quote_close(close: pd.Series, high: pd.Series, low: pd.Series,
+                          regular_market_price: float | None) -> pd.Series:
+    """EOD-only: complete a trailing bar whose historical close is null using
+    Yahoo's `regularMarketPrice` (the finalized/last price for that symbol), so a
+    post-market review isn't stuck on a previous valid day. Touches only the LAST
+    bar, and only when that bar actually traded (its high/low are present) — a
+    "null OHLC" placeholder bar or a halted name (missing quote) is left untouched
+    so the usual truncate-to-last-valid-close behaviour is preserved. Never invoked
+    intraday (callers gate on session=="eod") so it cannot use a live intraday price.
+    """
+    if regular_market_price is None or not np.isfinite(regular_market_price):
+        return close
+    if close is None or len(close) == 0 or high is None or low is None:
+        return close
+    if pd.isna(close.iloc[-1]) and pd.notna(high.iloc[-1]) and pd.notna(low.iloc[-1]):
+        close = close.copy()
+        close.iloc[-1] = float(regular_market_price)
+    return close
+
+
+def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_h, min_bars_w, timezone="Asia/Kuala_Lumpur", daily_only=False, backfill_quote_close: bool = False):
     """Download daily + hourly + weekly(1wk) data for one ticker."""
     d_data, name = _fetch_chart(sess, tkr, dp1, dp2, "1d", min_bars_d, timezone)
     if d_data is None:
         return tkr, None
 
-    d_close = d_data["close"].dropna()
+    d_close = d_data["close"]
+    if backfill_quote_close:
+        d_close = _backfill_quote_close(d_close, d_data["high"], d_data["low"],
+                                        d_data.get("regular_market_price"))
+    d_close = d_close.dropna()
     d_high = d_data["high"].dropna()
     d_low = d_data["low"].dropna()
     d_vol = d_data["volume"].fillna(0)
@@ -274,7 +302,7 @@ def _fetch_ticker(sess, tkr, dp1, dp2, hp1, hp2, wp1, wp2, min_bars_d, min_bars_
     return tkr, result
 
 
-def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur", market_code: str = "my", data_provider: str = "yahoo", cancel_event: threading.Event | None = None) -> dict[str, dict[str, Any]]:
+def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], None] | None = None, timezone: str = "Asia/Kuala_Lumpur", market_code: str = "my", data_provider: str = "yahoo", cancel_event: threading.Event | None = None, backfill_quote_close: bool = False) -> dict[str, dict[str, Any]]:
     """Download daily + hourly + weekly data concurrently via Yahoo chart API.
 
     `cancel_event` (optional): when set, the loop raises DownloadCancelled at
@@ -285,23 +313,27 @@ def download_data(tickers: dict[str, str], progress_cb: Callable[[int, int], Non
         # wastes ~1s failing on 1700 tickers, which is very slow).  So prefer a
         # fast daily-only Yahoo pull; only fall back to AkShare if Yahoo itself
         # is unavailable (e.g. a buyer's network where Yahoo is blocked).
-        data = _download_yahoo(tickers, timezone, progress_cb, cancel_event, daily_only=True)
+        data = _download_yahoo(tickers, timezone, progress_cb, cancel_event,
+                               daily_only=True, backfill_quote_close=backfill_quote_close)
         min_ok = max(1, int(len(tickers) * 0.2))
         if len(data) < min_ok:
             logger.warning("[YAHOO] only %d/%d tickers returned; trying AkShare",
                            len(data), len(tickers))
             data = _download_akshare(tickers, timezone, progress_cb, cancel_event)
         return data
-    return _download_yahoo(tickers, timezone, progress_cb, cancel_event)
+    return _download_yahoo(tickers, timezone, progress_cb, cancel_event,
+                           backfill_quote_close=backfill_quote_close)
 
 
-def _download_yahoo(tickers: dict[str, str], timezone: str, progress_cb=None, cancel_event=None, daily_only: bool = False) -> dict[str, dict[str, Any]]:
+def _download_yahoo(tickers: dict[str, str], timezone: str, progress_cb=None, cancel_event=None, daily_only: bool = False, backfill_quote_close: bool = False) -> dict[str, dict[str, Any]]:
     """Download daily + hourly + weekly data concurrently via Yahoo chart API.
 
     `cancel_event` (optional): when set, the loop raises DownloadCancelled at
     the next check so the caller can abort without treating it as an error.
     `daily_only` (option): skip hourly/weekly network calls and derive weekly
     from daily — much faster, used for large A-share universes.
+    `backfill_quote_close` (option, EOD only): fill a trailing bar's null close
+    from Yahoo's `regularMarketPrice` so the app isn't stuck on a prior day.
     """
     end_date = datetime.now()
     d_start = end_date - timedelta(days=DAILY_DAYS)
@@ -330,7 +362,7 @@ def _download_yahoo(tickers: dict[str, str], timezone: str, progress_cb=None, ca
                 _fetch_ticker, session, tkr,
                 dp1, dp2, hp1, hp2, wp1, wp2,
                 min_bars_d, min_bars_h, min_bars_w, timezone,
-                daily_only,
+                daily_only, backfill_quote_close,
             ): tkr
             for tkr in ticker_list
         }
