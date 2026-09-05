@@ -293,13 +293,14 @@ class ChartWidget(pg.GraphicsLayoutWidget):
                 self.price.addItem(line)
                 lbl = pg.TextItem(html=f"<span style='color:#f7c600;font-weight:600'>"
                                        f"Pivot {pv['price']:,.2f} (−{pv['distance_pct']:.1f}%)</span>",
-                                  anchor=(1, 0), color="#f7c600", fill=pg.mkBrush("#1e222d"))
+                                  anchor=(0, 0), color="#f7c600", fill=pg.mkBrush("#1e222d"))
                 lbl.setZValue(45)
                 self.price.addItem(lbl, ignoreBounds=True)
-                # anchor=(1,0): text opens to the LEFT of the pos, so the pivot
-                # label sits to the left/below the newest candle instead of over
-                # it. Same trick the CLV chip uses (and it never clips).
-                lbl.setPos(xs[-1], pv["price"])
+                # Put the pivot label at the LEFT end of the pivot line (xs[0]),
+                # anchored top-left so it opens to the RIGHT/up and never covers
+                # the newest candles on the right edge. The pivot line itself
+                # stays, so the level is still obvious.
+                lbl.setPos(xs[0], pv["price"])
             sup = nearest_support(d["low"], d["high"], close)
             if sup is not None:
                 line2 = pg.InfiniteLine(pos=sup["price"], angle=0,
