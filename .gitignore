@@ -7,6 +7,9 @@ dist_v3/
 build/
 build_mini/
 dist_mini/
+build_minif/
+dist_minif/
+.venv_fix/
 *.egg-info/
 installer/
 alert_heartbeat.txt
