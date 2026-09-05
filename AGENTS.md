@@ -388,17 +388,19 @@ before release.
   GitHub Releases API check; (c) prefer "notify + open download page" over
   silent self-replace (a running PyInstaller onefile exe cannot overwrite
   itself).
-- **PACKAGING BUG (2026-09-06, UNRESOLVED):** A freshly built exe on THIS
-  machine showed `Exception code 0xc00000fd` (STACK_OVERFLOW) in Qt6Core.dll.
-  STATUS as of a machine restart: a MINIMAL PyQt6 window exe now launches fine
-  (result of the restart releasing a file/OneDrive lock), but the FULL app exe
-  reaches its splash then the main thread HANGS (Responding=False, CPU frozen
-  ~1.3, no stdout/stderr even in console=True mode). Source `python main.py`
-  runs fine; isolated-venv builds also produce the hang. So the freeze is
-  frozen-env-specific, NOT the business code (sort fix passes in source).
-  NEXT DIAG: binary-search the spec collect_all modules / main.py import path
-  (e.g. import ui.main_window alone via a minimal CLI exe), or build on the
-  healthy release machine. Do NOT ship this box's frozen exe.
+- **STARTUP HANG (2026-09-06, ROOT-CAUSED + FIXED in `30fb8c1`):** app reached
+  splash then the main thread HUNG (Responding=False, CPU frozen ~1.3). Root
+  cause was the earlier sort fix `b6cb6fa`: it called `sourceModel()` /
+  `headerData()` / `_df_ref()` INSIDE `SortFilterProxy.lessThan`.
+  `QSortFilterProxyModel.setSourceModel()` re-applies sort+filter during
+  `MainWindow.__init__` (via `_refresh_new_picks` → New-Picks table), and
+  calling model/header methods from lessThan at that moment DEADLOCKED the main
+  thread. Manual `proxy.sort()` tests passed (source already attached), which
+  hid it; the hang only fired on the FIRST setSourceModel with 171 rows.
+  RULE: **lessThan must stay pure (compare left/right UserRole only).** Put
+  sort keys in `PandasModel.data(UserRole)` instead (Liq → ADTV60 value,
+  Setup Type → business-order rank). Verified live: MainWindow constructs,
+  PrintWindow shows a real rendered UI, asc/desc correct, pytest 62/62.
 - **`tools/bump_landing_version.py` is hard-coded OLD/NEW** (e.g. `v1.2.5 -> v1.2.6`).
   It is NOT generic — after a version jump this makes it wrong. Run a one-off
   replace script instead (see below), then delete it or update OLD/NEW.
