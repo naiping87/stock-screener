@@ -306,3 +306,9 @@ class PandasModel(QAbstractTableModel):
 
     def dataframe(self) -> pd.DataFrame:
         return self._df.copy()
+
+    def _df_ref(self) -> pd.DataFrame:
+        """Internal read-only reference (NO copy) for sort comparators.
+        Sorting calls lessThan O(n log n) times; copying on every call would
+        make clicking a header stutter on a large results table."""
+        return self._df
