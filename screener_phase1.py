@@ -43,6 +43,7 @@ from screener_setup import (
     base_quality,
     breakout_quality,
     closing_strength,
+    ema_slope,
     ema_pullback_reclaim,
     effort_vs_result,
     failed_breakdown,
@@ -230,6 +231,7 @@ def run_phase1_screener(
     min_score_tech: int = 0,
     clv_min: float = 0.0,
     min_adtv: float = LIQ_HARD_FLOOR,
+    ema60_slope_up_only: bool = False,
     ext_pct: float = EXTENDED_PCT,
     base_max_range: float = BASE_MAX_RANGE,
     pivot_window: int = 5,
@@ -462,6 +464,9 @@ def run_phase1_screener(
         # while trend_position() says the long trend is weak (e.g. Sunway below
         # a falling EMA200) — the UI shows both instead of one masking the other.
         trend = trend_position(close)
+        # EMA60 slope (hard filter when requested: only keep rising-EMA60 names).
+        # Same definition as ema_pullback_reclaim's slope_ok (span=60, 10 bars).
+        ema60_slope_val = ema_slope(close, window=60, bars=10)
         effort = effort_vs_result(high, low, close, vol)
         if intraday:
             # Volume is partial (only a fraction of the day has traded);
@@ -722,6 +727,7 @@ def run_phase1_screener(
             # Trend never downgrades SETUP — it is REPORTED alongside it.
             "ema200_dist_pct": trend.get("distance_pct") if trend else None,
             "ema200_slope": trend.get("slope") if trend else None,
+            "ema60_slope": ema60_slope_val,
             "trend_status": (
                 "below_ema200_weak" if trend and trend["weak"]
                 else ("above_ema200" if trend and trend["above"]
@@ -789,6 +795,11 @@ def run_phase1_screener(
         elif clv_min > 0 and (clv is None or clv < clv_min):
             continue
         if tech_score < min_score_tech:
+            continue
+        # EMA60-slope-up hard filter: only keep names whose EMA60 is rising.
+        # A None slope (insufficient history) cannot prove "rising", so it is
+        # filtered out when the option is on — the filter is strict by design.
+        if ema60_slope_up_only and (ema60_slope_val is None or ema60_slope_val <= 0):
             continue
 
         results.append(row)

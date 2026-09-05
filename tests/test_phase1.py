@@ -320,3 +320,33 @@ def test_trend_status_carries_weak_flag_for_sunway_shape():
     assert tr["above"] is False        # price dipped below EMA200
     assert tr["slope"] > 0             # ...but EMA200 is still rising
     assert tr["weak"] is False
+
+
+# ── EMA60 slope (new EMA60-slope-up filter) ────────────────────────────────
+
+def test_ema_slope_positive_rising():
+    from screener_setup import ema_slope
+    # steady uptrend -> EMA60 slope > 0
+    c = _s([3.0 + 0.01 * i for i in range(100)])
+    s = ema_slope(c, window=60, bars=10)
+    assert s is not None and s > 0
+
+
+def test_ema_slope_negative_falling():
+    from screener_setup import ema_slope
+    c = _s([5.0 - 0.01 * i for i in range(100)])
+    s = ema_slope(c, window=60, bars=10)
+    assert s is not None and s < 0
+
+
+def test_ema_slope_flat_near_zero():
+    from screener_setup import ema_slope
+    c = _s([4.0] * 100)
+    s = ema_slope(c, window=60, bars=10)
+    assert s is not None and abs(s) < 1e-9
+
+
+def test_ema_slope_short_history_none():
+    from screener_setup import ema_slope
+    assert ema_slope(_s([10.0] * 30), window=60, bars=10) is None
+    assert ema_slope(None) is None

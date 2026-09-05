@@ -358,6 +358,23 @@ def trend_position(close: pd.Series | None,
     }
 
 
+def ema_slope(close: pd.Series | None,
+              window: int = 60,
+              bars: int = 10) -> float | None:
+    """Per-bar slope of an EMA(window) over the last `bars` bars.
+
+    Thin, reusable wrapper around the internal `_ema_slope` so the UI filter
+    ("only keep stocks whose EMA60 is rising") uses the SAME definition as
+    `ema_pullback_reclaim`'s `slope_ok` (not a second, drifting definition).
+    Positive = rising; None when there isn't enough history to judge.
+    """
+    if close is None or len(close) < window:
+        return None
+    ema = close.ewm(span=window, adjust=False).mean()
+    slope = _ema_slope(ema, bars=bars)
+    return None if slope is None else round(float(slope), 8)
+
+
 # ── Effort vs Result ────────────────────────────────────────────────────────
 
 def effort_vs_result(high: pd.Series, low: pd.Series, close: pd.Series,

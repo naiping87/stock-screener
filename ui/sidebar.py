@@ -306,6 +306,14 @@ class Sidebar(QWidget):
                             "value is below this are down-weighted and flagged 🔴 "
                             "(not a tradeable Ignition). 0 = off.")
         sl.addWidget(self.min_adtv)
+        self.ema60_slope_up = QCheckBox("📈 " + i18n.t("EMA60 rising only"))
+        self.ema60_slope_up.setStyleSheet(f"color:{TEXT_SEC}; font-size:13px;")
+        self.ema60_slope_up.setToolTip(
+            "Ignition hard filter: only keep stocks whose EMA60 slope is positive "
+            "(a rising medium-term trend). Stocks with too little history are also "
+            "excluded, because their slope cannot be proven rising. OFF = no filter.")
+        self.ema60_slope_up.setChecked(False)
+        sl.addWidget(self.ema60_slope_up)
         pl.addWidget(score)
 
         pl.addStretch()
@@ -497,6 +505,7 @@ class Sidebar(QWidget):
             "score_top_n": self.score_top_n.row_widget.value(),
             "clv_min": _sv(self.clv_min),
             "min_adtv": self.min_adtv.row_widget.value(),
+            "ema60_slope_up_only": self.ema60_slope_up.isChecked(),
         }
 
     # ── Persist the user's default options across launches ────────────────
@@ -624,4 +633,9 @@ class Sidebar(QWidget):
             _sld(self.clv_min, d["clv_min"])
         if "min_adtv" in d:
             _sp(self.min_adtv, d["min_adtv"])
+        if "ema60_slope_up_only" in d:
+            try:
+                self.ema60_slope_up.setChecked(bool(d["ema60_slope_up_only"]))
+            except Exception:
+                pass
 
