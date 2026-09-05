@@ -508,6 +508,15 @@ verify scripts, `signal_journal.py`, `new_stock_monitor.py`), `tests/`.
 
 - **CLV mislabel:** gated by `meaningful_range` (range/ATR20 ≥ 0.8). Real strength
   +30, high-close-but-tiny +10. Do not remove the gate.
+- **Structure vs Trend are SEPARATE axes (user-approved, do not regress):**
+  a stock can be `SETUP` (structure forming) while `trend_status` says
+  `below_ema200_weak` (e.g. Sunway 4.96 vs EMA200 5.255). `classify()` /
+  `setup_score` / trigger / breakout / RS are UNCHANGED — trend is REPORTED
+  only (row fields `ema200_dist_pct`, `ema200_slope`, `trend_status`). The
+  naive "price < EMA200 ⇒ not SETUP" gate was explicitly REJECTED. `weak =
+  price below EMA200 AND EMA200 slope <= 0`; below + rising = healthy pullback.
+  `trend_position()` in screener_setup reuses `_ema_slope`, returns None when
+  <200 bars so new listings are never judged.
 - **Search lag:** was `setFilterFixedString` over all columns (~280ms/keystroke);
   fixed with per-row lowercase text-key precompute (~1.2ms).
 - **Chart stutter:** fixed by pausing auto-refresh + deferring `_finalize_results`
