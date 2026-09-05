@@ -1,6 +1,6 @@
 [project]
 name = "stock-screener-pro"
-version = "1.2.6"
+version = "1.2.7"
 description = "Multi-market stock screening terminal — PyQt6 desktop app + Streamlit web version"
 requires-python = ">=3.10"
 
