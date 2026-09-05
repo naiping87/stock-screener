@@ -118,6 +118,29 @@ COLUMN_HELP = {
 # case-insensitive lookup so "Score"/"SCORE"/"score" all match.
 _COLUMN_HELP_LOWER = {str(k).strip().lower(): v for k, v in COLUMN_HELP.items()}
 
+# Rank for sorting the Setup Type column by business priority (weakest→strongest,
+# matching classify()'s priority). Unknown values sort last.
+_SETUP_ORDER = {
+    "LAGGARD": 0,
+    "BASE": 1,
+    "WEAKENING": 2,
+    "STRONG BUT EXTENDED": 3,
+    "EMERGING LEADER": 4,
+    "LEADER": 5,
+    "SETUP": 6,
+    "TRIGGER WATCH": 7,
+    "EMA RECLAIM": 8,
+    "EXPANSION": 9,
+    "BREAKOUT": 10,
+}
+
+
+def _setup_type_sort_key(val) -> int:
+    """Numeric sort key for a Setup Type cell (business order, not Unicode)."""
+    if val is None:
+        return -1
+    return _SETUP_ORDER.get(str(val).strip(), -1)
+
 
 def _column_help(name) -> str | None:
     if not name:
@@ -250,6 +273,18 @@ class PandasModel(QAbstractTableModel):
 
         elif role == Qt.ItemDataRole.UserRole:
             # Raw value for sorting / filtering (proxy uses this).
+            # Liq / Setup Type are displayed as emoji/words but must SORT by
+            # their underlying business value (ADTV60 / classify priority),
+            # not by Unicode. Sorting via UserRole keeps SortFilterProxy.lessThan
+            # pure (no sourceModel/headerData) — that call chain deadlocked in
+            # setSourceModel. Display stays untouched.
+            if col_name in ("Liq", "liquidity_status"):
+                adtv_col = "ADTV60" if "ADTV60" in self._df.columns else "adtv60"
+                if adtv_col in self._df.columns:
+                    a = self._df.iat[index.row(), self._df.columns.get_loc(adtv_col)]
+                    return None if a is None or pd.isna(a) else float(a)
+            if col_name in ("Setup Type", "classification"):
+                return _setup_type_sort_key(val)
             return val
 
         elif role == Qt.ItemDataRole.ForegroundRole:
@@ -306,9 +341,3 @@ class PandasModel(QAbstractTableModel):
 
     def dataframe(self) -> pd.DataFrame:
         return self._df.copy()
-
-    def _df_ref(self) -> pd.DataFrame:
-        """Internal read-only reference (NO copy) for sort comparators.
-        Sorting calls lessThan O(n log n) times; copying on every call would
-        make clicking a header stutter on a large results table."""
-        return self._df

@@ -9,6 +9,8 @@ build_mini/
 dist_mini/
 build_minif/
 dist_minif/
+build_restart/
+dist_restart/
 .venv_fix/
 *.egg-info/
 installer/

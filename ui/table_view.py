@@ -157,24 +157,6 @@ DEFAULT_COLOUR_MAP = {
     "R:R": rr_colour,
 }
 
-# Business order for the Setup Type column (same priority as classify()):
-# sorted weakest→strongest by this rank; headers sort asc = weakest first,
-# desc = strongest first.
-SETUP_TYPE_ORDER = {
-    "LAGGARD": 0,
-    "BASE": 1,
-    "WEAKENING": 2,
-    "STRONG BUT EXTENDED": 3,
-    "EMERGING LEADER": 4,
-    "LEADER": 5,
-    "SETUP": 6,
-    "TRIGGER WATCH": 7,
-    "EMA RECLAIM": 8,
-    "EXPANSION": 9,
-    "BREAKOUT": 10,
-}
-
-
 class SortFilterProxy(QSortFilterProxyModel):
     """Minimal proxy to enable sorting + filtering on the PandasModel.
 
@@ -206,35 +188,9 @@ class SortFilterProxy(QSortFilterProxyModel):
         return True
 
     def lessThan(self, left, right):
-        # Liq is an emoji tier (🔴🟠🟡🟢🔥). Comparing those as strings orders
-        # by Unicode, not by traded volume, so sort on the underlying ADTV60
-        # number instead (ascending = least traded → hot, descending = hot first).
-        col_name = str(self.headerData(
-            left.column(), Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole))
-        if col_name in ("Setup Type", "classification"):
-            df = self.sourceModel()._df_ref()
-            key = "classification" if "classification" in df.columns else "Setup Type"
-            # QSortFilterProxyModel.lessThan receives SOURCE-model indexes
-            # (not proxy indexes), so left.row()/right.row() are already source
-            # rows — do NOT mapToSource, that returns an invalid index here.
-            lv = SETUP_TYPE_ORDER.get(str(df.iloc[left.row()][key]).strip(), -1)
-            rv = SETUP_TYPE_ORDER.get(str(df.iloc[right.row()][key]).strip(), -1)
-            return lv < rv
-        if col_name in ("Liq", "liquidity_status"):
-            adtv_name = "ADTV60" if "ADTV60" in self.sourceModel()._df_ref().columns \
-                else "adtv60"
-            adtv = self.sourceModel()._df_ref()
-            if adtv_name in adtv.columns:
-                lv = adtv.iloc[left.row()][adtv_name]
-                rv = adtv.iloc[right.row()][adtv_name]
-                if lv is None or pd.isna(lv):
-                    return True
-                if rv is None or pd.isna(rv):
-                    return False
-                try:
-                    return float(lv) < float(rv)
-                except (TypeError, ValueError):
-                    return str(lv) < str(rv)
+        # Sorting keys are provided by PandasModel.data(UserRole), so this stays
+        # a pure comparison (no sourceModel/headerData). Touching those here made
+        # QSortFilterProxyModel.setSourceModel deadlock (startup hang).
         lv = left.data(Qt.ItemDataRole.UserRole)
         rv = right.data(Qt.ItemDataRole.UserRole)
         if lv is None:
