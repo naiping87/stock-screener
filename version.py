@@ -5,4 +5,4 @@ Splash screen and the About box read from here so a release bump cannot
 silently leave the UI on an old version.
 """
 
-APP_VERSION = "1.2.8"
+APP_VERSION = "1.2.9"
