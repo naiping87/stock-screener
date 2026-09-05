@@ -313,6 +313,51 @@ def price_extension(close: pd.Series, window: int = 20) -> float | None:
     return round((c / e - 1) * 100, 2)
 
 
+# ── Trend / Position evaluation (Structure vs Trend, independent axis) ─────
+
+def trend_position(close: pd.Series | None,
+                   window: int = 200,
+                   slope_bars: int = 10) -> dict[str, Any] | None:
+    """Evaluate the LONG-TERM trend separately from the setup structure.
+
+    Returns None when there isn't enough history for a reliable EMA200, so a
+    new listing is never judged by a half-warmed EMA. This is a *reporting*
+    axis — it does NOT change setup_score / classify as a hard gate; the caller
+    exposes it as a row-level marker (e.g. trend_status) so a stock like Sunway
+    is read as "structure exists but long-term trend weak" instead of silently
+    looking like a high setup.
+
+    Returns:
+      ema200        — last EMA(window) value
+      distance_pct  — % close vs EMA200 (positive = above)
+      above         — True when close >= EMA200
+      slope         — per-bar slope of EMA200 over last `slope_bars` (reuses
+                      the existing `_ema_slope`; None when indeterminate)
+      weak          — True only when BELOW EMA200 AND EMA200 is not rising
+                      (below + rising = a healthy pullback, not weakness)
+    """
+    if close is None or len(close) < window:
+        return None
+    c_last = float(close.iloc[-1])
+    if not np.isfinite(c_last):
+        return None
+    ema = close.ewm(span=window, adjust=False).mean()
+    e = float(ema.iloc[-1])
+    if not np.isfinite(e) or e <= 0:
+        return None
+    distance = (c_last / e - 1) * 100.0
+    above = c_last >= e
+    slope = _ema_slope(ema, bars=slope_bars)
+    weak = (not above) and (slope is None or slope <= 0)
+    return {
+        "ema200": round(e, 4),
+        "distance_pct": round(distance, 2),
+        "above": above,
+        "slope": None if slope is None else round(float(slope), 6),
+        "weak": weak,
+    }
+
+
 # ── Effort vs Result ────────────────────────────────────────────────────────
 
 def effort_vs_result(high: pd.Series, low: pd.Series, close: pd.Series,

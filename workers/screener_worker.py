@@ -294,8 +294,19 @@ class ScreenerWorker(QThread):
                 "adtv20": "ADTV20",
                 "volume_ratio": "Vol Ratio",
                 "participation": "Part.",
+                "trend_status": "Trend",
+                "ema200_dist_pct": "EMA200%",
+                "ema200_slope": "EMA200 slope",
             }
             df = df.rename(columns={k: v for k, v in p1_rename.items() if k in df.columns})
+            # Human-readable trend status (kept as a separate column so Setup
+            # Type stays a pure structure label; Trend reports long-term context).
+            if "Trend" in df.columns:
+                df["Trend"] = df["Trend"].map({
+                    "above_ema200": "Above EMA200",
+                    "below_ema200_rising": "Below EMA200 · rising",
+                    "below_ema200_weak": "Below EMA200 · weak",
+                }).fillna("—")
             preferred = ["Code", "Name", "Setup Type", "Liq", "Value", "Master",
                          "Strength", "Setup", "Trigger", "Breakout", "RS Rank",
                          "CLV", "Vol Ratio", "ADTV60", "Part.", "R:R",

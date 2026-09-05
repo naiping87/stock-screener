@@ -56,6 +56,7 @@ from screener_setup import (
     price_extension,
     risk_reward,
     shakeout_check,
+    trend_position,
     volume_participation,
     yesterday_clv,
 )
@@ -456,6 +457,11 @@ def run_phase1_screener(
         range_atr = mr["range_atr"]
         meaningful = mr["meaningful"]
         ext = price_extension(close, window=20)
+        # Long-term trend axis (REPORTING only): structure lives in setup_score,
+        # trend status lives here. A stock can be SETUP (structure is forming)
+        # while trend_position() says the long trend is weak (e.g. Sunway below
+        # a falling EMA200) — the UI shows both instead of one masking the other.
+        trend = trend_position(close)
         effort = effort_vs_result(high, low, close, vol)
         if intraday:
             # Volume is partial (only a fraction of the day has traded);
@@ -712,6 +718,15 @@ def run_phase1_screener(
             "meaningful_range": meaningful,
             "session": session,
             "extension_pct": ext,
+            # Long-term trend axis (independent from structure/setup_score).
+            # Trend never downgrades SETUP — it is REPORTED alongside it.
+            "ema200_dist_pct": trend.get("distance_pct") if trend else None,
+            "ema200_slope": trend.get("slope") if trend else None,
+            "trend_status": (
+                "below_ema200_weak" if trend and trend["weak"]
+                else ("above_ema200" if trend and trend["above"]
+                      else ("below_ema200_rising" if trend else None))
+            ),
             # structure
             "pivot_price": pv["price"] if pv else None,
             "pivot_distance_pct": pv["distance_pct"] if pv else None,

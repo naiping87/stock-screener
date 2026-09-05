@@ -234,3 +234,89 @@ def test_volume_participation():
     assert volume_participation(1.0) == "Normal"
     assert volume_participation(2.5) == "Very Strong"
     assert volume_participation(None) is None
+
+
+# ── Trend / Position evaluation (Structure vs Trend, user-approved design) ──
+
+def _make_close(n: int, start: float, trend: float, noise: float = 0.0) -> pd.Series:
+    """Monotonic-ish close series for deterministic EMA200 tests."""
+    return _s([start + trend * i + noise * (i % 3) for i in range(n)])
+
+
+def test_trend_position_sunway_regression():
+    # Sunway 5211.KL case: close 4.960 vs EMA200 5.255 (-5.62%). A long series
+    # that decays to that relationship; we assert the DIRECTION, not exact EMA.
+    from screener_setup import trend_position
+    close = _make_close(280, 7.0, -0.0072)   # falls over time => EMA200 above close
+    t = trend_position(close)
+    assert t is not None
+    assert t["ema200"] > close.iloc[-1]          # price under EMA200
+    assert t["above"] is False
+    assert t["distance_pct"] < 0                 # below EMA200
+    assert "slope" in t
+
+
+def test_trend_position_edge_slightly_below_rising():
+    # Price just under a RISING EMA200 -> NOT a weak trend (healthy pullback).
+    from screener_setup import trend_position
+    close = _make_close(280, 4.0, 0.0045)        # rising => EMA200 below price
+    t = trend_position(close)
+    assert t is not None
+    assert t["above"] is True
+    assert t["slope"] > 0
+    assert t["weak"] is False
+
+
+def test_trend_position_edge_significantly_below_falling():
+    # Well below a FALLING EMA200 -> weak trend.
+    from screener_setup import trend_position
+    close = _make_close(280, 8.0, -0.0100)
+    t = trend_position(close)
+    assert t is not None
+    assert t["above"] is False
+    assert t["slope"] < 0
+    assert t["weak"] is True
+
+
+def test_trend_position_edge_above_healthy():
+    # Above a healthy (rising) EMA200 -> not weak.
+    from screener_setup import trend_position
+    close = _make_close(280, 4.0, 0.0060)
+    t = trend_position(close)
+    assert t is not None
+    assert t["above"] is True
+    assert t["weak"] is False
+
+
+def test_trend_position_short_history_returns_none():
+    # < 200 bars -> None, classification must still work without a trend.
+    from screener_setup import trend_position
+    assert trend_position(_s([10.0] * 50)) is None
+
+
+def test_trend_position_short_history_returns_none():
+    # < 200 bars -> None, classification must still work without a trend.
+    from screener_setup import trend_position
+    assert trend_position(_s([10.0] * 50)) is None
+
+
+def test_trend_status_carries_weak_flag_for_sunway_shape():
+    # The row-level trend_status (not the classify label) distinguishes
+    # "structure exists but long-term trend weak". below + falling slope =
+    # weak; below + rising = weak=False (healthy pullback).
+    from screener_setup import trend_position
+    # case A: long decline -> price below a falling EMA200 => weak
+    weak_close = _make_close(280, 8.0, -0.0100)
+    # case B: long steady rise then a 2-day crash -> close below a STILL-RISING
+    # EMA200 (healthy pullback, NOT weakness)
+    vals = [3.5 + 0.006 * i for i in range(278)]
+    pre = vals[-1]
+    vals.append(pre * 0.85)
+    vals.append(vals[-1] * 0.85)
+    rising_close = _s(vals)
+    tw = trend_position(weak_close)
+    tr = trend_position(rising_close)
+    assert tw["weak"] is True
+    assert tr["above"] is False        # price dipped below EMA200
+    assert tr["slope"] > 0             # ...but EMA200 is still rising
+    assert tr["weak"] is False
