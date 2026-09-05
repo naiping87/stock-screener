@@ -380,6 +380,14 @@ before release.
 
 ### Release gotchas (learned the hard way — check every release)
 
+- **Auto-update is intentionally DEFERRED.** User asked for in-app "check for
+  update / auto-update" (2026-09-06) and decided NOT to build it yet; revisit
+  only when the product is stable. If you do it later, the prerequisites are:
+  (a) centralize the hard-coded version string — it currently lives in
+  `ui/main_window.py` About box AND `ui/splash_screen.py` and BOTH still say
+  `v1.2.6` while the release is v1.2.7 (they are stale); (b) add a GitHub
+  Releases API check; (c) prefer "notify + open download page" over silent
+  self-replace (a running PyInstaller onefile exe cannot overwrite itself).
 - **`tools/bump_landing_version.py` is hard-coded OLD/NEW** (e.g. `v1.2.5 -> v1.2.6`).
   It is NOT generic — after a version jump this makes it wrong. Run a one-off
   replace script instead (see below), then delete it or update OLD/NEW.
