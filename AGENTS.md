@@ -378,6 +378,28 @@ invent new behavior. Keep `AGENTS.md` current when structure/tooling/gotchas cha
 Bump `AppVersion` in `installer.iss` (and `version` in `pyproject.toml` if relevant)
 before release.
 
+### Release gotchas (learned the hard way — check every release)
+
+- **`tools/bump_landing_version.py` is hard-coded OLD/NEW** (e.g. `v1.2.5 -> v1.2.6`).
+  It is NOT generic — after a version jump this makes it wrong. Run a one-off
+  replace script instead (see below), then delete it or update OLD/NEW.
+- **Three landing pages must be bumped, not two**: `index.html`, `download.html`
+  AND `ssp-landing.html`. They drift (ssp was on v1.2.2 while index/download
+  were v1.2.3). `tools/verify_release.py` only checks index + download, so
+  **stale ssp-landing.html silently ships an old link**.
+- All three pages carry version tokens in plain HTML AND inside the inline
+  `#i18n-data` JSON (en/bm/zh). A naive `vX` string replace is fine because the
+  token is always exactly `v1.2.X`; count occurrences and assert zero old ones
+  after. This also updates the CTA button text (e.g. `(v1.2.X)`).
+- `installer.iss` `AppVersion` and `pyproject.toml` `version` must match the
+  release tag. v1.2.6 was released by another machine at 09-03; if you build a
+  NEWer code change you MUST bump a new version instead of re-loading v1.2.6.
+- `verify_release.py --version vX.Y.Z` compares web links, the remote GitHub
+  asset *size*, and the local installer *size*. All three must equal the bytes
+  you just built (133,926,880 B for the v1.2.7 setup).
+- Quick web size sanity (no screenshot tool needed):
+  `python -c "import urllib.request; t=urllib.request.urlopen('https://vercel-license-generator-zeta.vercel.app/').read().decode(); print('releases/download/v1.2.7/StockScreenerPro_Setup.exe' in t)"`.
+
 ## Repo Layout (agent index)
 
 Core engine (pure, causal, no network):
