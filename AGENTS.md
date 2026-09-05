@@ -388,6 +388,18 @@ before release.
   `v1.2.6` while the release is v1.2.7 (they are stale); (b) add a GitHub
   Releases API check; (c) prefer "notify + open download page" over silent
   self-replace (a running PyInstaller onefile exe cannot overwrite itself).
+- **PACKAGING BUG (2026-09-06, UNRESOLVED):** A freshly built exe on THIS
+  machine crashes at startup with `Exception code 0xc00000fd` (STACK_OVERFLOW)
+  in `Qt6Core.dll` 6.7.3 / `python312.dll` / `sip.cp312-win_amd64.pyd`, even for
+  a MINIMAL PyQt6 window (QMainWindow + show, no business code). Source
+  `python main.py` runs fine (no crash). This means the frozen environment on
+  this box is broken — likely a changed `pyinstaller-hooks-contrib` (installed
+  2026.6 with PyInstaller 6.22.2) or the shared OneDrive/other-machine
+  environment drifted. Business code (sort fix `b6cb6fa`) is NOT the cause:
+  sorting works in source, and a no-business-code mini exe still crashes.
+  DO NOT rebuild on this box until the freezing env is fixed (re-check
+  hooks-contrib, or build on the healthy release machine per the user).
+  The last known-good launchable exe was built BEFORE `b6cb6fa`.
 - **`tools/bump_landing_version.py` is hard-coded OLD/NEW** (e.g. `v1.2.5 -> v1.2.6`).
   It is NOT generic — after a version jump this makes it wrong. Run a one-off
   replace script instead (see below), then delete it or update OLD/NEW.
