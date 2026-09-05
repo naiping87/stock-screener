@@ -27,7 +27,7 @@ TEXT_SEC = "#787b86"
 UP = "#22C55E"
 DOWN = "#EF4444"
 GRID = (255, 255, 255, 40)
-EMA_COLORS = {20: "#2962FF", 50: "#f7c600", 60: "#ff6b00", 100: "#b18cff", 200: "#787b86"}
+EMA_COLORS = {60: "#ff6b00", 200: "#787b86"}  # per request: only EMA60 + EMA200 on the chart
 KDJ_COLORS = {"K": "#2962FF", "D": "#f7c600", "J": "#b18cff"}
 BAR_WIDTH = {"Daily": 60_000 * 0.7, "Weekly": 400_000 * 0.7}  # seconds per bar (xs is epoch seconds)
 
@@ -293,9 +293,12 @@ class ChartWidget(pg.GraphicsLayoutWidget):
                 self.price.addItem(line)
                 lbl = pg.TextItem(html=f"<span style='color:#f7c600;font-weight:600'>"
                                        f"Pivot {pv['price']:,.2f} (−{pv['distance_pct']:.1f}%)</span>",
-                                  anchor=(1, 1), color="#f7c600", fill=pg.mkBrush("#1e222d"))
+                                  anchor=(1, 0), color="#f7c600", fill=pg.mkBrush("#1e222d"))
                 lbl.setZValue(45)
                 self.price.addItem(lbl, ignoreBounds=True)
+                # anchor=(1,0): text opens to the LEFT of the pos, so the pivot
+                # label sits to the left/below the newest candle instead of over
+                # it. Same trick the CLV chip uses (and it never clips).
                 lbl.setPos(xs[-1], pv["price"])
             sup = nearest_support(d["low"], d["high"], close)
             if sup is not None:
