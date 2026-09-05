@@ -7,6 +7,28 @@
 
 ---
 
+## 0. Mandatory Working Guidelines — Karpathy Rules (apply to EVERY task)
+
+Every task on this project MUST follow the
+[karpathy-guidelines](C:\Users\ediso\.codex\skills\karpathy-guidelines\SKILL.md).
+Read that skill first; the four rules below are its distilled contract:
+
+1. **Think before coding** — never guess, never hide confusion. State assumptions
+   explicitly; if uncertain, ask. Name what is unclear before touching code.
+2. **Simplicity first** — minimum code that solves the problem, nothing
+   speculative. No features/abstractions/error-handling beyond what was asked.
+   If it could be half the lines, rewrite it.
+3. **Surgical changes** — touch only what you must. Don't "improve" adjacent
+   code, comments, or formatting. Match existing style. Remove only orphans
+   YOUR change created. Every changed line must trace to the user's request.
+4. **Goal-driven execution** — define verifiable success criteria, then loop
+   until verified (reproduce a bug with a test before fixing it; prove a refactor
+   with tests before and after). "Make it work" is not a success criterion.
+
+If a decision/step would violate these rules, stop and surface it explicitly.
+
+---
+
 ## 1. Project Overview
 
 **What it is:** Stock Screener Pro — a multi-market stock screening *terminal*
