@@ -4,6 +4,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPixmap
 from PyQt6.QtWidgets import QApplication, QSplashScreen
 
+from version import APP_VERSION
+
 
 def create_splash() -> QSplashScreen:
     """Create and show a splash screen. Returns the splash object."""
@@ -39,7 +41,8 @@ def create_splash() -> QSplashScreen:
     painter.setFont(font_ver)
     painter.setPen(QColor("#5d606b"))
     painter.drawText(pixmap.rect().adjusted(0, 180, 0, -20),
-                     Qt.AlignmentFlag.AlignHCenter, "v1.2.6  |  Bursa · NYSE · NASDAQ · SSE")
+                     Qt.AlignmentFlag.AlignHCenter,
+                     f"v{APP_VERSION}  |  Bursa · NYSE · NASDAQ · SSE")
 
     painter.end()
 
