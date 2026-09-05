@@ -383,23 +383,22 @@ before release.
 - **Auto-update is intentionally DEFERRED.** User asked for in-app "check for
   update / auto-update" (2026-09-06) and decided NOT to build it yet; revisit
   only when the product is stable. If you do it later, the prerequisites are:
-  (a) centralize the hard-coded version string — it currently lives in
-  `ui/main_window.py` About box AND `ui/splash_screen.py` and BOTH still say
-  `v1.2.6` while the release is v1.2.7 (they are stale); (b) add a GitHub
-  Releases API check; (c) prefer "notify + open download page" over silent
-  self-replace (a running PyInstaller onefile exe cannot overwrite itself).
+  (a) version string is now centralized in `version.APP_VERSION` (splash and
+  About both read it — fixed in 7e7aaf4, do NOT hard-code it again); (b) add a
+  GitHub Releases API check; (c) prefer "notify + open download page" over
+  silent self-replace (a running PyInstaller onefile exe cannot overwrite
+  itself).
 - **PACKAGING BUG (2026-09-06, UNRESOLVED):** A freshly built exe on THIS
-  machine crashes at startup with `Exception code 0xc00000fd` (STACK_OVERFLOW)
-  in `Qt6Core.dll` 6.7.3 / `python312.dll` / `sip.cp312-win_amd64.pyd`, even for
-  a MINIMAL PyQt6 window (QMainWindow + show, no business code). Source
-  `python main.py` runs fine (no crash). This means the frozen environment on
-  this box is broken — likely a changed `pyinstaller-hooks-contrib` (installed
-  2026.6 with PyInstaller 6.22.2) or the shared OneDrive/other-machine
-  environment drifted. Business code (sort fix `b6cb6fa`) is NOT the cause:
-  sorting works in source, and a no-business-code mini exe still crashes.
-  DO NOT rebuild on this box until the freezing env is fixed (re-check
-  hooks-contrib, or build on the healthy release machine per the user).
-  The last known-good launchable exe was built BEFORE `b6cb6fa`.
+  machine showed `Exception code 0xc00000fd` (STACK_OVERFLOW) in Qt6Core.dll.
+  STATUS as of a machine restart: a MINIMAL PyQt6 window exe now launches fine
+  (result of the restart releasing a file/OneDrive lock), but the FULL app exe
+  reaches its splash then the main thread HANGS (Responding=False, CPU frozen
+  ~1.3, no stdout/stderr even in console=True mode). Source `python main.py`
+  runs fine; isolated-venv builds also produce the hang. So the freeze is
+  frozen-env-specific, NOT the business code (sort fix passes in source).
+  NEXT DIAG: binary-search the spec collect_all modules / main.py import path
+  (e.g. import ui.main_window alone via a minimal CLI exe), or build on the
+  healthy release machine. Do NOT ship this box's frozen exe.
 - **`tools/bump_landing_version.py` is hard-coded OLD/NEW** (e.g. `v1.2.5 -> v1.2.6`).
   It is NOT generic — after a version jump this makes it wrong. Run a one-off
   replace script instead (see below), then delete it or update OLD/NEW.
