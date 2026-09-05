@@ -423,12 +423,13 @@ before release.
   sort keys in `PandasModel.data(UserRole)` instead (Liq → ADTV60 value,
   Setup Type → business-order rank). Verified live: MainWindow constructs,
   PrintWindow shows a real rendered UI, asc/desc correct, pytest 62/62.
-- **CURRENT RELEASE = v1.2.9** (tag + GitHub assets + landing pages all bumped;
-  verified by `tools/verify_release.py --version v1.2.8`, exit 0). It contains
-  the Structure/Trend separation (v1.2.9), the startup-hang fix, UserRole-based
-  Liq/Setup-Type sorting, version centralization (`version.APP_VERSION`), and
-  the chart cleanup. To release again: bump version.py + installer.iss +
-  pyproject.toml together, push, then follow the Build/Release SOP.
+- **CURRENT RELEASE = v1.2.10** (tag + GitHub assets + landing pages all bumped;
+  verified by `tools/verify_release.py --version v1.2.10`, exit 0). It contains
+  the "EMA60 rising only" hard filter (v1.2.10), the Structure/Trend separation
+  (v1.2.9), the startup-hang fix, UserRole-based Liq/Setup-Type sorting, version
+  centralization (`version.APP_VERSION`), and the chart cleanup. To release
+  again: bump version.py + installer.iss + pyproject.toml together, push, then
+  follow the Build/Release SOP.
 - **`tools/bump_landing_version.py` is hard-coded OLD/NEW** (e.g. `v1.2.5 -> v1.2.6`).
   It is NOT generic — after a version jump this makes it wrong. Run a one-off
   replace script instead (see below), then delete it or update OLD/NEW.
