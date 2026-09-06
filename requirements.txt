@@ -15,3 +15,4 @@ akshare>=1.0.0
 # streamlit_app.py 入口需要;桌面版不受影响
 streamlit>=1.28.0
 streamlit-aggrid>=1.2.0
+plotly>=5.20.0

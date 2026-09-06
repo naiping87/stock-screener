@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import requests
 import streamlit as st
+import plotly.graph_objects as go
 from st_aggrid import AgGrid, GridOptionsBuilder
 from st_aggrid.shared import JsCode
 
@@ -79,7 +80,7 @@ st.set_page_config(
     page_title="Bursa Screener",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ── Keep-alive ──────────────────────────────────────────────────────────────
@@ -1164,10 +1165,10 @@ function(params) {
 
 
 def _render_aggrid(df, height=420, roe_col=False, score_col=False, default_sort=None,
-                   hide_cols=None):
+                   hide_cols=None, selection_mode=None):
     """Render an AgGrid table with dark theme, sorting, filtering, and conditional formatting."""
     if df is None or df.empty:
-        return
+        return None
     hide_cols = set(hide_cols or [])
 
     gb = GridOptionsBuilder.from_dataframe(df)
@@ -1241,13 +1242,15 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False, default_sort=
 
     grid_options = gb.build()
 
-    AgGrid(
+    grid_return = AgGrid(
         df, gridOptions=grid_options,
         height=height, width='100%',
         theme='streamlit',
         update_on=[],
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
+        selection_mode=selection_mode,
+        key=f"aggrid_{id(df)}_{hash(tuple(df.columns))}",
     )
 
     # Post-render: JS safety net to force dark background on grid containers
@@ -1264,6 +1267,63 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False, default_sort=
     }, 400);
     </script>
     """, height=0)
+    return grid_return
+
+
+def _render_stock_chart(data: dict, ticker: str, name: str) -> None:
+    """Render a TradingView-style candlestick + EMA + volume chart (like desktop).
+
+    Reuses the already-downloaded daily OHLCV (data[ticker]) so it needs no extra
+    network call. EMAs use the same span=20/50/200 convention as the desktop app
+    and the EMA200 position shown in the Trend column.
+    """
+    d = data.get(ticker)
+    if not d or d.get("close") is None or len(d["close"]) < 2:
+        st.info(f"No chart data for {ticker}.")
+        return
+    c = d["close"].dropna()
+    if c.empty:
+        st.info(f"No chart data for {ticker}.")
+        return
+    # Align OHLC to the close index (suspensions leave NaN gaps).
+    h = d["high"].reindex(c.index)
+    lo = d["low"].reindex(c.index)
+    o = d["open"].reindex(c.index) if d.get("open") is not None else c
+    v = d["volume"].reindex(c.index) if d.get("volume") is not None else None
+    idx = c.index
+
+    fig = go.Figure()
+    up = "#22C55E"
+    down = "#EF4444"
+    fig.add_trace(go.Candlestick(
+        x=idx, open=o, high=h, low=lo, close=c, name="Price",
+        increasing_line_color=up, decreasing_line_color=down,
+        increasing_fillcolor=up, decreasing_fillcolor=down,
+    ))
+    # EMAs (reuse the same ewm(span) definition as the engine).
+    for span, col in ((20, "#2962FF"), (50, "#f7c600"), (200, "#787b86")):
+        if len(c) >= span:
+            ema = c.ewm(span=span, adjust=False).mean()
+            fig.add_trace(go.Scatter(x=idx, y=ema, mode="lines", name=f"EMA{span}",
+                                     line=dict(color=col, width=1.2)))
+    # Volume subplot (softened, supporting context).
+    if v is not None and len(v):
+        colors = [up if (o is not None and oi is not None and ci is not None and ci >= oi)
+                  else down for oi, ci in zip(o, c)]
+        fig.add_trace(go.Bar(x=idx, y=v, name="Volume", yaxis="y2",
+                             marker_color=colors, opacity=0.55))
+
+    fig.update_layout(
+        title=dict(text=f"<b>{name}</b> · {ticker}", font=dict(color="#e6edf3", size=15)),
+        template="plotly_dark",
+        paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
+        height=560, margin=dict(l=40, r=40, t=50, b=30),
+        xaxis_rangeslider_visible=False,
+        legend=dict(orientation="h", y=1.08, bgcolor="rgba(0,0,0,0)"),
+        yaxis=dict(gridcolor="rgba(147,161,178,.12)"),
+        yaxis2=dict(overlaying="y", side="right", showgrid=False, visible=False),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 # ── Data loader (@st.cache_data persists across refreshes, 1hr TTL) ────────
@@ -1791,7 +1851,7 @@ if st.session_state.run_done:
             # default; the deep TA/RS/level detail stays available from the
             # column menu (click the header filter icon) instead of cramming
             # 30+ columns into the grid.
-            _render_aggrid(
+            _grid = _render_aggrid(
                 p1_df, height=520, default_sort={"Value": "desc"},
                 hide_cols=[
                     "ADTV60", "Vol Ratio", "Regime", "EMA200%", "EMA↺", "Wtd%",
@@ -1799,7 +1859,19 @@ if st.session_state.run_done:
                     "Sector", "SecStr", "Pivot", "Dist%", "Target", "Sup",
                     "Ext%", "Base%", "DryUp", "Shake", "FBO", "FBD", "Why",
                 ],
+                selection_mode="single",
             )
+            # Click a row -> show its candlestick chart below (desktop parity).
+            _sel_rows = (_grid or {}).get("selected_rows") or []
+            if _sel_rows:
+                _sel = _sel_rows[0]
+                _tkr = f"{_sel.get('Code')}.KL" if "Code" in _sel else ""
+                if _tkr in data:
+                    st.markdown("##### 📈 Chart — double-click a row above to change")
+                    _render_stock_chart(
+                        data, _tkr,
+                        _sel.get("Name", "") or ticker_names.get(_tkr, _tkr),
+                    )
             st.download_button("⬇️ Export Ignition CSV",
                                pd.DataFrame([{k: v for k, v in r.items() if k != "reasons"}
                                              for r in results_p1]).to_csv(index=False),
