@@ -1163,10 +1163,12 @@ function(params) {
 """)
 
 
-def _render_aggrid(df, height=420, roe_col=False, score_col=False, default_sort=None):
+def _render_aggrid(df, height=420, roe_col=False, score_col=False, default_sort=None,
+                   hide_cols=None):
     """Render an AgGrid table with dark theme, sorting, filtering, and conditional formatting."""
     if df is None or df.empty:
         return
+    hide_cols = set(hide_cols or [])
 
     gb = GridOptionsBuilder.from_dataframe(df)
     gb.configure_default_column(
@@ -1221,6 +1223,10 @@ def _render_aggrid(df, height=420, roe_col=False, score_col=False, default_sort=
             gb.configure_column(col, headerTooltip=tip, maxWidth=55)
         elif col in ('Code',):
             gb.configure_column(col, headerTooltip=tip, maxWidth=70)
+        elif col in hide_cols:
+            # Hidden by default (user can re-enable from the column menu), so
+            # wide tables like Ignition stay readable instead of wall-to-wall.
+            gb.configure_column(col, headerTooltip=tip, hide=True)
         else:
             gb.configure_column(col, headerTooltip=tip)
 
@@ -1781,7 +1787,19 @@ if st.session_state.run_done:
                        "(🟢 above / 🟡 below but rising / 🔴 below & weak) · EMA200% = distance from EMA200 · "
                        "RS Rank = percentile vs ALL stocks · RS Rank Chg = 20d change (+ = gaining) · "
                        "CLV ≥ 0.8 = strong close · R:R < 1.5 = pass.")
-            _render_aggrid(p1_df, height=520, default_sort={"Value": "desc"})
+            # Keep the Ignition table readable: show the decision columns by
+            # default; the deep TA/RS/level detail stays available from the
+            # column menu (click the header filter icon) instead of cramming
+            # 30+ columns into the grid.
+            _render_aggrid(
+                p1_df, height=520, default_sort={"Value": "desc"},
+                hide_cols=[
+                    "ADTV60", "Vol Ratio", "Regime", "EMA200%", "EMA↺", "Wtd%",
+                    "SecRS", "RS↑20d", "RS5", "RS20", "RS60", "RS Mom",
+                    "Sector", "SecStr", "Pivot", "Dist%", "Target", "Sup",
+                    "Ext%", "Base%", "DryUp", "Shake", "FBO", "FBD", "Why",
+                ],
+            )
             st.download_button("⬇️ Export Ignition CSV",
                                pd.DataFrame([{k: v for k, v in r.items() if k != "reasons"}
                                              for r in results_p1]).to_csv(index=False),
