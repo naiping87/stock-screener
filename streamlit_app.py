@@ -1689,7 +1689,12 @@ if st.session_state.run_done:
 
             def _badge(c):
                 icon, color = _CLASS_BADGE.get(c, ("#", "#8b949e"))
-                return f"<span style='color:{color};font-weight:700'>[{icon} {c}]</span>"
+                # Plain text (icon + label), NOT an HTML span: AgGrid shows the cell
+                # value verbatim and has no cellRenderer for 'Type', so an HTML span
+                # leaked as raw markup (e.g. "<span style=...>[SETUP]</span>"). This is
+                # the desktop-style label minus the per-cell colour (which is a
+                # PyQt/pandas cellStyle concern, not AgGrid HTML).
+                return f"{icon} {c}"
 
             def _fmt(v, suffix="", na="—"):
                 return f"{v:,.2f}{suffix}" if isinstance(v, (int, float)) else na
