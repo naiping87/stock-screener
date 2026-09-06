@@ -873,6 +873,14 @@ with st.sidebar:
                  "0 = off.",
             key="cfg_min_adtv",
         )
+        ema60_up = st.toggle(
+            "EMA60 rising only",
+            value=False,
+            help="Hard filter: keep only stocks whose EMA60 slope is positive "
+                 "(a rising medium-term trend). Stocks with too little history are "
+                 "also excluded because their slope cannot be proven rising.",
+            key="cfg_ema60_slope_up",
+        )
 
     with st.expander("🔄 Auto-Refresh", expanded=False):
         st.markdown('<div style="margin-bottom:0.25rem;font-size:0.7rem;color:#6e7681;display:flex;align-items:center;gap:0.25rem;">'
@@ -1553,15 +1561,17 @@ try:
     p1_set_lang("en")  # Streamlit builds are English; desktop owns 3-lang UI
     _clv = st.session_state.get("cfg_clv_min", 0.8)  # default: closing-strong lens
     _min_adtv = st.session_state.get("cfg_min_adtv", 20_000)
+    _ema60_up = bool(st.session_state.get("cfg_ema60_slope_up", False))
     _p1_params = getattr(st.session_state, "_p1_params", None)
     _fp_clv = st.session_state.get("_p1_fp", None)
     _cur_fp = (selected_code, str(bench is not None), sector_map and len(sector_map),
-               _clv, _min_adtv)
+               _clv, _min_adtv, _ema60_up)
     if _fp_clv != _cur_fp or "results_phase1" not in st.session_state:
         results_p1 = run_phase1_screener(
             data, bench, sector_map, ticker_names=ticker_names,
             top_n=score_top_n, min_score_tech=score_min, clv_min=_clv,
             min_adtv=_min_adtv,
+            ema60_slope_up_only=_ema60_up,
         )
         st.session_state.results_phase1 = results_p1
         st.session_state._p1_fp = _cur_fp
@@ -1684,6 +1694,15 @@ if st.session_state.run_done:
             def _fmt(v, suffix="", na="—"):
                 return f"{v:,.2f}{suffix}" if isinstance(v, (int, float)) else na
 
+            _TREND_LABEL = {
+                "above_ema200": "🟢 Above EMA200",
+                "below_ema200_rising": "🟡 Below · rising",
+                "below_ema200_weak": "🔴 Below · weak",
+            }
+
+            def _trend_label(status):
+                return _TREND_LABEL.get(status, "—") if status else "—"
+
             _regime = results_p1[0].get("market_regime")
             if _regime:
                 if _regime == "RISK_ON":
@@ -1723,6 +1742,8 @@ if st.session_state.run_done:
                     "ADTV60": _fmt(r.get("adtv60")),
                     "Vol Ratio": _fmt(r.get("volume_ratio"), "x"),
                     "Regime": r.get("market_regime") or "",
+                    "Trend": _trend_label(r.get("trend_status")),
+                    "EMA200%": _fmt(r.get("ema200_dist_pct"), "%"),
                     "CLV": _fmt(r.get("clv")),
                     "EMA↺": "✓" if r.get("ema_reclaim") else "",
                     "SecRS": _fmt(r.get("sector_rs_20d"), "%"),
@@ -1751,8 +1772,10 @@ if st.session_state.run_done:
             p1_df = pd.DataFrame(rows)
             st.caption("💡 Strength ≠ Setup ≠ Trigger — Value (R:R-adjusted Master) is ranked first. "
                        "Regime = whole-market RISK_ON/NEUTRAL/RISK_OFF · EMA↺ = pullback+reclaim at EMA60 · "
-                       "SecRS = stock vs its own sector · RS Rank = percentile vs ALL stocks · "
-                       "RS Rank Chg = 20d change (+ = gaining) · CLV ≥ 0.8 = strong close · R:R < 1.5 = pass.")
+                       "SecRS = stock vs its own sector · Trend = long-term position vs EMA200 "
+                       "(🟢 above / 🟡 below but rising / 🔴 below & weak) · EMA200% = distance from EMA200 · "
+                       "RS Rank = percentile vs ALL stocks · RS Rank Chg = 20d change (+ = gaining) · "
+                       "CLV ≥ 0.8 = strong close · R:R < 1.5 = pass.")
             _render_aggrid(p1_df, height=520, default_sort={"Value": "desc"})
             st.download_button("⬇️ Export Ignition CSV",
                                pd.DataFrame([{k: v for k, v in r.items() if k != "reasons"}
